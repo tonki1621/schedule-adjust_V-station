@@ -338,36 +338,49 @@ if not os.path.exists("custom_editor"):
                 else { palette.style.display = 'flex'; }
                 
                 const g = document.getElementById('g'); if(!g) return;
-                let down = false;
+                let downBtn = null; // 0: 左クリック(またはタップ), 2: 右クリック
+                
+                // 💡 右クリックした時のブラウザ標準メニューを無効化
+                g.addEventListener('contextmenu', e => {
+                    if(e.target.classList.contains('c')) e.preventDefault();
+                });
                 
                 g.onmousedown = e => { 
                     if(!e.target.classList.contains('c')) return; 
-                    down = true; 
-                    window.upd(e.target, selectedMode); 
+                    downBtn = e.button; 
+                    if (downBtn === 0) {
+                        window.upd(e.target, selectedMode); // 左：選んだペンで塗る
+                    } else if (downBtn === 2) {
+                        window.upd(e.target, 0); // 右：強制的に白(0)に戻す
+                    }
                 };
                 g.onmouseover = e => { 
-                    if(down && e.target.classList.contains('c')) window.upd(e.target, selectedMode); 
+                    if(downBtn !== null && e.target.classList.contains('c')) {
+                        if (downBtn === 0) window.upd(e.target, selectedMode); 
+                        else if (downBtn === 2) window.upd(e.target, 0); 
+                    }
                 };
-                window.onmouseup = () => { if(down) down=false; isDraggingPalette = false; }; 
-                window.onmouseleave = () => { if(down) down=false; isDraggingPalette = false; }; 
+                window.onmouseup = () => { downBtn = null; isDraggingPalette = false; }; 
+                window.onmouseleave = () => { downBtn = null; isDraggingPalette = false; }; 
 
+                // スマホのタップ操作（左クリックと同じ扱いにする）
                 g.addEventListener('touchstart', e => { 
                     const touch = e.touches[0]; 
                     const target = document.elementFromPoint(touch.clientX, touch.clientY); 
                     if(target && target.classList.contains('c')) { 
-                        down = true; 
+                        downBtn = 0; 
                         window.upd(target, selectedMode); 
                         e.preventDefault(); 
                     } 
                 }, {passive: false});
                 g.addEventListener('touchmove', e => { 
-                    if(!down) return; 
+                    if(downBtn !== 0) return; 
                     const touch = e.touches[0]; 
                     const target = document.elementFromPoint(touch.clientX, touch.clientY); 
                     if(target && target.classList.contains('c')) window.upd(target, selectedMode); 
                     e.preventDefault(); 
                 }, {passive: false});
-                g.addEventListener('touchend', () => { down = false; isDraggingPalette = false; });
+                g.addEventListener('touchend', () => { downBtn = null; isDraggingPalette = false; });
                 
                 const btn = document.getElementById("submit-btn");
                 if(btn) { btn.onclick = () => { 
