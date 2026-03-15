@@ -345,48 +345,44 @@ if not os.path.exists("custom_editor"):
                 }, { capture: true });
 
                 const g = document.getElementById('g'); if(!g) return;
-                let downBtn = null; // 0: 左クリック, 2: 右クリック
+                let down = false;
+                let isErasing = false; // 💡 Shiftキーで消しゴムモードかどうかの判定用
                 
                 g.onmousedown = e => { 
                     const cell = e.target.closest('.c');
                     if(!cell) return; 
                     
-                    // 💡 [徹底対策2] ドラッグ中のテキスト選択など、ブラウザの余計なお世話をブロック
-                    e.preventDefault(); 
-                    
-                    downBtn = e.button; 
-                    if (downBtn === 0) {
-                        window.upd(cell, selectedMode); // 左: 塗る
-                    } else if (downBtn === 2) {
-                        window.upd(cell, 0); // 右: 白(0)に戻す
-                    }
+                    down = true; 
+                    // Shiftキーが押されていれば「0(消す)」、そうでなければ「選んでいるペン」
+                    isErasing = e.shiftKey; 
+                    window.upd(cell, isErasing ? 0 : selectedMode); 
                 };
                 
                 g.onmouseover = e => { 
                     const cell = e.target.closest('.c');
-                    if(downBtn !== null && cell) {
-                        if (downBtn === 0) window.upd(cell, selectedMode); 
-                        else if (downBtn === 2) window.upd(cell, 0); 
+                    if(down && cell) {
+                        window.upd(cell, isErasing ? 0 : selectedMode); 
                     }
                 };
                 
-                window.onmouseup = () => { downBtn = null; isDraggingPalette = false; }; 
-                window.onmouseleave = () => { downBtn = null; isDraggingPalette = false; }; 
+                window.onmouseup = () => { down = false; isErasing = false; isDraggingPalette = false; }; 
+                window.onmouseleave = () => { down = false; isErasing = false; isDraggingPalette = false; }; 
 
-                // スマホのタップ操作（左クリック扱い）
+                // スマホのタップ操作（常に左クリック扱い、Shiftキーの概念はないので安全）
                 g.addEventListener('touchstart', e => { 
                     const touch = e.touches[0]; 
                     const target = document.elementFromPoint(touch.clientX, touch.clientY); 
                     const cell = target ? target.closest('.c') : null;
                     if(cell) { 
-                        downBtn = 0; 
+                        down = true; 
+                        isErasing = false; // スマホは常に通常のペン
                         window.upd(cell, selectedMode); 
                         e.preventDefault(); 
                     } 
                 }, {passive: false});
                 
                 g.addEventListener('touchmove', e => { 
-                    if(downBtn !== 0) return; 
+                    if(!down) return; 
                     const touch = e.touches[0]; 
                     const target = document.elementFromPoint(touch.clientX, touch.clientY); 
                     const cell = target ? target.closest('.c') : null;
@@ -394,7 +390,7 @@ if not os.path.exists("custom_editor"):
                     e.preventDefault(); 
                 }, {passive: false});
                 
-                g.addEventListener('touchend', () => { downBtn = null; isDraggingPalette = false; });
+                g.addEventListener('touchend', () => { down = false; isErasing = false; isDraggingPalette = false; });
                 
                 const btn = document.getElementById("submit-btn");
                 if(btn) { btn.onclick = () => { 
