@@ -35,17 +35,14 @@ st.markdown("""
         .af-status-on { color: #fff; font-weight: bold; background: linear-gradient(135deg, #2196F3, #1976D2); padding: 4px 0; border-radius: 6px; border: none; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block; box-shadow: 0 2px 4px rgba(33,150,243,0.3); letter-spacing: 0.5px;}
         .status-off { color: #9e9e9e; background: #ffffff; padding: 4px 0; border-radius: 6px; border: 1px dashed #d0d0d0; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block;}
         
-        /* 時間割設定のスマホ対応（横スクロール＆極限までコンパクト化）用CSS */
         .tt-wrapper { overflow-x: auto; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px;}
         .tt-table { width: 100%; min-width: 280px; border-collapse: collapse; table-layout: fixed; }
         .tt-table th, .tt-table td { padding: 5px 0px; text-align: center; border-bottom: 1px solid #eee; }
         .tt-table th { font-weight: bold; background: #f8f9fa; color: #333; position: sticky; top: 0; font-size: 12px; padding: 8px 0px;}
         
-        /* 1列目の幅と余白を削る */
         .tt-table td:first-child { font-weight: bold; background: #f0f2f6; border-right: 2px solid #ddd; text-align: center; width: 45px; font-size: 11px; padding: 5px 2px;}
         .tt-table td:first-child span { font-size: 9px; color: #666; display: block; font-weight: normal; letter-spacing: -0.5px; margin-top: -2px;}
         
-        /* Streamlitのチェックボックス自体の余白を完全にゼロにする */
         .tt-table [data-testid="stCheckbox"] { justify-content: center; margin: 0 !important; padding: 0 !important; width: 100% !important;}
         .tt-table [data-testid="stCheckbox"] label { min-height: 0 !important; padding: 0 !important; gap: 0 !important; }
         .tt-table [data-testid="stCheckbox"] div[role="checkbox"] { margin: 0 auto !important; }
@@ -58,7 +55,6 @@ GAS_URL = "https://script.google.com/macros/s/AKfycby7hAc1_dhSQ_tJzSiJeSc2Ez7pga
 # ==========================================
 # コンポーネント (rt_editor, options_editor, grid_editor)
 # ==========================================
-# (※ここの3つのエディタのHTML生成部分は元のコードと全く同じなので省略せずにそのまま使用します)
 if not os.path.exists("rt_editor"):
     os.makedirs("rt_editor", exist_ok=True)
     with open("rt_editor/index.html", "w", encoding="utf-8") as f:
@@ -137,8 +133,10 @@ if not os.path.exists("options_editor"):
         window.addEventListener("message", function(event) {
             if (event.data.type === "streamlit:render") {
                 const args = event.data.args;
-                if(window.lastEventId === args.eventId) return; 
+                // 💡 saveTs（保存タイミング）を比較に加えて、保存後は確実に再描画する
+                if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; 
                 window.lastEventId = args.eventId;
+                window.lastSaveTs = args.saveTs;
                 
                 const opts = args.options;
                 const myAnsBin = args.myAnsBin;
@@ -457,22 +455,18 @@ def main():
 
     if "auth" not in st.session_state: st.session_state.auth = None
     
-    # 💡 要件に合わせたグループの並び順（マスター）を定義 (group_4は削除)
-    # 💡 要件に合わせたグループの並び順（マスター）を定義 (group_4は削除)
-    
-    # 案1: 入学年度は「現在の西暦」から自動計算（例: 現在の年の6年前〜1年後まで）
+    # 💡 入学年度は「現在の西暦」から自動計算（現在の年の6年前〜1年後まで）
     current_year = datetime.now().year
     MASTER_G2 = [f"{year}年度" for year in range(current_year - 6, current_year + 2)]
     
-    # 案2: キャンパスとオプションはスプレッドシート(master_config)から取得
-    config_res = call_gas_cached("get_config", method="POST", ttl=3600) # 1時間キャッシュ
+    # 💡 キャンパスとオプションはスプレッドシート(master_config)から取得
+    config_res = call_gas_cached("get_config", method="POST", ttl=3600)
     if config_res.get("status") == "success":
         MASTER_G1 = config_res["data"]["g1"]
         MASTER_G3 = config_res["data"]["g3"]
     else:
-        # 万が一通信エラーやシートがない場合のバックアップ
         MASTER_G1 = ["なかもず", "もりのみや", "すぎもと", "あべの", "りんくう"]
-        MASTER_G3 = ["卒業生ネットワーク関係者"]["卒業生ネットワーク関係者"]
+        MASTER_G3 = ["卒業生ネットワーク関係者"]
 
     def sort_groups(lst, master):
         return sorted(lst, key=lambda x: master.index(x) if x in master else 999)
@@ -841,13 +835,10 @@ def main():
                     mention_text = "@everyone"
                 else:
                     mentions = []
-                    # キャンパス (そのまま@をつける)
                     for g in t_g1:
                         mentions.append(f"@{g}")
-                    # 入学年度 (「年度」を「年度入学生」に変換)
                     for g in t_g2:
                         mentions.append(f"@{g.replace('年度', '年度入学生')}")
-                    # オプション
                     for g in t_g3:
                         mentions.append(f"@{g}")
                     
@@ -1437,7 +1428,8 @@ def main():
             {submit_btn_html}
             """
             
-            raw = grid_editor(html_code=html_code, rows=len(time_labels), cols=len(date_strs), eventId=event['event_id'], isClosed=is_closed, unavailColRows=unavail_col_rows, default=None, key=f"editor_{event['event_id']}")
+            # 💡 saveTs（保存タイミング）を渡すことでStreamlitに状態変更を教え、確実にボタンをリセットさせる
+            raw = grid_editor(html_code=html_code, rows=len(time_labels), cols=len(date_strs), eventId=event['event_id'], isClosed=is_closed, unavailColRows=unavail_col_rows, saveTs=st.session_state.get("last_saved_ts", 0), default=None, key=f"editor_{event['event_id']}")
             
             if raw and isinstance(raw, dict) and "data" in raw:
                 if raw.get("trigger_save") and st.session_state.get("last_saved_ts") != raw.get("ts"):
@@ -1452,7 +1444,7 @@ def main():
                     
                     call_gas("submit_binary_response", {"payload": {"event_id": event["event_id"], "user_id": user["user_id"], "comment": st.session_state.my_comment, "responses": all_res}}, method="POST")
                     clear_cache()
-                    st.session_state.save_success_msg = "回答を保存しました！"  # 💡 ここを追加
+                    st.session_state.save_success_msg = "回答を保存しました！"
                     st.rerun()
 
         with tab_graph:
@@ -1635,7 +1627,8 @@ def main():
             
             st.markdown("##### 📌 各候補の参加可否を選んでください")
             
-            raw = options_editor(options=opts, myAnsBin=my_ans_bin, myComment=my_comment, eventId=event['event_id'], isClosed=is_closed, key=f"opt_editor_{event['event_id']}")
+            # 💡 saveTs（保存タイミング）を渡すことで確実にリセットさせる
+            raw = options_editor(options=opts, myAnsBin=my_ans_bin, myComment=my_comment, eventId=event['event_id'], isClosed=is_closed, saveTs=st.session_state.get("last_saved_ts", 0), key=f"opt_editor_{event['event_id']}")
             
             if raw and isinstance(raw, dict) and raw.get("trigger_save") and st.session_state.get("last_saved_ts") != raw.get("ts"):
                 st.session_state.last_saved_ts = raw.get("ts")
@@ -1645,7 +1638,7 @@ def main():
                 res = [{"date": "options", "binary": b_str}]
                 call_gas("submit_binary_response", {"payload": {"event_id": event["event_id"], "user_id": user["user_id"], "comment": user_comment, "responses": res}}, method="POST")
                 clear_cache()
-                st.session_state.save_success_msg = "回答を保存しました！"  # 💡 ここを追加
+                st.session_state.save_success_msg = "回答を保存しました！"
                 st.rerun()
 
         with tab_graph:
