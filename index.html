@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>日程調整 Pro [Zero-Lag Edit]</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.58.1/build/stlite.css" />
+    <style>
+        #root:empty::before {
+            content: "システム起動中... (約20秒)";
+            display: flex; justify-content: center; align-items: center; height: 100vh;
+            font-family: sans-serif; color: #666; background-color: #f9f9f9;
+        }
+    </style>
+</head>
+<body>
+    <div id="root"></div>
+    <script src="https://cdn.jsdelivr.net/npm/@stlite/mountable@0.58.1/build/stlite.js"></script>
+    <script>
+    stlite.mount({
+        requirements: ["pandas", "plotly"],
+        entrypoint: "app.py",
+        files: {
+            "app.py": {
+                // ドットスラッシュを付けることで現在のディレクトリを明示
+                url: "./app.py",
+            },
+        },
+    });
+    </script>
+</body>
+</html>
