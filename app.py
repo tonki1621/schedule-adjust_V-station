@@ -12,7 +12,7 @@ import numpy as np
 st.set_page_config(page_title="日程調整 Pro", layout="wide")
 
 # 💡 ご自身のStreamlitアプリのURLに変更してください
-APP_BASE_URL = "https://schedule-adjust-testing.streamlit.app/"
+APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
 # ==========================================
 # UX改善: ロード中表示＆時間割テーブル用CSS
@@ -453,9 +453,21 @@ def main():
     if "auth" not in st.session_state: st.session_state.auth = None
     
     # 💡 要件に合わせたグループの並び順（マスター）を定義 (group_4は削除)
-    MASTER_G1 = ["なかもず", "もりのみや", "すぎもと", "あべの", "りんくう"]
-    MASTER_G2 = [f"{year}年度" for year in range(2021, 2031)]
-    MASTER_G3 = ["卒業生ネットワーク関係者"]
+    # 💡 要件に合わせたグループの並び順（マスター）を定義 (group_4は削除)
+    
+    # 案1: 入学年度は「現在の西暦」から自動計算（例: 現在の年の6年前〜1年後まで）
+    current_year = datetime.now().year
+    MASTER_G2 = [f"{year}年度" for year in range(current_year - 6, current_year + 2)]
+    
+    # 案2: キャンパスとオプションはスプレッドシート(master_config)から取得
+    config_res = call_gas_cached("get_config", method="POST", ttl=3600) # 1時間キャッシュ
+    if config_res.get("status") == "success":
+        MASTER_G1 = config_res["data"]["g1"]
+        MASTER_G3 = config_res["data"]["g3"]
+    else:
+        # 万が一通信エラーやシートがない場合のバックアップ
+        MASTER_G1 = ["なかもず", "もりのみや", "すぎもと", "あべの", "りんくう"]
+        MASTER_G3 = ["卒業生ネットワーク関係者"]["卒業生ネットワーク関係者"]
 
     def sort_groups(lst, master):
         return sorted(lst, key=lambda x: master.index(x) if x in master else 999)
