@@ -338,48 +338,63 @@ if not os.path.exists("custom_editor"):
                 else { palette.style.display = 'flex'; }
                 
                 const g = document.getElementById('g'); if(!g) return;
-                let downBtn = null; // 0: 左クリック(またはタップ), 2: 右クリック
+                let downBtn = null; // 0: 左クリック, 2: 右クリック
                 
-                // 💡 右クリックした時のブラウザ標準メニューを無効化
-                g.addEventListener('contextmenu', e => {
-                    if(e.target.classList.contains('c')) e.preventDefault();
-                });
+                // 💡 [修正1] グリッド全体(g)で右クリックメニューを強制的に完全ブロックする
+                g.oncontextmenu = function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false; // ブラウザに「メニューは絶対に出さない」と伝える
+                };
                 
                 g.onmousedown = e => { 
-                    if(!e.target.classList.contains('c')) return; 
+                    // 💡 [修正2] e.targetだけでなくclosest('.c')を使い、確実にマスを判定する
+                    const cell = e.target.closest('.c');
+                    if(!cell) return; 
+                    
                     downBtn = e.button; 
+                    // 🐛 デバッグ用: F12のConsoleタブでどのボタンが押されたか確認できます
+                    console.log("💡 [Debug] mousedown button:", downBtn); 
+                    
                     if (downBtn === 0) {
-                        window.upd(e.target, selectedMode); // 左：選んだペンで塗る
+                        window.upd(cell, selectedMode); // 左: 塗る
                     } else if (downBtn === 2) {
-                        window.upd(e.target, 0); // 右：強制的に白(0)に戻す
+                        window.upd(cell, 0); // 右: 白に戻す
                     }
                 };
+                
                 g.onmouseover = e => { 
-                    if(downBtn !== null && e.target.classList.contains('c')) {
-                        if (downBtn === 0) window.upd(e.target, selectedMode); 
-                        else if (downBtn === 2) window.upd(e.target, 0); 
+                    const cell = e.target.closest('.c');
+                    if(downBtn !== null && cell) {
+                        if (downBtn === 0) window.upd(cell, selectedMode); 
+                        else if (downBtn === 2) window.upd(cell, 0); 
                     }
                 };
+                
                 window.onmouseup = () => { downBtn = null; isDraggingPalette = false; }; 
                 window.onmouseleave = () => { downBtn = null; isDraggingPalette = false; }; 
 
-                // スマホのタップ操作（左クリックと同じ扱いにする）
+                // スマホのタップ操作（左クリック扱い）
                 g.addEventListener('touchstart', e => { 
                     const touch = e.touches[0]; 
                     const target = document.elementFromPoint(touch.clientX, touch.clientY); 
-                    if(target && target.classList.contains('c')) { 
+                    const cell = target ? target.closest('.c') : null;
+                    if(cell) { 
                         downBtn = 0; 
-                        window.upd(target, selectedMode); 
+                        window.upd(cell, selectedMode); 
                         e.preventDefault(); 
                     } 
                 }, {passive: false});
+                
                 g.addEventListener('touchmove', e => { 
                     if(downBtn !== 0) return; 
                     const touch = e.touches[0]; 
                     const target = document.elementFromPoint(touch.clientX, touch.clientY); 
-                    if(target && target.classList.contains('c')) window.upd(target, selectedMode); 
+                    const cell = target ? target.closest('.c') : null;
+                    if(cell) window.upd(cell, selectedMode); 
                     e.preventDefault(); 
                 }, {passive: false});
+                
                 g.addEventListener('touchend', () => { downBtn = null; isDraggingPalette = false; });
                 
                 const btn = document.getElementById("submit-btn");
