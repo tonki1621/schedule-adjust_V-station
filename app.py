@@ -446,6 +446,11 @@ def main():
     if "app_initialized" not in st.session_state:
         st.session_state.app_initialized = True
 
+    # 💡 成功メッセージの表示（リロード後に出すための仕組みを追加）
+    if st.session_state.get("save_success_msg"):
+        st.toast(st.session_state.save_success_msg, icon="✅")
+        st.session_state.save_success_msg = None
+
     if "event" in st.query_params:
         st.session_state.jump_to_event = st.query_params["event"]
         st.query_params.clear()
@@ -831,8 +836,23 @@ def main():
             elif ev_type == "options" and not any(o.strip() for o in opts_list): st.error("最低1つの候補を入力してください。")
             elif not is_all_members and target_scope_json == '{"groups": [], "users": []}': st.error("対象メンバーを指定するか、「全員に公開する」にチェックを入れてください。")
             else:
-                # Discord向けメンション設定 (全員の場合は @everyone)
-                mention_text = "@everyone" if is_all_members else ""
+                # 💡 Discord向けメンション設定
+                if is_all_members:
+                    mention_text = "@everyone"
+                else:
+                    mentions = []
+                    # キャンパス (そのまま@をつける)
+                    for g in t_g1:
+                        mentions.append(f"@{g}")
+                    # 入学年度 (「年度」を「年度入学生」に変換)
+                    for g in t_g2:
+                        mentions.append(f"@{g.replace('年度', '年度入学生')}")
+                    # オプション
+                    for g in t_g3:
+                        mentions.append(f"@{g}")
+                    
+                    mentions = list(dict.fromkeys(mentions))
+                    mention_text = " ".join(mentions)
 
                 deadline_str = f"{deadline_date.strftime('%Y-%m-%d')} {deadline_time.strftime('%H:%M')}"
                 payload = {
@@ -1432,6 +1452,7 @@ def main():
                     
                     call_gas("submit_binary_response", {"payload": {"event_id": event["event_id"], "user_id": user["user_id"], "comment": st.session_state.my_comment, "responses": all_res}}, method="POST")
                     clear_cache()
+                    st.session_state.save_success_msg = "回答を保存しました！"  # 💡 ここを追加
                     st.rerun()
 
         with tab_graph:
@@ -1624,6 +1645,7 @@ def main():
                 res = [{"date": "options", "binary": b_str}]
                 call_gas("submit_binary_response", {"payload": {"event_id": event["event_id"], "user_id": user["user_id"], "comment": user_comment, "responses": res}}, method="POST")
                 clear_cache()
+                st.session_state.save_success_msg = "回答を保存しました！"  # 💡 ここを追加
                 st.rerun()
 
         with tab_graph:
