@@ -337,29 +337,28 @@ if not os.path.exists("custom_editor"):
                 if(args.isClosed) { palette.style.display = 'none'; return; } 
                 else { palette.style.display = 'flex'; }
                 
+                // 💡 [徹底対策1] 小窓(iframe)全体の右クリックメニューを一番強い権限で強制ブロック
+                window.addEventListener('contextmenu', function(e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    return false;
+                }, { capture: true });
+
                 const g = document.getElementById('g'); if(!g) return;
                 let downBtn = null; // 0: 左クリック, 2: 右クリック
                 
-                // 💡 [修正1] グリッド全体(g)で右クリックメニューを強制的に完全ブロックする
-                g.oncontextmenu = function(e) {
-                    e.preventDefault();
-                    e.stopPropagation();
-                    return false; // ブラウザに「メニューは絶対に出さない」と伝える
-                };
-                
                 g.onmousedown = e => { 
-                    // 💡 [修正2] e.targetだけでなくclosest('.c')を使い、確実にマスを判定する
                     const cell = e.target.closest('.c');
                     if(!cell) return; 
                     
-                    downBtn = e.button; 
-                    // 🐛 デバッグ用: F12のConsoleタブでどのボタンが押されたか確認できます
-                    console.log("💡 [Debug] mousedown button:", downBtn); 
+                    // 💡 [徹底対策2] ドラッグ中のテキスト選択など、ブラウザの余計なお世話をブロック
+                    e.preventDefault(); 
                     
+                    downBtn = e.button; 
                     if (downBtn === 0) {
                         window.upd(cell, selectedMode); // 左: 塗る
                     } else if (downBtn === 2) {
-                        window.upd(cell, 0); // 右: 白に戻す
+                        window.upd(cell, 0); // 右: 白(0)に戻す
                     }
                 };
                 
