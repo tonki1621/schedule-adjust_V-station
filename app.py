@@ -55,6 +55,8 @@ GAS_URL = "https://script.google.com/macros/s/AKfycby7hAc1_dhSQ_tJzSiJeSc2Ez7pga
 # ==========================================
 # コンポーネント (rt_editor, options_editor, grid_editor)
 # ==========================================
+
+# 💡 キャッシュ防止のため、必ず上書きするように修正
 os.makedirs("rt_editor", exist_ok=True)
 with open("rt_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""
@@ -102,6 +104,7 @@ with open("rt_editor/index.html", "w", encoding="utf-8") as f:
     </script></body></html>
     """)
 rt_editor = components.declare_component("rt_editor", path="rt_editor")
+
 
 os.makedirs("options_editor", exist_ok=True)
 with open("options_editor/index.html", "w", encoding="utf-8") as f:
@@ -203,6 +206,7 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     """)
 options_editor = components.declare_component("options_editor", path="options_editor")
 
+
 os.makedirs("custom_editor", exist_ok=True)
 with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""
@@ -225,7 +229,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
     .c { position: relative; transition: filter 0.2s; }
     
-    /* 💡 追加: 長押し中のアニメーション (沈み込んで色が濃くなり、少し震える) */
     @keyframes pressAnim {
         0% { transform: scale(1); filter: brightness(1); }
         25% { transform: scale(0.95); filter: brightness(0.85); }
@@ -272,9 +275,8 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
 
     let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
     window.cellDetails = {}; 
-    let defaultCampus = ""; // 💡 追加: Pythonから受け取るデフォルトキャンパス
+    let defaultCampus = ""; 
 
-    // 💡 追加: モーダルの背景（外側）をクリック/タップしたら閉じる処理
     const modalBg = document.getElementById('detail-modal');
     modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
     modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
@@ -288,11 +290,10 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
 
         const key = `${el.dataset.r}_${el.dataset.c}`;
         
-        // 💡 追加: 「可」に塗った時、詳細設定が空ならデフォルトキャンパスを自動登録する
         if ((v == 1 || v == 2) && defaultCampus && !window.cellDetails[key]) {
             window.cellDetails[key] = {campus: defaultCampus, note: ""};
         } else if (v == 0) {
-            delete window.cellDetails[key]; // 不可や白紙に戻したら詳細も消す
+            delete window.cellDetails[key];
         }
 
         const existingIcon = el.querySelector('.memo-icon');
@@ -360,7 +361,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         editingCell = cell;
         const r = cell.dataset.r; const c = cell.dataset.c;
         const key = `${r}_${c}`;
-        // 💡 既存データがなければデフォルトキャンパスを初期値にする
         const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""};
         
         document.getElementById('modal-campus').value = detail.campus;
@@ -400,7 +400,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             document.getElementById("content").innerHTML = args.html_code;
             totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
             window.cellDetails = args.cellDetails || {};
-            defaultCampus = args.defaultCampus || ""; // 💡 Pythonから受け取る
+            defaultCampus = args.defaultCampus || "";
             
             if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
             window.renderWeek();
@@ -428,7 +428,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
                 startX = x; startY = y;
                 
                 window.upd(cell, isErasing ? 0 : selectedMode); 
-                cell.classList.add('pressing'); // 💡 長押しアニメーション開始
+                cell.classList.add('pressing'); 
                 
                 pressTimer = setTimeout(() => {
                     isLongPress = true;
@@ -442,7 +442,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
                 if(!down) return;
                 if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) {
                     clearTimeout(pressTimer);
-                    document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); // 💡 アニメーション解除
+                    document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing'));
                 }
                 if(!isLongPress) {
                     const cell = document.elementFromPoint(x, y)?.closest('.c');
@@ -452,7 +452,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
 
             const handleEnd = () => {
                 if (down && pressTimer) clearTimeout(pressTimer);
-                document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); // 💡 アニメーション解除
+                document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); 
                 down = false;
             };
 
@@ -1041,7 +1041,7 @@ def main():
                 st.markdown("<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; word-break: break-all; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_ev}</div>', unsafe_allow_html=True)
                 
                 st.markdown("---")
-                st.subheader("⚙️ ステータス手 manual手動変更")
+                st.subheader("⚙️ ステータス手動変更")
                 if active_events:
                     with st.form("update_status_form"):
                         target_ev = st.selectbox("対象イベント", active_events, format_func=lambda x: f"{x['title']} ({x['status']})")
@@ -1553,6 +1553,22 @@ def main():
             user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
             default_campus = user_campuses[0] if user_campuses else ""
 
+            # 💡 画面上に現在の設定を表示
+            if default_campus:
+                st.markdown(f"""
+                <div style='background: #e8f5e9; padding: 10px 15px; border-radius: 8px; border-left: 5px solid #4CAF50; margin-bottom: 15px;'>
+                    <b style='color: #2e7d32;'>📍 現在のデフォルト入力拠点: {default_campus}</b><br>
+                    <span style='font-size: 12px; color: #555;'>「可」で塗ると自動的にこのキャンパスが登録されます。別の場所にする場合やメモを残す場合は、<b>マスを長押し</b>してください。</span>
+                </div>
+                """, unsafe_allow_html=True)
+            else:
+                st.markdown(f"""
+                <div style='background: #fff3e0; padding: 10px 15px; border-radius: 8px; border-left: 5px solid #ff9800; margin-bottom: 15px;'>
+                    <b style='color: #e65100;'>📍 デフォルト入力拠点: 未設定</b><br>
+                    <span style='font-size: 12px; color: #555;'>プロフィールの「キャンパス」を設定すると、塗った際に自動で場所が登録されます。個別に場所やメモを設定する場合は、<b>マスを長押し</b>してください。</span>
+                </div>
+                """, unsafe_allow_html=True)
+
             # 💡 変更: grid_editor に defaultCampus を渡す
             raw = grid_editor(
                 html_code=html_code, 
@@ -1611,12 +1627,6 @@ def main():
                     st.rerun()
 
             all_res_data = st.session_state.event_responses
-            
-            # 👇ここからデバッグ用に追加👇
-            if st.checkbox("🛠️ デバッグ2: GASから取得したデータの中身を見る"):
-                st.write(all_res_data)
-            # 👆ここまで👆
-            
             all_names = list(set([r['user_name'] for r in all_res_data]))
             all_g1, all_g2, all_g3 = set(), set(), set()
             for r in all_res_data:
@@ -1718,13 +1728,13 @@ def main():
                                 z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
                                 
                                 if can_view_details:
-                                    # 💡 追加: 保存された詳細設定 (cell_details) を解析して表示に加える
+                                    # 💡 保存された詳細設定 (cell_details) を解析して表示に加える
                                     campus_str = ""
                                     note_str = ""
-                                    if r.get('cell_details') and str(r['cell_details']).strip() != "{}":
+                                    if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
                                         try:
                                             cd = json.loads(r['cell_details'])
-                                            cell_key = f"{orig_r_idx}_{c_idx}" # 行_列 のキー
+                                            cell_key = f"{orig_r_idx}_{c_idx}"
                                             if cell_key in cd:
                                                 if cd[cell_key].get('campus'): 
                                                     campus_str = f" ({cd[cell_key]['campus']})"
@@ -1805,7 +1815,6 @@ def main():
             
             st.markdown("##### 📌 各候補の参加可否を選んでください")
             
-            # 💡 saveTs（保存タイミング）を渡すことで確実にリセットさせる
             raw = options_editor(options=opts, myAnsBin=my_ans_bin, myComment=my_comment, eventId=event['event_id'], isClosed=is_closed, saveTs=st.session_state.get("last_saved_ts", 0), key=f"opt_editor_{event['event_id']}")
             
             if raw and isinstance(raw, dict) and raw.get("trigger_save") and st.session_state.get("last_saved_ts") != raw.get("ts"):
