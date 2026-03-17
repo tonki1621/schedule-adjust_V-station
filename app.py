@@ -133,7 +133,6 @@ if not os.path.exists("options_editor"):
         window.addEventListener("message", function(event) {
             if (event.data.type === "streamlit:render") {
                 const args = event.data.args;
-                // 💡 saveTs（保存タイミング）を比較に加えて、保存後は確実に再描画する
                 if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; 
                 window.lastEventId = args.eventId;
                 window.lastSaveTs = args.saveTs;
@@ -1589,7 +1588,6 @@ def main():
             {submit_btn_html}
             """
             
-            # 💡 saveTs（保存タイミング）を渡すことでStreamlitに状態変更を教え、確実にボタンをリセットさせる
             # 💡 追加: 自分の既存の詳細設定データ (cell_details) を取得
             my_cell_details = {}
             for r in st.session_state.event_responses:
@@ -1733,6 +1731,7 @@ def main():
                                 
                                 if v == 3: v = 0
                                 z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
+                                
                                 if can_view_details:
                                     # 💡 追加: 保存された詳細設定 (cell_details) を解析して表示に加える
                                     campus_str = ""
