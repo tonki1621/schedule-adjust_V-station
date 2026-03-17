@@ -1549,7 +1549,7 @@ def main():
                     except:
                         pass
 
-            # 💡 追加: ユーザーのプロフィールから一番目のキャンパスをデフォルトとして取得
+            # 💡 ユーザーのプロフィールから一番目のキャンパスをデフォルトとして取得
             user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
             default_campus = user_campuses[0] if user_campuses else ""
 
@@ -1563,30 +1563,40 @@ def main():
                 unavailColRows=unavail_col_rows, 
                 saveTs=st.session_state.get("last_saved_ts", 0), 
                 cellDetails=my_cell_details, 
-                defaultCampus=default_campus, # 👈追加
+                defaultCampus=default_campus, 
                 default=None, 
                 key=f"editor_{event['event_id']}"
             )
             
             if raw and isinstance(raw, dict) and "data" in raw:
-            
-            if raw and isinstance(raw, dict) and "data" in raw:
                 if raw.get("trigger_save") and st.session_state.get("last_saved_ts") != raw.get("ts"):
-                    st.session_state.last_saved_ts = raw.get("ts"); st.session_state.df_input = pd.DataFrame(raw["data"], index=time_labels, columns=date_strs); st.session_state.my_comment = raw.get("comment", "")
+                    st.session_state.last_saved_ts = raw.get("ts")
+                    st.session_state.df_input = pd.DataFrame(raw["data"], index=time_labels, columns=date_strs)
+                    st.session_state.my_comment = raw.get("comment", "")
                     
-                    # 💡 追加: コンポーネントから返ってきた cell_details を取得
+                    # 💡 コンポーネントから返ってきた cell_details を取得
                     cell_details_json = raw.get("cell_details", {})
                     
                     all_res = []
                     for d_id in date_strs:
                         bits = ["0"] * 96
                         for t_idx in range(len(time_labels)): 
-                            if event_type == 'time': bits[s_idx + t_idx] = str(int(st.session_state.df_input.loc[time_labels[t_idx], d_id]))
-                            else: bits[t_idx] = str(int(st.session_state.df_input.loc[time_labels[t_idx], d_id]))
+                            if event_type == 'time':
+                                bits[s_idx + t_idx] = str(int(st.session_state.df_input.loc[time_labels[t_idx], d_id]))
+                            else:
+                                bits[t_idx] = str(int(st.session_state.df_input.loc[time_labels[t_idx], d_id]))
                         all_res.append({"date": d_id, "binary": "".join(bits)})
                     
-                    # 💡 変更: payload に cell_details を追加して GAS へ送信
-                    call_gas("submit_binary_response", {"payload": {"event_id": event["event_id"], "user_id": user["user_id"], "comment": st.session_state.my_comment, "cell_details": cell_details_json, "responses": all_res}}, method="POST")
+                    # 💡 payload に cell_details を追加して GAS へ送信
+                    call_gas("submit_binary_response", {
+                        "payload": {
+                            "event_id": event["event_id"], 
+                            "user_id": user["user_id"], 
+                            "comment": st.session_state.my_comment, 
+                            "cell_details": cell_details_json, 
+                            "responses": all_res
+                        }
+                    }, method="POST")
                     clear_cache()
                     st.session_state.save_success_msg = "回答を保存しました！"
                     st.rerun()
