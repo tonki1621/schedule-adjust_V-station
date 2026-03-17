@@ -220,17 +220,22 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .modal-select, .modal-input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
     .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
     .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-    .modal-btn-cancel { flex: 1; background: #eee; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .modal-btn-save:hover { background: #45a049; }
     
     .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
-    .c { position: relative; }
+    .c { position: relative; transition: filter 0.2s; }
     
-    /* 💡 デバッグ用の表示バナー */
-    #debug-banner { position: fixed; top: 0; left: 0; background: #E91E63; color: white; padding: 5px 10px; font-size: 12px; font-weight: bold; z-index: 1000000; border-bottom-right-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);}
+    /* 💡 追加: 長押し中のアニメーション (沈み込んで色が濃くなり、少し震える) */
+    @keyframes pressAnim {
+        0% { transform: scale(1); filter: brightness(1); }
+        25% { transform: scale(0.95); filter: brightness(0.85); }
+        50% { transform: scale(0.95) rotate(-1deg); filter: brightness(0.8); }
+        75% { transform: scale(0.95) rotate(1deg); filter: brightness(0.8); }
+        100% { transform: scale(0.9) rotate(0deg); filter: brightness(0.7); box-shadow: inset 0 4px 8px rgba(0,0,0,0.3); }
+    }
+    .pressing { animation: pressAnim 0.5s forwards; z-index: 100; }
     </style></head><body>
     
-    <div id="debug-banner">🟢 デバッグ待機中...</div>
-
     <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.85); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
         <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
         <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
@@ -241,9 +246,9 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     <div id="detail-modal">
         <div class="modal-content" id="modal-content-box">
             <div class="modal-title" id="modal-cell-title">詳細設定</div>
-            <label class="modal-label">🏫 キャンパスの指定 (任意)</label>
+            <label class="modal-label">🏫 キャンパスの指定</label>
             <select id="modal-campus" class="modal-select">
-                <option value="">指定なし (デフォルト設定に従う)</option>
+                <option value="">指定なし</option>
                 <option value="なかもず">なかもず</option>
                 <option value="杉本">杉本</option>
                 <option value="阿倍野">阿倍野</option>
@@ -254,9 +259,9 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             <label class="modal-label">📝 補足コメント (任意)</label>
             <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
             <div class="modal-btns">
-                <button class="modal-btn-cancel" onclick="closeModal()">キャンセル</button>
-                <button class="modal-btn-save" onclick="saveModal()">💾 保存</button>
+                <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
             </div>
+            <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
         </div>
     </div>
 
@@ -264,14 +269,15 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
     function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
     function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
-    
-    function logDebug(msg) {
-        document.getElementById('debug-banner').innerText = "🟢 " + msg;
-        console.log(msg);
-    }
 
     let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
     window.cellDetails = {}; 
+    let defaultCampus = ""; // 💡 追加: Pythonから受け取るデフォルトキャンパス
+
+    // 💡 追加: モーダルの背景（外側）をクリック/タップしたら閉じる処理
+    const modalBg = document.getElementById('detail-modal');
+    modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
+    modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
 
     window.upd = function(el, v) { 
         el.dataset.v = v; 
@@ -281,8 +287,16 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         else { el.style.background = '#fff'; el.style.backgroundImage = 'none'; }
 
         const key = `${el.dataset.r}_${el.dataset.c}`;
+        
+        // 💡 追加: 「可」に塗った時、詳細設定が空ならデフォルトキャンパスを自動登録する
+        if ((v == 1 || v == 2) && defaultCampus && !window.cellDetails[key]) {
+            window.cellDetails[key] = {campus: defaultCampus, note: ""};
+        } else if (v == 0) {
+            delete window.cellDetails[key]; // 不可や白紙に戻したら詳細も消す
+        }
+
         const existingIcon = el.querySelector('.memo-icon');
-        if (window.cellDetails[key]) {
+        if (window.cellDetails[key] && (window.cellDetails[key].campus || window.cellDetails[key].note)) {
             if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>');
         } else {
             if (existingIcon) existingIcon.remove();
@@ -343,11 +357,11 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
 
     let editingCell = null;
     window.openModal = function(cell) {
-        logDebug("🔥 UI描画命令が走りました (openModal)");
         editingCell = cell;
         const r = cell.dataset.r; const c = cell.dataset.c;
         const key = `${r}_${c}`;
-        const detail = window.cellDetails[key] || {campus: "", note: ""};
+        // 💡 既存データがなければデフォルトキャンパスを初期値にする
+        const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""};
         
         document.getElementById('modal-campus').value = detail.campus;
         document.getElementById('modal-note').value = detail.note;
@@ -356,7 +370,10 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
 
     window.closeModal = function() {
         document.getElementById('detail-modal').style.display = 'none';
-        editingCell = null;
+        if (editingCell) {
+            editingCell.classList.remove('pressing');
+            editingCell = null;
+        }
     };
 
     window.saveModal = function() {
@@ -375,7 +392,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         
         window.upd(editingCell, editingCell.dataset.v);
         closeModal();
-        logDebug("✅ モーダル保存完了");
     };
 
     window.addEventListener("message", function(event) {
@@ -384,6 +400,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             document.getElementById("content").innerHTML = args.html_code;
             totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
             window.cellDetails = args.cellDetails || {};
+            defaultCampus = args.defaultCampus || ""; // 💡 Pythonから受け取る
             
             if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
             window.renderWeek();
@@ -411,21 +428,21 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
                 startX = x; startY = y;
                 
                 window.upd(cell, isErasing ? 0 : selectedMode); 
-                logDebug("⏳ 押下を検知。タイマー開始...");
+                cell.classList.add('pressing'); // 💡 長押しアニメーション開始
                 
                 pressTimer = setTimeout(() => {
                     isLongPress = true;
                     down = false; 
-                    logDebug("🔔 0.5秒経過！ポップアップを開きます");
+                    cell.classList.remove('pressing');
                     openModal(cell);
                 }, 500);
             };
 
             const handleMove = (e, x, y) => {
                 if(!down) return;
-                if (Math.abs(x - startX) > 20 || Math.abs(y - startY) > 20) {
+                if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) {
                     clearTimeout(pressTimer);
-                    logDebug("❌ 指/マウスが20px以上動いたため長押しをキャンセル");
+                    document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); // 💡 アニメーション解除
                 }
                 if(!isLongPress) {
                     const cell = document.elementFromPoint(x, y)?.closest('.c');
@@ -434,10 +451,8 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             };
 
             const handleEnd = () => {
-                if (down && pressTimer) {
-                    clearTimeout(pressTimer);
-                    logDebug("🛑 0.5秒経つ前に離されました（通常のクリック）");
-                }
+                if (down && pressTimer) clearTimeout(pressTimer);
+                document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); // 💡 アニメーション解除
                 down = false;
             };
 
@@ -1524,7 +1539,7 @@ def main():
             {submit_btn_html}
             """
             
-            # 💡 追加: 自分の既存の詳細設定データ (cell_details) を取得
+            # 💡 自分の既存の詳細設定データ (cell_details) を取得
             my_cell_details = {}
             for r in st.session_state.event_responses:
                 if str(r['user_id']) == str(user['user_id']) and r.get('cell_details'):
@@ -1534,8 +1549,26 @@ def main():
                     except:
                         pass
 
-            # 💡 変更: grid_editor に cellDetails を渡す
-            raw = grid_editor(html_code=html_code, rows=len(time_labels), cols=len(date_strs), eventId=event['event_id'], isClosed=is_closed, unavailColRows=unavail_col_rows, saveTs=st.session_state.get("last_saved_ts", 0), cellDetails=my_cell_details, default=None, key=f"editor_{event['event_id']}")
+            # 💡 追加: ユーザーのプロフィールから一番目のキャンパスをデフォルトとして取得
+            user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
+            default_campus = user_campuses[0] if user_campuses else ""
+
+            # 💡 変更: grid_editor に defaultCampus を渡す
+            raw = grid_editor(
+                html_code=html_code, 
+                rows=len(time_labels), 
+                cols=len(date_strs), 
+                eventId=event['event_id'], 
+                isClosed=is_closed, 
+                unavailColRows=unavail_col_rows, 
+                saveTs=st.session_state.get("last_saved_ts", 0), 
+                cellDetails=my_cell_details, 
+                defaultCampus=default_campus, # 👈追加
+                default=None, 
+                key=f"editor_{event['event_id']}"
+            )
+            
+            if raw and isinstance(raw, dict) and "data" in raw:
             
             if raw and isinstance(raw, dict) and "data" in raw:
                 if raw.get("trigger_save") and st.session_state.get("last_saved_ts") != raw.get("ts"):
