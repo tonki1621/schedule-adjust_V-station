@@ -55,436 +55,426 @@ GAS_URL = "https://script.google.com/macros/s/AKfycby7hAc1_dhSQ_tJzSiJeSc2Ez7pga
 # ==========================================
 # コンポーネント (rt_editor, options_editor, grid_editor)
 # ==========================================
-if not os.path.exists("rt_editor"):
-    os.makedirs("rt_editor", exist_ok=True)
-    with open("rt_editor/index.html", "w", encoding="utf-8") as f:
-        f.write("""
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-            body { font-family: sans-serif; margin: 0; padding: 0; background: transparent;}
-            .editor-container { border: 1px solid #ccc; border-radius: 6px; overflow: hidden; background: #fff; }
-            .toolbar { background: #f8f9fb; padding: 6px; border-bottom: 1px solid #ccc; display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
-            .toolbar button { background: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 4px 10px; font-size: 13px; cursor: pointer; color: #333; transition: 0.2s; }
-            .toolbar button:hover { background: #e9ecef; }
-            textarea { width: 100%; height: 120px; border: none; padding: 10px; font-size: 14px; resize: vertical; outline: none; box-sizing: border-box; font-family: inherit; line-height: 1.5; }
-        </style></head><body>
-        <div class="editor-container">
-            <div class="toolbar">
-                <button onclick="insertTag('<b>', '</b>')" title="太字"><b>B</b> 太字</button>
-                <button onclick="insertTag('<i>', '</i>')" title="斜体"><i>I</i> 斜体</button>
-                <div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div>
-                <button onclick="insertRed()" title="赤文字"><span style="color:#FF4B4B; font-weight:bold;">A</span> 赤</button>
-                <button onclick="insertBlue()" title="青文字"><span style="color:#2196F3; font-weight:bold;">A</span> 青</button>
-                <div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div>
-                <button onclick="insertLink()" title="リンク">🔗 リンク追加</button>
-            </div>
-            <textarea id="editor" placeholder="📝 イベントの説明や注意事項を入力..."></textarea>
+os.makedirs("rt_editor", exist_ok=True)
+with open("rt_editor/index.html", "w", encoding="utf-8") as f:
+    f.write("""
+    <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        body { font-family: sans-serif; margin: 0; padding: 0; background: transparent;}
+        .editor-container { border: 1px solid #ccc; border-radius: 6px; overflow: hidden; background: #fff; }
+        .toolbar { background: #f8f9fb; padding: 6px; border-bottom: 1px solid #ccc; display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
+        .toolbar button { background: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 4px 10px; font-size: 13px; cursor: pointer; color: #333; transition: 0.2s; }
+        .toolbar button:hover { background: #e9ecef; }
+        textarea { width: 100%; height: 120px; border: none; padding: 10px; font-size: 14px; resize: vertical; outline: none; box-sizing: border-box; font-family: inherit; line-height: 1.5; }
+    </style></head><body>
+    <div class="editor-container">
+        <div class="toolbar">
+            <button onclick="insertTag('<b>', '</b>')" title="太字"><b>B</b> 太字</button>
+            <button onclick="insertTag('<i>', '</i>')" title="斜体"><i>I</i> 斜体</button>
+            <div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div>
+            <button onclick="insertRed()" title="赤文字"><span style="color:#FF4B4B; font-weight:bold;">A</span> 赤</button>
+            <button onclick="insertBlue()" title="青文字"><span style="color:#2196F3; font-weight:bold;">A</span> 青</button>
+            <div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div>
+            <button onclick="insertLink()" title="リンク">🔗 リンク追加</button>
         </div>
-        <script>
-            function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
-            function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
-            function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
-            const editor = document.getElementById('editor'); let timer;
-            function sendValue() { setComponentValue(editor.value); }
-            function insertTag(startTag, endTag) {
-                const start = editor.selectionStart; const end = editor.selectionEnd; const val = editor.value; const selected = val.substring(start, end);
-                editor.value = val.substring(0, start) + startTag + selected + endTag + val.substring(end); editor.focus();
-                editor.selectionStart = start + startTag.length; editor.selectionEnd = end + startTag.length; sendValue();
-            }
-            function insertRed() { insertTag("<span style='color:#FF4B4B; font-weight:bold;'>", "</span>"); }
-            function insertBlue() { insertTag("<span style='color:#2196F3; font-weight:bold;'>", "</span>"); }
-            function insertLink() {
-                const url = prompt('リンク先のURLを入力', 'https://');
-                if (url) { const text = prompt('表示するテキストを入力', 'こちらをクリック'); if (text) { const linkTag = `<a href='${url}' target='_blank'>${text}</a>`; const start = editor.selectionStart; const val = editor.value; editor.value = val.substring(0, start) + linkTag + val.substring(editor.selectionEnd); sendValue(); } }
-            }
-            editor.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(sendValue, 500); });
-            editor.addEventListener('blur', sendValue);
-            window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 15}); } });
-            init();
-        </script></body></html>
-        """)
+        <textarea id="editor" placeholder="📝 イベントの説明や注意事項を入力..."></textarea>
+    </div>
+    <script>
+        function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
+        function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
+        function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
+        const editor = document.getElementById('editor'); let timer;
+        function sendValue() { setComponentValue(editor.value); }
+        function insertTag(startTag, endTag) {
+            const start = editor.selectionStart; const end = editor.selectionEnd; const val = editor.value; const selected = val.substring(start, end);
+            editor.value = val.substring(0, start) + startTag + selected + endTag + val.substring(end); editor.focus();
+            editor.selectionStart = start + startTag.length; editor.selectionEnd = end + startTag.length; sendValue();
+        }
+        function insertRed() { insertTag("<span style='color:#FF4B4B; font-weight:bold;'>", "</span>"); }
+        function insertBlue() { insertTag("<span style='color:#2196F3; font-weight:bold;'>", "</span>"); }
+        function insertLink() {
+            const url = prompt('リンク先のURLを入力', 'https://');
+            if (url) { const text = prompt('表示するテキストを入力', 'こちらをクリック'); if (text) { const linkTag = `<a href='${url}' target='_blank'>${text}</a>`; const start = editor.selectionStart; const val = editor.value; editor.value = val.substring(0, start) + linkTag + val.substring(editor.selectionEnd); sendValue(); } }
+        }
+        editor.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(sendValue, 500); });
+        editor.addEventListener('blur', sendValue);
+        window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 15}); } });
+        init();
+    </script></body></html>
+    """)
 rt_editor = components.declare_component("rt_editor", path="rt_editor")
 
-if not os.path.exists("options_editor"):
-    os.makedirs("options_editor", exist_ok=True)
-    with open("options_editor/index.html", "w", encoding="utf-8") as f:
-        f.write("""
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        body{margin:0;font-family:sans-serif;}
-        .opt-card { background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:15px; margin-bottom:15px; box-shadow:0 2px 5px rgba(0,0,0,0.05); }
-        .opt-title { font-size:18px; font-weight:bold; color:#2e7d32; margin-bottom:15px; text-align:center; }
-        .btn-group { display:flex; gap:12px; }
-        .opt-btn { flex:1; padding:20px 0; border-radius:12px; border:2px solid #ddd; background:#fff; font-size:18px; font-weight:bold; cursor:pointer; transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); color:#555; text-align:center; }
-        .opt-btn[data-v="1"].active { background:#4CAF50; color:#fff; border-color:#4CAF50; box-shadow:0 6px 12px rgba(76,175,80,0.4); transform: translateY(-3px); }
-        .opt-btn[data-v="2"].active { background:#FFEB3B; color:#333; border-color:#FBC02D; box-shadow:0 6px 12px rgba(255,235,59,0.4); transform: translateY(-3px); }
-        .opt-btn[data-v="0"].active { background:#f5f5f5; color:#777; border-color:#ccc; transform: translateY(-3px); }
-        #submit-btn { width: 100%; padding: 18px; background-color: #FF4B4B; color: white; border: none; border-radius: 12px; font-size: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 6px 12px rgba(0,0,0,0.15); margin-top: 10px; transition:0.2s; }
-        #submit-btn:hover { background-color: #e63946; transform: translateY(-2px); }
-        textarea { width: 100%; padding: 15px; border: 1px solid #ccc; border-radius: 12px; font-family: inherit; font-size: 16px; margin-bottom:10px; resize:vertical; box-sizing: border-box; }
-        </style></head><body>
-        <div id="content"></div>
-        <script>
-        function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
-        function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
-        function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
+os.makedirs("options_editor", exist_ok=True)
+with open("options_editor/index.html", "w", encoding="utf-8") as f:
+    f.write("""
+    <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{margin:0;font-family:sans-serif;}
+    .opt-card { background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:15px; margin-bottom:15px; box-shadow:0 2px 5px rgba(0,0,0,0.05); }
+    .opt-title { font-size:18px; font-weight:bold; color:#2e7d32; margin-bottom:15px; text-align:center; }
+    .btn-group { display:flex; gap:12px; }
+    .opt-btn { flex:1; padding:20px 0; border-radius:12px; border:2px solid #ddd; background:#fff; font-size:18px; font-weight:bold; cursor:pointer; transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); color:#555; text-align:center; }
+    .opt-btn[data-v="1"].active { background:#4CAF50; color:#fff; border-color:#4CAF50; box-shadow:0 6px 12px rgba(76,175,80,0.4); transform: translateY(-3px); }
+    .opt-btn[data-v="2"].active { background:#FFEB3B; color:#333; border-color:#FBC02D; box-shadow:0 6px 12px rgba(255,235,59,0.4); transform: translateY(-3px); }
+    .opt-btn[data-v="0"].active { background:#f5f5f5; color:#777; border-color:#ccc; transform: translateY(-3px); }
+    #submit-btn { width: 100%; padding: 18px; background-color: #FF4B4B; color: white; border: none; border-radius: 12px; font-size: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 6px 12px rgba(0,0,0,0.15); margin-top: 10px; transition:0.2s; }
+    #submit-btn:hover { background-color: #e63946; transform: translateY(-2px); }
+    textarea { width: 100%; padding: 15px; border: 1px solid #ccc; border-radius: 12px; font-family: inherit; font-size: 16px; margin-bottom:10px; resize:vertical; box-sizing: border-box; }
+    </style></head><body>
+    <div id="content"></div>
+    <script>
+    function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
+    function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
+    function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
 
-        let optsData = [];
-        let myComment = "";
-        
-        window.addEventListener("message", function(event) {
-            if (event.data.type === "streamlit:render") {
-                const args = event.data.args;
-                if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; 
-                window.lastEventId = args.eventId;
-                window.lastSaveTs = args.saveTs;
+    let optsData = [];
+    let myComment = "";
+    
+    window.addEventListener("message", function(event) {
+        if (event.data.type === "streamlit:render") {
+            const args = event.data.args;
+            if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; 
+            window.lastEventId = args.eventId;
+            window.lastSaveTs = args.saveTs;
+            
+            const opts = args.options;
+            const myAnsBin = args.myAnsBin;
+            myComment = args.myComment || "";
+            const isClosed = args.isClosed;
+            
+            let html = "";
+            optsData = [];
+            
+            opts.forEach((opt, i) => {
+                let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0;
+                optsData.push(v);
+                let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : "";
                 
-                const opts = args.options;
-                const myAnsBin = args.myAnsBin;
-                myComment = args.myComment || "";
-                const isClosed = args.isClosed;
-                
-                let html = "";
-                optsData = [];
-                
-                opts.forEach((opt, i) => {
-                    let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0;
-                    optsData.push(v);
-                    let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : "";
-                    
-                    html += `
-                    <div class="opt-card" style="${pointerEv}">
-                        <div class="opt-title">📅 ${opt}</div>
-                        <div class="btn-group" id="group-${i}">
-                            <button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button>
-                            <button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button>
-                            <button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button>
-                        </div>
-                    </div>`;
-                });
-                
-                if(!isClosed) {
-                    html += `
-                    <div class="opt-card">
-                        <div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div>
-                        <textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea>
-                        <button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button>
-                    </div>`;
-                } else {
-                    html += `
-                    <div class="opt-card">
-                        <div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div>
-                        <div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div>
-                    </div>`;
-                }
-                
-                document.getElementById("content").innerHTML = html;
-                setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
-            }
-        });
-        
-        window.setOpt = function(idx, val) {
-            optsData[idx] = val;
-            const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn');
-            btns.forEach(b => b.classList.remove('active'));
-            document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active');
-        };
-        
-        window.submitData = function() {
-            const btn = document.getElementById("submit-btn");
-            btn.innerText = "⏳ 保存処理中...";
-            btn.style.pointerEvents = "none";
-            const comment = document.getElementById("comment-box").value;
-            setComponentValue({
-                trigger_save: true,
-                binary: optsData.join(''),
-                comment: comment,
-                ts: Date.now()
+                html += `
+                <div class="opt-card" style="${pointerEv}">
+                    <div class="opt-title">📅 ${opt}</div>
+                    <div class="btn-group" id="group-${i}">
+                        <button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button>
+                        <button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button>
+                        <button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button>
+                    </div>
+                </div>`;
             });
-        };
-        init();
-        </script></body></html>
-        """)
+            
+            if(!isClosed) {
+                html += `
+                <div class="opt-card">
+                    <div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div>
+                    <textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea>
+                    <button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button>
+                </div>`;
+            } else {
+                html += `
+                <div class="opt-card">
+                    <div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div>
+                    <div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div>
+                </div>`;
+            }
+            
+            document.getElementById("content").innerHTML = html;
+            setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
+        }
+    });
+    
+    window.setOpt = function(idx, val) {
+        optsData[idx] = val;
+        const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn');
+        btns.forEach(b => b.classList.remove('active'));
+        document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active');
+    };
+    
+    window.submitData = function() {
+        const btn = document.getElementById("submit-btn");
+        btn.innerText = "⏳ 保存処理中...";
+        btn.style.pointerEvents = "none";
+        const comment = document.getElementById("comment-box").value;
+        setComponentValue({
+            trigger_save: true,
+            binary: optsData.join(''),
+            comment: comment,
+            ts: Date.now()
+        });
+    };
+    init();
+    </script></body></html>
+    """)
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-if not os.path.exists("custom_editor"):
-    os.makedirs("custom_editor", exist_ok=True)
-    with open("custom_editor/index.html", "w", encoding="utf-8") as f:
-        f.write("""
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
-        .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
-        .pen-btn:hover { opacity: 0.8; }
-        .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
-        
-        #detail-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999999; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-        .modal-content { background: #fff; width: 300px; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: popIn 0.2s ease-out; }
-        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-        .modal-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 15px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
-        .modal-label { font-size: 12px; font-weight: bold; color: #666; margin-top: 10px; display: block; }
-        .modal-select, .modal-input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-        .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
-        .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-        .modal-btn-cancel { flex: 1; background: #eee; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-        
-        .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
-        .c { position: relative; }
-        
-        /* 💡 デバッグ用の表示バナー */
-        #debug-banner { position: fixed; top: 0; left: 0; background: #E91E63; color: white; padding: 5px 10px; font-size: 12px; font-weight: bold; z-index: 1000000; border-bottom-right-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);}
-        </style></head><body>
-        
-        <div id="debug-banner">🟢 デバッグ待機中...</div>
+os.makedirs("custom_editor", exist_ok=True)
+with open("custom_editor/index.html", "w", encoding="utf-8") as f:
+    f.write("""
+    <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
+    .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
+    .pen-btn:hover { opacity: 0.8; }
+    .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+    
+    #detail-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999999; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+    .modal-content { background: #fff; width: 300px; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: popIn 0.2s ease-out; }
+    @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+    .modal-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 15px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
+    .modal-label { font-size: 12px; font-weight: bold; color: #666; margin-top: 10px; display: block; }
+    .modal-select, .modal-input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+    .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .modal-btn-cancel { flex: 1; background: #eee; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    
+    .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
+    .c { position: relative; }
+    
+    /* 💡 デバッグ用の表示バナー */
+    #debug-banner { position: fixed; top: 0; left: 0; background: #E91E63; color: white; padding: 5px 10px; font-size: 12px; font-weight: bold; z-index: 1000000; border-bottom-right-radius: 8px; box-shadow: 2px 2px 5px rgba(0,0,0,0.2);}
+    </style></head><body>
+    
+    <div id="debug-banner">🟢 デバッグ待機中...</div>
 
-        <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.85); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
-            <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
-            <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
-            <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333;">未定</button>
-            <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
-        </div>
+    <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.85); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
+        <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
+        <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
+        <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333;">未定</button>
+        <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
+    </div>
 
-        <div id="detail-modal">
-            <div class="modal-content" id="modal-content-box">
-                <div class="modal-title" id="modal-cell-title">詳細設定</div>
-                <label class="modal-label">🏫 キャンパスの指定 (任意)</label>
-                <select id="modal-campus" class="modal-select">
-                    <option value="">指定なし (デフォルト設定に従う)</option>
-                    <option value="なかもず">なかもず</option>
-                    <option value="杉本">杉本</option>
-                    <option value="阿倍野">阿倍野</option>
-                    <option value="りんくう">りんくう</option>
-                    <option value="もりのみや">もりのみや</option>
-                    <option value="その他/移動中">その他 / 移動中</option>
-                </select>
-                <label class="modal-label">📝 補足コメント (任意)</label>
-                <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
-                <div class="modal-btns">
-                    <button class="modal-btn-cancel" onclick="closeModal()">キャンセル</button>
-                    <button class="modal-btn-save" onclick="saveModal()">💾 保存</button>
-                </div>
+    <div id="detail-modal">
+        <div class="modal-content" id="modal-content-box">
+            <div class="modal-title" id="modal-cell-title">詳細設定</div>
+            <label class="modal-label">🏫 キャンパスの指定 (任意)</label>
+            <select id="modal-campus" class="modal-select">
+                <option value="">指定なし (デフォルト設定に従う)</option>
+                <option value="なかもず">なかもず</option>
+                <option value="杉本">杉本</option>
+                <option value="阿倍野">阿倍野</option>
+                <option value="りんくう">りんくう</option>
+                <option value="もりのみや">もりのみや</option>
+                <option value="その他/移動中">その他 / 移動中</option>
+            </select>
+            <label class="modal-label">📝 補足コメント (任意)</label>
+            <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
+            <div class="modal-btns">
+                <button class="modal-btn-cancel" onclick="closeModal()">キャンセル</button>
+                <button class="modal-btn-save" onclick="saveModal()">💾 保存</button>
             </div>
         </div>
+    </div>
 
-        <div id="content"></div><script>
-        function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
-        function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
-        function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
-        
-        // 💡 デバッグ文字を更新する関数
-        function logDebug(msg) {
-            document.getElementById('debug-banner').innerText = "🟢 " + msg;
-            console.log(msg);
+    <div id="content"></div><script>
+    function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
+    function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
+    function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
+    
+    function logDebug(msg) {
+        document.getElementById('debug-banner').innerText = "🟢 " + msg;
+        console.log(msg);
+    }
+
+    let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
+    window.cellDetails = {}; 
+
+    window.upd = function(el, v) { 
+        el.dataset.v = v; 
+        if (v == 1) { el.style.background = '#4CAF50'; el.style.backgroundImage = 'none'; }
+        else if (v == 2) { el.style.background = '#FFEB3B'; el.style.backgroundImage = 'none'; }
+        else if (v == 3) { el.style.background = '#e0e0e0'; el.style.backgroundImage = 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)'; }
+        else { el.style.background = '#fff'; el.style.backgroundImage = 'none'; }
+
+        const key = `${el.dataset.r}_${el.dataset.c}`;
+        const existingIcon = el.querySelector('.memo-icon');
+        if (window.cellDetails[key]) {
+            if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>');
+        } else {
+            if (existingIcon) existingIcon.remove();
         }
-
-        let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
-        window.cellDetails = {}; 
-
-        window.upd = function(el, v) { 
-            el.dataset.v = v; 
-            if (v == 1) { el.style.background = '#4CAF50'; el.style.backgroundImage = 'none'; }
-            else if (v == 2) { el.style.background = '#FFEB3B'; el.style.backgroundImage = 'none'; }
-            else if (v == 3) { el.style.background = '#e0e0e0'; el.style.backgroundImage = 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)'; }
-            else { el.style.background = '#fff'; el.style.backgroundImage = 'none'; }
-
-            const key = `${el.dataset.r}_${el.dataset.c}`;
-            const existingIcon = el.querySelector('.memo-icon');
-            if (window.cellDetails[key]) {
-                if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>');
-            } else {
-                if (existingIcon) existingIcon.remove();
+    };
+    
+    window.renderWeek = function() {
+        const start = currentWeek * 7; const end = start + 7;
+        document.querySelectorAll('.day-col').forEach(el => {
+            const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none';
+        });
+        const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
+        if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
+        
+        setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
+    };
+    window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
+    
+    window.doBulk = function(btnEl) {
+        const val = document.getElementById('b-val').value;
+        const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value);
+        if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; }
+        document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, val); } } });
+        const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
+    };
+    window.doCopy = function(btnEl) {
+        const srcIdx = parseInt(document.getElementById('c-src').value);
+        let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); }
+        let copied = false;
+        document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, srcData[r]); } } } });
+        if(!copied) { alert('コピー先を選択してください。'); return; }
+        const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
+    };
+    
+    window.doTimetable = function(btnEl) {
+        if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; }
+        for(let c = 0; c < totalDays; c++) {
+            let key = String(c);
+            if (unavailColRows[key]) {
+                unavailColRows[key].forEach(r => { const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`); if(cell) window.upd(cell, 3); });
             }
-        };
+        }
+        const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000);
+    };
+    
+    window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
+    document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
+
+    let selectedMode = 1;
+    window.setPen = function(mode) {
+        selectedMode = mode;
+        [0, 1, 2].forEach(m => {
+            const b = document.getElementById('pen-' + m);
+            b.classList.remove('active');
+        });
+        document.getElementById('pen-' + mode).classList.add('active');
+    };
+
+    let editingCell = null;
+    window.openModal = function(cell) {
+        logDebug("🔥 UI描画命令が走りました (openModal)");
+        editingCell = cell;
+        const r = cell.dataset.r; const c = cell.dataset.c;
+        const key = `${r}_${c}`;
+        const detail = window.cellDetails[key] || {campus: "", note: ""};
         
-        window.renderWeek = function() {
-            const start = currentWeek * 7; const end = start + 7;
-            document.querySelectorAll('.day-col').forEach(el => {
-                const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none';
-            });
-            const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
-            if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
+        document.getElementById('modal-campus').value = detail.campus;
+        document.getElementById('modal-note').value = detail.note;
+        document.getElementById('detail-modal').style.display = 'flex';
+    };
+
+    window.closeModal = function() {
+        document.getElementById('detail-modal').style.display = 'none';
+        editingCell = null;
+    };
+
+    window.saveModal = function() {
+        if(!editingCell) return;
+        const r = editingCell.dataset.r; const c = editingCell.dataset.c;
+        const key = `${r}_${c}`;
+        const campus = document.getElementById('modal-campus').value;
+        const note = document.getElementById('modal-note').value.trim();
+
+        if(campus || note) {
+            window.cellDetails[key] = {campus: campus, note: note};
+            if (editingCell.dataset.v == 0) window.upd(editingCell, selectedMode == 0 ? 1 : selectedMode);
+        } else {
+            delete window.cellDetails[key];
+        }
+        
+        window.upd(editingCell, editingCell.dataset.v);
+        closeModal();
+        logDebug("✅ モーダル保存完了");
+    };
+
+    window.addEventListener("message", function(event) {
+        if (event.data.type === "streamlit:render") {
+            const args = event.data.args; 
+            document.getElementById("content").innerHTML = args.html_code;
+            totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
+            window.cellDetails = args.cellDetails || {};
             
-            setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
-        };
-        window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
-        
-        window.doBulk = function(btnEl) {
-            const val = document.getElementById('b-val').value;
-            const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value);
-            if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; }
-            document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, val); } } });
-            const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
-        };
-        window.doCopy = function(btnEl) {
-            const srcIdx = parseInt(document.getElementById('c-src').value);
-            let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); }
-            let copied = false;
-            document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, srcData[r]); } } } });
-            if(!copied) { alert('コピー先を選択してください。'); return; }
-            const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
-        };
-        
-        window.doTimetable = function(btnEl) {
-            if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; }
-            for(let c = 0; c < totalDays; c++) {
-                let key = String(c);
-                if (unavailColRows[key]) {
-                    unavailColRows[key].forEach(r => { const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`); if(cell) window.upd(cell, 3); });
+            if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
+            window.renderWeek();
+            
+            if(args.isClosed) { document.getElementById('palette').style.display = 'none'; return; } 
+            else { document.getElementById('palette').style.display = 'flex'; }
+            
+            window.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true });
+
+            const g = document.getElementById('g'); if(!g) return;
+            
+            let down = false;
+            let isErasing = false;
+            let pressTimer = null;
+            let isLongPress = false;
+            let startX = 0, startY = 0;
+            
+            const handleStart = (e, x, y, shift) => {
+                const cell = e.target.closest('.c');
+                if(!cell) return; 
+                
+                down = true; 
+                isErasing = shift;
+                isLongPress = false;
+                startX = x; startY = y;
+                
+                window.upd(cell, isErasing ? 0 : selectedMode); 
+                logDebug("⏳ 押下を検知。タイマー開始...");
+                
+                pressTimer = setTimeout(() => {
+                    isLongPress = true;
+                    down = false; 
+                    logDebug("🔔 0.5秒経過！ポップアップを開きます");
+                    openModal(cell);
+                }, 500);
+            };
+
+            const handleMove = (e, x, y) => {
+                if(!down) return;
+                if (Math.abs(x - startX) > 20 || Math.abs(y - startY) > 20) {
+                    clearTimeout(pressTimer);
+                    logDebug("❌ 指/マウスが20px以上動いたため長押しをキャンセル");
                 }
-            }
-            const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000);
-        };
-        
-        window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
-        document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
+                if(!isLongPress) {
+                    const cell = document.elementFromPoint(x, y)?.closest('.c');
+                    if(cell) window.upd(cell, selectedMode); 
+                }
+            };
 
-        let selectedMode = 1;
-        window.setPen = function(mode) {
-            selectedMode = mode;
-            [0, 1, 2].forEach(m => {
-                const b = document.getElementById('pen-' + m);
-                b.classList.remove('active');
+            const handleEnd = () => {
+                if (down && pressTimer) {
+                    clearTimeout(pressTimer);
+                    logDebug("🛑 0.5秒経つ前に離されました（通常のクリック）");
+                }
+                down = false;
+            };
+
+            g.onmousedown = e => handleStart(e, e.clientX, e.clientY, e.shiftKey);
+            g.onmousemove = e => handleMove(e, e.clientX, e.clientY);
+            window.onmouseup = handleEnd;
+            window.onmouseleave = handleEnd; 
+
+            g.addEventListener('touchstart', e => { 
+                handleStart(e, e.touches[0].clientX, e.touches[0].clientY, false);
+                if(!isLongPress) e.preventDefault(); 
+            }, {passive: false});
+            
+            g.addEventListener('touchmove', e => { 
+                if(down) {
+                    handleMove(e, e.touches[0].clientX, e.touches[0].clientY);
+                    e.preventDefault();
+                }
+            }, {passive: false});
+            
+            g.addEventListener('touchend', handleEnd);
+            
+            const btn = document.getElementById("submit-btn");
+            if(btn) { btn.onclick = () => { 
+                const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); 
+                const commentText = document.getElementById("comment-box").value; 
+                
+                setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
+                btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; document.getElementById('palette').style.display = 'none'; 
+            }; }
+            
+            document.querySelectorAll('.c').forEach(cell => {
+                window.upd(cell, cell.dataset.v);
             });
-            document.getElementById('pen-' + mode).classList.add('active');
-        };
-
-        let editingCell = null;
-        window.openModal = function(cell) {
-            logDebug("🔥 UI描画命令が走りました (openModal)");
-            editingCell = cell;
-            const r = cell.dataset.r; const c = cell.dataset.c;
-            const key = `${r}_${c}`;
-            const detail = window.cellDetails[key] || {campus: "", note: ""};
-            
-            document.getElementById('modal-campus').value = detail.campus;
-            document.getElementById('modal-note').value = detail.note;
-            document.getElementById('detail-modal').style.display = 'flex';
-        };
-
-        window.closeModal = function() {
-            document.getElementById('detail-modal').style.display = 'none';
-            editingCell = null;
-        };
-
-        window.saveModal = function() {
-            if(!editingCell) return;
-            const r = editingCell.dataset.r; const c = editingCell.dataset.c;
-            const key = `${r}_${c}`;
-            const campus = document.getElementById('modal-campus').value;
-            const note = document.getElementById('modal-note').value.trim();
-
-            if(campus || note) {
-                window.cellDetails[key] = {campus: campus, note: note};
-                if (editingCell.dataset.v == 0) window.upd(editingCell, selectedMode == 0 ? 1 : selectedMode);
-            } else {
-                delete window.cellDetails[key];
-            }
-            
-            window.upd(editingCell, editingCell.dataset.v);
-            closeModal();
-            logDebug("✅ モーダル保存完了");
-        };
-
-        window.addEventListener("message", function(event) {
-            if (event.data.type === "streamlit:render") {
-                const args = event.data.args; 
-                document.getElementById("content").innerHTML = args.html_code;
-                totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
-                window.cellDetails = args.cellDetails || {};
-                
-                if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
-                window.renderWeek();
-                
-                if(args.isClosed) { document.getElementById('palette').style.display = 'none'; return; } 
-                else { document.getElementById('palette').style.display = 'flex'; }
-                
-                window.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true });
-
-                const g = document.getElementById('g'); if(!g) return;
-                
-                let down = false;
-                let isErasing = false;
-                let pressTimer = null;
-                let isLongPress = false;
-                let startX = 0, startY = 0;
-                
-                // 💡 マウス・タッチ開始
-                const handleStart = (e, x, y, shift) => {
-                    const cell = e.target.closest('.c');
-                    if(!cell) return; 
-                    
-                    down = true; 
-                    isErasing = shift;
-                    isLongPress = false;
-                    startX = x; startY = y;
-                    
-                    window.upd(cell, isErasing ? 0 : selectedMode); 
-                    logDebug("⏳ 押下を検知。タイマー開始...");
-                    
-                    pressTimer = setTimeout(() => {
-                        isLongPress = true;
-                        down = false; 
-                        logDebug("🔔 0.5秒経過！ポップアップを開きます");
-                        openModal(cell);
-                    }, 500);
-                };
-
-                // 💡 マウス・タッチ移動
-                const handleMove = (e, x, y) => {
-                    if(!down) return;
-                    // 💡 閾値を 5px から 20px に大幅に緩和しました
-                    if (Math.abs(x - startX) > 20 || Math.abs(y - startY) > 20) {
-                        clearTimeout(pressTimer);
-                        logDebug("❌ 指/マウスが20px以上動いたため長押しをキャンセル");
-                    }
-                    if(!isLongPress) {
-                        const cell = document.elementFromPoint(x, y)?.closest('.c');
-                        if(cell) window.upd(cell, selectedMode); 
-                    }
-                };
-
-                // 💡 終了処理
-                const handleEnd = () => {
-                    if (down && pressTimer) {
-                        clearTimeout(pressTimer);
-                        logDebug("🛑 0.5秒経つ前に離されました（通常のクリック）");
-                    }
-                    down = false;
-                };
-
-                // マウス用イベント
-                g.onmousedown = e => handleStart(e, e.clientX, e.clientY, e.shiftKey);
-                g.onmousemove = e => handleMove(e, e.clientX, e.clientY);
-                window.onmouseup = handleEnd;
-                window.onmouseleave = handleEnd; 
-
-                // スマホ(タッチ)用イベント
-                g.addEventListener('touchstart', e => { 
-                    handleStart(e, e.touches[0].clientX, e.touches[0].clientY, false);
-                    if(!isLongPress) e.preventDefault(); 
-                }, {passive: false});
-                
-                g.addEventListener('touchmove', e => { 
-                    if(down) {
-                        handleMove(e, e.touches[0].clientX, e.touches[0].clientY);
-                        e.preventDefault();
-                    }
-                }, {passive: false});
-                
-                g.addEventListener('touchend', handleEnd);
-                
-                const btn = document.getElementById("submit-btn");
-                if(btn) { btn.onclick = () => { 
-                    const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); 
-                    const commentText = document.getElementById("comment-box").value; 
-                    
-                    setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
-                    btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; document.getElementById('palette').style.display = 'none'; 
-                }; }
-                
-                document.querySelectorAll('.c').forEach(cell => {
-                    window.upd(cell, cell.dataset.v);
-                });
-            }
-        }); init(); </script></body></html>
-        """)
+        }
+    }); init(); </script></body></html>
+    """)
 grid_editor = components.declare_component("grid_editor", path="custom_editor")
 
 
