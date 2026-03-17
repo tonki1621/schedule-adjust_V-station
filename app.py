@@ -485,7 +485,6 @@ if not os.path.exists("custom_editor"):
             }
         }); init(); </script></body></html>
         """)
-        """)
 grid_editor = components.declare_component("grid_editor", path="custom_editor")
 
 
@@ -1037,7 +1036,7 @@ def main():
                 st.markdown("<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; word-break: break-all; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_ev}</div>', unsafe_allow_html=True)
                 
                 st.markdown("---")
-                st.subheader("⚙️ ステータス手動変更")
+                st.subheader("⚙️ ステータス手 manual手動変更")
                 if active_events:
                     with st.form("update_status_form"):
                         target_ev = st.selectbox("対象イベント", active_events, format_func=lambda x: f"{x['title']} ({x['status']})")
@@ -1579,6 +1578,12 @@ def main():
                     st.rerun()
 
             all_res_data = st.session_state.event_responses
+            
+            # 👇ここからデバッグ用に追加👇
+            if st.checkbox("🛠️ デバッグ2: GASから取得したデータの中身を見る"):
+                st.write(all_res_data)
+            # 👆ここまで👆
+            
             all_names = list(set([r['user_name'] for r in all_res_data]))
             all_g1, all_g2, all_g3 = set(), set(), set()
             for r in all_res_data:
