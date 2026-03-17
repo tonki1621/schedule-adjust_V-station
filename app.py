@@ -1590,11 +1590,26 @@ def main():
             """
             
             # 💡 saveTs（保存タイミング）を渡すことでStreamlitに状態変更を教え、確実にボタンをリセットさせる
-            raw = grid_editor(html_code=html_code, rows=len(time_labels), cols=len(date_strs), eventId=event['event_id'], isClosed=is_closed, unavailColRows=unavail_col_rows, saveTs=st.session_state.get("last_saved_ts", 0), default=None, key=f"editor_{event['event_id']}")
+            # 💡 追加: 自分の既存の詳細設定データ (cell_details) を取得
+            my_cell_details = {}
+            for r in st.session_state.event_responses:
+                if str(r['user_id']) == str(user['user_id']) and r.get('cell_details'):
+                    try:
+                        my_cell_details = json.loads(r['cell_details'])
+                        break
+                    except:
+                        pass
+
+            # 💡 変更: grid_editor に cellDetails を渡す
+            raw = grid_editor(html_code=html_code, rows=len(time_labels), cols=len(date_strs), eventId=event['event_id'], isClosed=is_closed, unavailColRows=unavail_col_rows, saveTs=st.session_state.get("last_saved_ts", 0), cellDetails=my_cell_details, default=None, key=f"editor_{event['event_id']}")
             
             if raw and isinstance(raw, dict) and "data" in raw:
                 if raw.get("trigger_save") and st.session_state.get("last_saved_ts") != raw.get("ts"):
                     st.session_state.last_saved_ts = raw.get("ts"); st.session_state.df_input = pd.DataFrame(raw["data"], index=time_labels, columns=date_strs); st.session_state.my_comment = raw.get("comment", "")
+                    
+                    # 💡 追加: コンポーネントから返ってきた cell_details を取得
+                    cell_details_json = raw.get("cell_details", {})
+                    
                     all_res = []
                     for d_id in date_strs:
                         bits = ["0"] * 96
@@ -1603,7 +1618,8 @@ def main():
                             else: bits[t_idx] = str(int(st.session_state.df_input.loc[time_labels[t_idx], d_id]))
                         all_res.append({"date": d_id, "binary": "".join(bits)})
                     
-                    call_gas("submit_binary_response", {"payload": {"event_id": event["event_id"], "user_id": user["user_id"], "comment": st.session_state.my_comment, "responses": all_res}}, method="POST")
+                    # 💡 変更: payload に cell_details を追加して GAS へ送信
+                    call_gas("submit_binary_response", {"payload": {"event_id": event["event_id"], "user_id": user["user_id"], "comment": st.session_state.my_comment, "cell_details": cell_details_json, "responses": all_res}}, method="POST")
                     clear_cache()
                     st.session_state.save_success_msg = "回答を保存しました！"
                     st.rerun()
