@@ -1734,8 +1734,25 @@ def main():
                                 if v == 3: v = 0
                                 z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
                                 if can_view_details:
-                                    if v==1: h[disp_r][c_idx] += f"◯ {r['user_name']}<br>"
-                                    elif v==2: h[disp_r][c_idx] += f"△ {r['user_name']}<br>"
+                                    # 💡 追加: cell_details から該当コマの情報を取得してツールチップに反映
+                                    campus_str = ""
+                                    note_str = ""
+                                    if r.get('cell_details') and str(r['cell_details']).strip() != "{}":
+                                        try:
+                                            cd = json.loads(r['cell_details'])
+                                            cell_key = f"{orig_r_idx}_{c_idx}"
+                                            if cell_key in cd:
+                                                if cd[cell_key].get('campus'): 
+                                                    campus_str = f" ({cd[cell_key]['campus']})"
+                                                if cd[cell_key].get('note'): 
+                                                    note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cd[cell_key]['note']}]</span>"
+                                        except:
+                                            pass
+                                            
+                                    name_html = f"{r['user_name']}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
+                                    
+                                    if v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
+                                    elif v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
                     
                     max_z = np.max(z) if np.max(z) > 0 else 1
                     
