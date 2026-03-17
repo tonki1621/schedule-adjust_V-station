@@ -215,6 +215,23 @@ if not os.path.exists("custom_editor"):
         .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
         .pen-btn:hover { opacity: 0.8; }
         .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+        
+        /* 💡 追加: 詳細設定モーダルのCSS */
+        #detail-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999999; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
+        .modal-content { background: #fff; width: 300px; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: popIn 0.2s ease-out; }
+        @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        .modal-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 15px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
+        .modal-label { font-size: 12px; font-weight: bold; color: #666; margin-top: 10px; display: block; }
+        .modal-select, .modal-input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+        .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
+        .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .modal-btn-cancel { flex: 1; background: #eee; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+        .modal-btn-save:hover { background: #45a049; }
+        .modal-btn-cancel:hover { background: #ddd; }
+        
+        /* 💡 追加: セル内のメモインジケーター */
+        .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
+        .c { position: relative; }
         </style></head><body>
         
         <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.85); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
@@ -224,18 +241,53 @@ if not os.path.exists("custom_editor"):
             <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
         </div>
 
+        <div id="detail-modal">
+            <div class="modal-content" id="modal-content-box">
+                <div class="modal-title" id="modal-cell-title">詳細設定</div>
+                <label class="modal-label">🏫 キャンパスの指定 (任意)</label>
+                <select id="modal-campus" class="modal-select">
+                    <option value="">指定なし (デフォルト設定に従う)</option>
+                    <option value="なかもず">なかもず</option>
+                    <option value="杉本">杉本</option>
+                    <option value="阿倍野">阿倍野</option>
+                    <option value="りんくう">りんくう</option>
+                    <option value="もりのみや">もりのみや</option>
+                    <option value="その他/移動中">その他 / 移動中</option>
+                </select>
+                <label class="modal-label">📝 補足コメント (任意)</label>
+                <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
+                <div class="modal-btns">
+                    <button class="modal-btn-cancel" onclick="closeModal()">キャンセル</button>
+                    <button class="modal-btn-save" onclick="saveModal()">💾 保存</button>
+                </div>
+            </div>
+        </div>
+
         <div id="content"></div><script>
         function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
         function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
         function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
         
         let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
+        
+        // 💡 追加: セルごとの詳細情報を保持するオブジェクト
+        window.cellDetails = {}; 
+
         window.upd = function(el, v) { 
             el.dataset.v = v; 
             if (v == 1) { el.style.background = '#4CAF50'; el.style.backgroundImage = 'none'; }
             else if (v == 2) { el.style.background = '#FFEB3B'; el.style.backgroundImage = 'none'; }
             else if (v == 3) { el.style.background = '#e0e0e0'; el.style.backgroundImage = 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)'; }
             else { el.style.background = '#fff'; el.style.backgroundImage = 'none'; }
+
+            // 💡 追加: メモインジケーター(💬)の制御
+            const key = `${el.dataset.r}_${el.dataset.c}`;
+            const existingIcon = el.querySelector('.memo-icon');
+            if (window.cellDetails[key]) {
+                if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>');
+            } else {
+                if (existingIcon) existingIcon.remove();
+            }
         };
         
         window.renderWeek = function() {
@@ -325,11 +377,50 @@ if not os.path.exists("custom_editor"):
         }, {passive: false});
         document.addEventListener('touchend', () => { isDraggingPalette = false; });
 
+        // 💡 追加: モーダル操作関数
+        let editingCell = null;
+        window.openModal = function(cell) {
+            editingCell = cell;
+            const r = cell.dataset.r; const c = cell.dataset.c;
+            const key = `${r}_${c}`;
+            const detail = window.cellDetails[key] || {campus: "", note: ""};
+            
+            document.getElementById('modal-campus').value = detail.campus;
+            document.getElementById('modal-note').value = detail.note;
+            document.getElementById('detail-modal').style.display = 'flex';
+        };
+
+        window.closeModal = function() {
+            document.getElementById('detail-modal').style.display = 'none';
+            editingCell = null;
+        };
+
+        window.saveModal = function() {
+            if(!editingCell) return;
+            const r = editingCell.dataset.r; const c = editingCell.dataset.c;
+            const key = `${r}_${c}`;
+            const campus = document.getElementById('modal-campus').value;
+            const note = document.getElementById('modal-note').value.trim();
+
+            if(campus || note) {
+                window.cellDetails[key] = {campus: campus, note: note};
+                if (editingCell.dataset.v == 0) window.upd(editingCell, 1); // 詳細が入れば自動的に「可」扱い
+            } else {
+                delete window.cellDetails[key];
+            }
+            
+            window.upd(editingCell, editingCell.dataset.v); // アイコン再描画
+            closeModal();
+        };
+
         window.addEventListener("message", function(event) {
             if (event.data.type === "streamlit:render") {
                 const args = event.data.args; 
                 document.getElementById("content").innerHTML = args.html_code;
                 totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
+                
+                // 💡 Python側から渡された既存の詳細設定を読み込む
+                window.cellDetails = args.cellDetails || {};
                 
                 if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
                 window.renderWeek();
@@ -337,7 +428,6 @@ if not os.path.exists("custom_editor"):
                 if(args.isClosed) { palette.style.display = 'none'; return; } 
                 else { palette.style.display = 'flex'; }
                 
-                // 💡 [徹底対策1] 小窓(iframe)全体の右クリックメニューを一番強い権限で強制ブロック
                 window.addEventListener('contextmenu', function(e) {
                     e.preventDefault();
                     e.stopPropagation();
@@ -345,38 +435,71 @@ if not os.path.exists("custom_editor"):
                 }, { capture: true });
 
                 const g = document.getElementById('g'); if(!g) return;
+                
+                // 💡 変更: 長押し判定ロジックを組み込んだイベントリスナー
                 let down = false;
-                let isErasing = false; // 💡 Shiftキーで消しゴムモードかどうかの判定用
+                let isErasing = false;
+                let pressTimer = null;
+                let isLongPress = false;
+                let startX = 0, startY = 0;
                 
                 g.onmousedown = e => { 
                     const cell = e.target.closest('.c');
                     if(!cell) return; 
                     
                     down = true; 
-                    // Shiftキーが押されていれば「0(消す)」、そうでなければ「選んでいるペン」
-                    isErasing = e.shiftKey; 
+                    isErasing = e.shiftKey;
+                    isLongPress = false;
+                    startX = e.clientX; startY = e.clientY;
+                    
+                    // クリックした瞬間に塗る
                     window.upd(cell, isErasing ? 0 : selectedMode); 
+                    
+                    // 500msの長押しタイマー
+                    pressTimer = setTimeout(() => {
+                        isLongPress = true;
+                        down = false; 
+                        openModal(cell);
+                    }, 500);
                 };
                 
+                g.onmousemove = e => {
+                    if(!down) return;
+                    // 指（マウス）が動いた場合は長押しをキャンセル
+                    if (Math.abs(e.clientX - startX) > 5 || Math.abs(e.clientY - startY) > 5) {
+                        clearTimeout(pressTimer);
+                    }
+                };
+
                 g.onmouseover = e => { 
                     const cell = e.target.closest('.c');
-                    if(down && cell) {
+                    if(down && !isLongPress && cell) {
                         window.upd(cell, isErasing ? 0 : selectedMode); 
                     }
                 };
                 
-                window.onmouseup = () => { down = false; isErasing = false; isDraggingPalette = false; }; 
-                window.onmouseleave = () => { down = false; isErasing = false; isDraggingPalette = false; }; 
+                window.onmouseup = () => { clearTimeout(pressTimer); down = false; isErasing = false; isDraggingPalette = false; }; 
+                window.onmouseleave = () => { clearTimeout(pressTimer); down = false; isErasing = false; isDraggingPalette = false; }; 
 
-                // スマホのタップ操作（常に左クリック扱い、Shiftキーの概念はないので安全）
+                // スマホ用
                 g.addEventListener('touchstart', e => { 
                     const touch = e.touches[0]; 
                     const target = document.elementFromPoint(touch.clientX, touch.clientY); 
                     const cell = target ? target.closest('.c') : null;
                     if(cell) { 
                         down = true; 
-                        isErasing = false; // スマホは常に通常のペン
+                        isErasing = false;
+                        isLongPress = false;
+                        startX = touch.clientX; startY = touch.clientY;
+                        
                         window.upd(cell, selectedMode); 
+                        
+                        pressTimer = setTimeout(() => {
+                            isLongPress = true;
+                            down = false;
+                            openModal(cell);
+                        }, 500);
+                        
                         e.preventDefault(); 
                     } 
                 }, {passive: false});
@@ -384,21 +507,36 @@ if not os.path.exists("custom_editor"):
                 g.addEventListener('touchmove', e => { 
                     if(!down) return; 
                     const touch = e.touches[0]; 
-                    const target = document.elementFromPoint(touch.clientX, touch.clientY); 
-                    const cell = target ? target.closest('.c') : null;
-                    if(cell) window.upd(cell, selectedMode); 
-                    e.preventDefault(); 
+                    
+                    if (Math.abs(touch.clientX - startX) > 5 || Math.abs(touch.clientY - startY) > 5) {
+                        clearTimeout(pressTimer);
+                    }
+                    
+                    if(!isLongPress) {
+                        const target = document.elementFromPoint(touch.clientX, touch.clientY); 
+                        const cell = target ? target.closest('.c') : null;
+                        if(cell) window.upd(cell, selectedMode); 
+                        e.preventDefault(); 
+                    }
                 }, {passive: false});
                 
-                g.addEventListener('touchend', () => { down = false; isErasing = false; isDraggingPalette = false; });
+                g.addEventListener('touchend', () => { clearTimeout(pressTimer); down = false; isErasing = false; isDraggingPalette = false; });
                 
                 const btn = document.getElementById("submit-btn");
                 if(btn) { btn.onclick = () => { 
                     const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); 
                     const commentText = document.getElementById("comment-box").value; 
-                    setComponentValue({ data: res, comment: commentText, trigger_save: true, ts: Date.now() }); 
+                    
+                    // 💡 変更: Python側に cell_details も一緒に送信する
+                    setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
+                    
                     btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
                 }; }
+                
+                // 💡 起動時に既存のセルデータを反映してアイコンを付ける
+                document.querySelectorAll('.c').forEach(cell => {
+                    window.upd(cell, cell.dataset.v);
+                });
             }
         }); init(); </script></body></html>
         """)
