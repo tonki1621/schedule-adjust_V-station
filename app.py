@@ -320,46 +320,70 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         
         let detail = window.cellDetails[key];
         
-        // デフォルトキャンパス自動適用と不要データの削除
+        // 💡 修正: キャンセル（白）にした時も、バイト予定の場合はデータを残す
         if (v == 0) {
-            delete window.cellDetails[key];
-            detail = null;
-        } else if ((v == 1 || v == 2) && defaultCampus && !detail) {
-            window.cellDetails[key] = {campus: defaultCampus, note: ""};
-            detail = window.cellDetails[key];
-        } else if ((v == 1 || v == 2) && detail) {
-            if (detail.campus === defaultCampus && !detail.note) {
+            if (detail && detail.note === "バイト/私用") {
+                // そのまま保持
+            } else {
+                delete window.cellDetails[key];
+                detail = null;
+            }
+        } 
+        // ◯か△の時、デフォルトキャンパスを自動適用
+        else if (v == 1 || v == 2) {
+            if (!detail && defaultCampus) {
+                window.cellDetails[key] = {campus: defaultCampus, note: ""};
+                detail = window.cellDetails[key];
+            }
+            // 通信量削減のため、完全デフォルト状態の時はJSONから削る
+            if (detail && detail.campus === defaultCampus && !detail.note) {
                 delete window.cellDetails[key];
                 detail = null;
             }
         }
 
         let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : "");
+        let note = detail ? detail.note : "";
         let bgImage = 'none';
         let bgColor = '#fff';
 
         if (v == 1) bgColor = '#4CAF50';
         else if (v == 2) bgColor = '#FFEB3B';
         else if (v == 3) bgColor = '#e0e0e0';
+        else if (v == 0) bgColor = '#fff';
 
-        if (v == 1 || v == 2 || v == 3) {
+        // 💡 修正: バイト用模様とキャンパス模様の適用
+        if (v == 1 || v == 2 || v == 3 || (v == 0 && note === "バイト/私用")) {
             let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
             let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)';
-            if (campus === "杉本") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
-            else if (campus === "あべの" || campus === "阿倍野") bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`;
-            else if (campus === "りんくう") bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`;
-            else if (campus === "もりのみや") bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
-            else if (campus === "その他/移動中") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`;
-            else if (v == 3 && !campus) bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; 
+            
+            if (v == 0 && note === "バイト/私用") {
+                bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.05) 4px, rgba(0,0,0,0.05) 8px)`;
+            } else if (campus === "杉本") {
+                bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
+            } else if (campus === "あべの" || campus === "阿倍野") {
+                bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`;
+            } else if (campus === "りんくう") {
+                bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`;
+            } else if (campus === "もりのみや") {
+                bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
+            } else if (campus === "その他/移動中") {
+                bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`;
+            } else if (v == 3 && !campus) {
+                bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; 
+            }
         }
 
         el.style.background = bgColor;
         el.style.backgroundImage = bgImage;
-        if (campus === "りんくう") el.style.backgroundSize = '10px 10px';
+        if (campus === "りんくう" && v !== 0) el.style.backgroundSize = '10px 10px';
         else el.style.backgroundSize = 'auto';
 
+        // 💡 修正: 「本当に手動でコメントや場所を指定した時」だけ 💬 アイコンを出す
         const existingIcon = el.querySelector('.memo-icon');
-        if (detail && (detail.campus || detail.note)) {
+        const hasManualSetting = detail && (detail.note !== "" || (detail.campus && detail.campus !== defaultCampus));
+        
+        if (hasManualSetting) {
             if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>');
         } else {
             if (existingIcon) existingIcon.remove();
@@ -1647,6 +1671,62 @@ def main():
                         <button class="st-btn" onclick="window.doTimetable(this)" style="background:#E91E63; width:100%;">{tt_btn_text}</button>
                     </div>
                 </div>"""
+                # 💡 修正: ツールの直下・カレンダーの直上に配置するコンパクトな凡例
+            legend_html_for_iframe = """
+            <div style="margin-bottom: 15px; padding: 12px; background: #fafafa; border-radius: 8px; border: 1px solid #ddd; font-size: 12px; color: #555;">
+                <strong style="display:block; margin-bottom:8px; color:#2e7d32;">🎨 表示アイコン・模様の解説</strong>
+                <div style="display: flex; gap: 10px; flex-wrap: wrap;">
+                    <div style="display:flex; align-items:center; gap:4px;"><div style="width:16px;height:16px; background:#4CAF50; border-radius:3px;"></div>なかもず</div>
+                    <div style="display:flex; align-items:center; gap:4px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>杉本</div>
+                    <div style="display:flex; align-items:center; gap:4px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>あべの</div>
+                    <div style="display:flex; align-items:center; gap:4px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div>りんくう</div>
+                    <div style="display:flex; align-items:center; gap:4px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>もりのみや</div>
+                    <div style="display:flex; align-items:center; gap:4px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div>移動・他</div>
+                    <div style="display:flex; align-items:center; gap:4px;"><div style="width:16px;height:16px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.8) 4px, rgba(255,255,255,0.8) 8px); border-radius:3px; border:1px solid #ccc;"></div>授業等(灰)</div>
+                    <div style="display:flex; align-items:center; gap:4px;"><div style="width:16px;height:16px; background:#fff; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.05) 4px, rgba(0,0,0,0.05) 8px); border-radius:3px; border:1px solid #ccc;"></div>バイト等(×)</div>
+                </div>
+            </div>
+            """
+
+            scroll_css = f"height: {scroll_h};" if scroll_h != "auto" else "height: auto;"
+
+            html_code = f"""
+            <style>
+                .tool-card {{ background: #fdfdfd; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; flex: 1; min-width: 250px; font-family: sans-serif; box-sizing:border-box;}} 
+                .tool-header {{ font-size: 15px; font-weight: bold; color: #333; margin-bottom: 12px; }} 
+                .st-sel {{ padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 13px; }} 
+                .st-btn {{ padding: 6px 16px; border: none; border-radius: 4px; background: #4CAF50; color: white; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}} 
+                .st-btn:hover {{ opacity: 0.9; }} 
+                .ms-container {{ position: relative; display: inline-block; flex: 1; min-width: 150px; }} 
+                .ms-header {{ border: 1px solid #ccc; padding: 6px 10px; border-radius: 4px; cursor: pointer; background: #fff; font-size: 13px; user-select: none; display: flex; justify-content: space-between; }} 
+                .ms-options {{ position: absolute; top: 100%; left: 0; right: 0; background: #fff; border: 1px solid #ccc; border-radius: 4px; z-index: 100; max-height: 200px; overflow-y: auto; box-shadow: 0 4px 6px rgba(0,0,0,0.1); padding: 5px; margin-top: 2px; }} 
+                .ms-opt {{ display: block; padding: 6px 8px; font-size: 13px; cursor: pointer; border-radius: 3px; }} 
+                .ms-opt:hover {{ background: #f0f2f6; }} 
+                .page-btn {{ padding: 8px 16px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }} 
+                .page-btn:hover:not(:disabled) {{ background: #e9ecef; }} 
+                .page-btn:disabled {{ opacity: 0.4; cursor: not-allowed; }}
+                
+                .scroll-wrapper {{ {scroll_css} overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff; }}
+                .time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
+                .header-cell {{ position: sticky; top: 0; z-index: 11; background: #eee; text-align: center; font-size: 13px; padding: 5px 0; font-weight: bold; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; line-height: 1.2; }}
+                .top-left-cell {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
+            </style>
+            {tools_html}
+            {legend_html_for_iframe}
+            <div style='display:flex; justify-content:flex-end; align-items:flex-end; margin-bottom:10px;'>
+                <div style="display:{week_nav_display}; align-items:center; gap: 20px;">
+                    <button id="btn-prev" class="page-btn" onclick="window.changeWeek(-1)">◀ 前の週</button>
+                    <div style="font-weight:bold; color:#4CAF50;">📅 全 {len(date_strs)} 日間</div>
+                    <button id="btn-next" class="page-btn" onclick="window.changeWeek(1)">次の週 ▶</button>
+                </div>
+            </div>
+            <div class="scroll-wrapper">
+                <div id="g" style="display:flex; width:100%; user-select:none; {pointer_css}">
+                    {time_col_html}
+                    {day_cols_html}
+                </div>
+            </div>
+            """
                 submit_btn_html = f"""
                 <div style="margin-top: 20px;">
                     <label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント (遅刻・早退など)</label>
