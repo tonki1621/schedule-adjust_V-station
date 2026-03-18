@@ -228,7 +228,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
     .c { position: relative; transition: filter 0.2s; }
     
-    /* 💡 長押しアニメーション */
     @keyframes pressAnim {
         0% { transform: scale(1); filter: brightness(1); }
         25% { transform: scale(0.95); filter: brightness(0.85); }
@@ -238,7 +237,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     }
     .pressing { animation: pressAnim 0.5s forwards; z-index: 100; }
     
-    /* パレットドラッグ用のヘッダー */
     #palette-header { background: #eee; border-radius: 8px 8px 0 0; margin: -12px -8px 8px -8px; padding: 8px; font-size: 12px; font-weight: bold; color: #555; text-align: center; cursor: move; user-select: none; }
     </style></head><body>
     
@@ -280,7 +278,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     window.cellDetails = {}; 
     let defaultCampus = ""; 
 
-    // 💡 パレットのドラッグを安全にするための修正
     const palette = document.getElementById('palette');
     const pHeader = document.getElementById('palette-header');
     let isDraggingPalette = false;
@@ -315,19 +312,16 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     }, {passive: false});
     window.addEventListener('touchend', () => { isDraggingPalette = false; });
 
-    // 💡 モーダル外枠クリックでキャンセル
     const modalBg = document.getElementById('detail-modal');
     modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
     modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
 
-    // 💡 キャンパスごとの模様と色の更新処理
     window.upd = function(el, v) { 
         el.dataset.v = v; 
         const key = `${el.dataset.r}_${el.dataset.c}`;
         
         let detail = window.cellDetails[key];
         
-        // 塗った瞬間にデフォルトキャンパスを付与
         if ((v == 1 || v == 2) && defaultCampus && !detail) {
             window.cellDetails[key] = {campus: defaultCampus, note: ""};
             detail = window.cellDetails[key];
@@ -342,24 +336,23 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
 
         if (v == 1) bgColor = '#4CAF50';
         else if (v == 2) bgColor = '#FFEB3B';
-        else if (v == 3) { bgColor = '#e0e0e0'; bgImage = 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)'; }
+        else if (v == 3) bgColor = '#e0e0e0';
 
-        // キャンパス別の模様
-        if (v == 1 || v == 2) {
-            if (campus === "杉本") bgImage = 'repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 10px, transparent 10px, transparent 20px)';
-            else if (campus === "阿倍野") bgImage = 'repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 10px, transparent 10px, transparent 20px)';
-            else if (campus === "りんくう") bgImage = 'radial-gradient(circle, rgba(255,255,255,0.4) 3px, transparent 4px)';
-            else if (campus === "もりのみや") bgImage = 'repeating-linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 5px, transparent 5px, transparent 10px)';
+        // 💡 キャンパスごとの模様設定
+        if (v == 1 || v == 2 || v == 3) {
+            let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
+            if (campus === "杉本") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 5px, transparent 5px, transparent 10px)`;
+            else if (campus === "あべの") bgImage = `repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 5px, transparent 5px, transparent 10px)`;
+            else if (campus === "りんくう") bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`;
+            else if (campus === "もりのみや") bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 5px, transparent 5px, transparent 10px)`;
+            else if (campus === "その他/移動中") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 3px, transparent 3px, transparent 6px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 3px, transparent 3px, transparent 6px)`;
+            else if (v == 3 && !campus) bgImage = `repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)`; 
         }
 
         el.style.background = bgColor;
-        if (bgImage !== 'none') {
-            el.style.backgroundImage = bgImage;
-            if (campus === "りんくう") el.style.backgroundSize = '15px 15px';
-            else el.style.backgroundSize = 'auto';
-        } else {
-            el.style.backgroundImage = 'none';
-        }
+        el.style.backgroundImage = bgImage;
+        if (campus === "りんくう") el.style.backgroundSize = '12px 12px';
+        else el.style.backgroundSize = 'auto';
 
         const existingIcon = el.querySelector('.memo-icon');
         if (detail && (detail.campus || detail.note)) {
@@ -402,7 +395,16 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         for(let c = 0; c < totalDays; c++) {
             let key = String(c);
             if (unavailColRows[key]) {
-                unavailColRows[key].forEach(r => { const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`); if(cell) window.upd(cell, 3); });
+                unavailColRows[key].forEach(item => {
+                    const r = (typeof item === 'object') ? item.row : item;
+                    const campus = (typeof item === 'object') ? item.campus : "";
+                    const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+                    if(cell) {
+                        const cellKey = `${r}_${c}`;
+                        if (campus) window.cellDetails[cellKey] = {campus: campus, note: "定期授業"};
+                        window.upd(cell, 3);
+                    }
+                });
             }
         }
         const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000);
@@ -825,10 +827,19 @@ def main():
         """, unsafe_allow_html=True)
         
         fixed_sched = user.get("fixed_schedule", {})
+        
+        # 💡 group_4 から場所情報を読み込む
+        try:
+            fixed_locs = json.loads(user.get("group_4", "{}"))
+        except:
+            fixed_locs = {}
+
         ui_state = {str(i): {} for i in range(5)}
         days_jp = ["月", "火", "水", "木", "金"]
         col_ratios = [1.1, 1, 1, 1, 1, 1]
         
+        campus_options = MASTER_G1 + ["その他/移動中"]
+
         cols = st.columns(col_ratios)
         cols[0].markdown("<div style='padding:8px;'></div>", unsafe_allow_html=True)
         for i, d in enumerate(days_jp): cols[i+1].markdown(f"<div class='tt-day-header'>{d}</div>", unsafe_allow_html=True)
@@ -847,8 +858,15 @@ def main():
                 val = (day_bin[s_idx:e_idx] == "1" * (e_idx - s_idx))
                 checked = cols[i+1].checkbox(" ", value=val, key=f"{p_key}_{i}", label_visibility="collapsed")
                 ui_state[str(i)][p_key] = checked
-                if checked: cols[i+1].markdown("<div class='status-on'>✔︎ あり</div>", unsafe_allow_html=True)
-                else: cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
+                
+                if checked: 
+                    saved_loc = fixed_locs.get(str(i), {}).get(p_key, campus_options[0])
+                    loc_idx = campus_options.index(saved_loc) if saved_loc in campus_options else 0
+                    target_campus = cols[i+1].selectbox("場所", campus_options, index=loc_idx, key=f"loc_{p_key}_{i}", label_visibility="collapsed")
+                    ui_state[str(i)][f"{p_key}_loc"] = target_campus
+                    cols[i+1].markdown(f"<div class='status-on' style='font-size:10px; padding:2px 0;'>✔︎ {target_campus}</div>", unsafe_allow_html=True)
+                else: 
+                    cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
             st.markdown("<hr style='margin: 4px 0; border: none; border-bottom: 1px dashed #ddd;'>", unsafe_allow_html=True)
             
         cols = st.columns(col_ratios)
@@ -857,8 +875,15 @@ def main():
             day_bin = fixed_sched.get(str(i), "0"*96); af_bin = day_bin[74:]; val = "1" in af_bin
             checked = cols[i+1].checkbox(" ", value=val, key=f"af_{i}", label_visibility="collapsed")
             ui_state[str(i)]["af"] = checked
-            if checked: cols[i+1].markdown("<div class='af-status-on'>🌙 予定</div>", unsafe_allow_html=True)
-            else: cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
+            
+            if checked:
+                saved_loc = fixed_locs.get(str(i), {}).get("af", campus_options[0])
+                loc_idx = campus_options.index(saved_loc) if saved_loc in campus_options else 0
+                target_campus = cols[i+1].selectbox("場所", campus_options, index=loc_idx, key=f"loc_af_{i}", label_visibility="collapsed")
+                ui_state[str(i)]["af_loc"] = target_campus
+                cols[i+1].markdown(f"<div class='af-status-on' style='font-size:10px; padding:2px 0;'>🌙 {target_campus}</div>", unsafe_allow_html=True)
+            else: 
+                cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
         st.markdown("<div style='height: 5px;'></div>", unsafe_allow_html=True)
         
         cols = st.columns(col_ratios)
@@ -880,19 +905,35 @@ def main():
         st.markdown("<br><br>", unsafe_allow_html=True)
         if st.button("💾 時間割を保存する", use_container_width=True, type="primary"):
             new_fixed_sched = {}
+            new_fixed_locs = {}
             for i in range(5):
                 wd_str = str(i); new_bin = ["0"] * 96
-                if ui_state[wd_str]["p1"]: new_bin[36:42] = ["1"] * 6
-                if ui_state[wd_str]["p2"]: new_bin[43:49] = ["1"] * 6
-                if ui_state[wd_str]["p3"]: new_bin[53:59] = ["1"] * 6
-                if ui_state[wd_str]["p4"]: new_bin[60:66] = ["1"] * 6
-                if ui_state[wd_str]["p5"]: new_bin[67:73] = ["1"] * 6
+                day_locs = {}
+                
+                if ui_state[wd_str]["p1"]: 
+                    new_bin[36:42] = ["1"] * 6
+                    day_locs["p1"] = ui_state[wd_str]["p1_loc"]
+                if ui_state[wd_str]["p2"]: 
+                    new_bin[43:49] = ["1"] * 6
+                    day_locs["p2"] = ui_state[wd_str]["p2_loc"]
+                if ui_state[wd_str]["p3"]: 
+                    new_bin[53:59] = ["1"] * 6
+                    day_locs["p3"] = ui_state[wd_str]["p3_loc"]
+                if ui_state[wd_str]["p4"]: 
+                    new_bin[60:66] = ["1"] * 6
+                    day_locs["p4"] = ui_state[wd_str]["p4_loc"]
+                if ui_state[wd_str]["p5"]: 
+                    new_bin[67:73] = ["1"] * 6
+                    day_locs["p5"] = ui_state[wd_str]["p5_loc"]
                 if ui_state[wd_str]["af"]:
                     end_idx = time_master.index(ui_state[wd_str]["af_end"])
                     new_bin[74:end_idx] = ["1"] * (end_idx - 74)
+                    day_locs["af"] = ui_state[wd_str]["af_loc"]
+                    
                 new_fixed_sched[wd_str] = "".join(new_bin)
+                new_fixed_locs[wd_str] = day_locs
                 
-            payload = {"user_id": user['user_id'], "fixed_schedule": new_fixed_sched}
+            payload = {"user_id": user['user_id'], "fixed_schedule": new_fixed_sched, "group_4": json.dumps(new_fixed_locs)}
             res = call_gas("update_user", {"payload": payload}, method="POST")
             if res.get("status") == "success":
                 st.session_state.auth = res.get("data")
@@ -1392,6 +1433,9 @@ def main():
             week_nav_display = "flex"
 
             fixed_sched = user.get("fixed_schedule", {})
+            try: fixed_locs = json.loads(user.get("group_4", "{}"))
+            except: fixed_locs = {}
+
             unavail_col_rows = {}
             for c, date_obj in enumerate(date_objs):
                 wd = str(date_obj.weekday())
@@ -1400,7 +1444,16 @@ def main():
                     unavail_global_idxs = [i for i, bit in enumerate(day_bin) if bit == '1']
                     unavail_rows = []
                     for gi in unavail_global_idxs:
-                        if s_idx <= gi <= e_idx: unavail_rows.append(gi - s_idx)
+                        if s_idx <= gi <= e_idx:
+                            # 💡 どのコマに属するか判定してキャンパスを取得
+                            campus = ""
+                            if 36 <= gi < 42: campus = fixed_locs.get(wd, {}).get("p1", "")
+                            elif 43 <= gi < 49: campus = fixed_locs.get(wd, {}).get("p2", "")
+                            elif 53 <= gi < 59: campus = fixed_locs.get(wd, {}).get("p3", "")
+                            elif 60 <= gi < 66: campus = fixed_locs.get(wd, {}).get("p4", "")
+                            elif 67 <= gi < 73: campus = fixed_locs.get(wd, {}).get("p5", "")
+                            elif 74 <= gi: campus = fixed_locs.get(wd, {}).get("af", "")
+                            unavail_rows.append({"row": gi - s_idx, "campus": campus})
                     if unavail_rows: unavail_col_rows[str(c)] = unavail_rows
                     
         else: # 🏫 timetable モード
@@ -1413,17 +1466,20 @@ def main():
             week_nav_display = "none"
             
             fixed_sched = user.get("fixed_schedule", {})
+            try: fixed_locs = json.loads(user.get("group_4", "{}"))
+            except: fixed_locs = {}
+
             unavail_col_rows = {}
             for c, wd in enumerate(["0", "1", "2", "3", "4"]):
                 if wd in fixed_sched:
                     day_bin = fixed_sched[wd]
                     u_rows = []
-                    if "1" in day_bin[36:42]: u_rows.append(0)
-                    if "1" in day_bin[43:49]: u_rows.append(1)
-                    if "1" in day_bin[53:59]: u_rows.append(2)
-                    if "1" in day_bin[60:66]: u_rows.append(3)
-                    if "1" in day_bin[67:73]: u_rows.append(4)
-                    if "1" in day_bin[74:]: u_rows.append(5)
+                    if "1" in day_bin[36:42]: u_rows.append({"row": 0, "campus": fixed_locs.get(wd, {}).get("p1", "")})
+                    if "1" in day_bin[43:49]: u_rows.append({"row": 1, "campus": fixed_locs.get(wd, {}).get("p2", "")})
+                    if "1" in day_bin[53:59]: u_rows.append({"row": 2, "campus": fixed_locs.get(wd, {}).get("p3", "")})
+                    if "1" in day_bin[60:66]: u_rows.append({"row": 3, "campus": fixed_locs.get(wd, {}).get("p4", "")})
+                    if "1" in day_bin[67:73]: u_rows.append({"row": 4, "campus": fixed_locs.get(wd, {}).get("p5", "")})
+                    if "1" in day_bin[74:]: u_rows.append({"row": 5, "campus": fixed_locs.get(wd, {}).get("af", "")})
                     if u_rows: unavail_col_rows[str(c)] = u_rows
 
         if "df_input" not in st.session_state or st.session_state.get("last_build_ev_id") != event['event_id']:
@@ -1495,8 +1551,7 @@ def main():
                                     st.error("取得に失敗しました。GAS側の権限承認が済んでいるか確認してください。")
 
             st.markdown("---")
-            
-            # 💡 追加: デフォルトキャンパスのプルダウン設定
+
             user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
             default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
             campus_options = MASTER_G1 + ["その他/移動中"]
@@ -1556,7 +1611,7 @@ def main():
                         <div style="display:flex; gap:10px; align-items:center;">先: <div class="ms-container"><div class="ms-header" onclick="window.toggleList('c-tgt-list');">対象日を選択 <span>▼</span></div><div id="c-tgt-list" class="ms-options" style="display:none;"><label class="ms-opt" style="font-weight:bold;"><input type="checkbox" onchange="document.querySelectorAll('.c-tgt-chk').forEach(c => c.checked = this.checked)"> 全て選択 / 解除</label><hr style="margin:5px 0; border:0; border-top:1px solid #ccc;">{c_tgt_opts_html}</div></div><button class="st-btn" onclick="window.doCopy(this)" style="background:#FF9800;">コピー実行</button></div>
                     </div>
                     <div class="tool-card"><div class="tool-header">⏰ 時間割パワー反映</div>
-                        <p style="font-size:12px; color:#555; margin:0 0 10px 0;">DBに保存されたあなたの時間割を展開し、グレー色で自動反映させます。</p>
+                        <p style="font-size:12px; color:#555; margin:0 0 10px 0;">DBに保存された時間割を展開し、場所情報付きで自動反映させます。</p>
                         <button class="st-btn" onclick="window.doTimetable(this)" style="background:#E91E63; width:100%;">{tt_btn_text}</button>
                     </div>
                 </div>"""
@@ -1592,7 +1647,7 @@ def main():
                 .scroll-wrapper {{ {scroll_css} overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff; }}
                 .time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
                 .header-cell {{ position: sticky; top: 0; z-index: 11; background: #eee; text-align: center; font-size: 13px; padding: 5px 0; font-weight: bold; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; line-height: 1.2; }}
-                .top-left-cell {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-sizing: border-box; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); }}
+                .top-left-cell {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
             </style>
             {tools_html}
             <div style='display:flex; justify-content:flex-end; align-items:flex-end; margin-bottom:10px;'>
