@@ -56,7 +56,6 @@ GAS_URL = "https://script.google.com/macros/s/AKfycby7hAc1_dhSQ_tJzSiJeSc2Ez7pga
 # コンポーネント (rt_editor, options_editor, grid_editor)
 # ==========================================
 
-# 💡 キャッシュ防止のため、必ず上書きするように修正
 os.makedirs("rt_editor", exist_ok=True)
 with open("rt_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""
@@ -217,7 +216,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
     
     #detail-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999999; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-    .modal-content { background: #fff; width: 300px; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: popIn 0.2s ease-out; }
+    .modal-content { background: #fff; width: 300px; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: popIn 0.2s ease-out; position: relative; }
     @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
     .modal-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 15px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
     .modal-label { font-size: 12px; font-weight: bold; color: #666; margin-top: 10px; display: block; }
@@ -229,6 +228,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
     .c { position: relative; transition: filter 0.2s; }
     
+    /* 💡 長押しアニメーション */
     @keyframes pressAnim {
         0% { transform: scale(1); filter: brightness(1); }
         25% { transform: scale(0.95); filter: brightness(0.85); }
@@ -237,10 +237,13 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         100% { transform: scale(0.9) rotate(0deg); filter: brightness(0.7); box-shadow: inset 0 4px 8px rgba(0,0,0,0.3); }
     }
     .pressing { animation: pressAnim 0.5s forwards; z-index: 100; }
+    
+    /* パレットドラッグ用のヘッダー */
+    #palette-header { background: #eee; border-radius: 8px 8px 0 0; margin: -12px -8px 8px -8px; padding: 8px; font-size: 12px; font-weight: bold; color: #555; text-align: center; cursor: move; user-select: none; }
     </style></head><body>
     
-    <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.85); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
-        <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
+    <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
+        <div id="palette-header">🤚 ドロップで移動</div>
         <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
         <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333;">未定</button>
         <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
@@ -277,27 +280,89 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     window.cellDetails = {}; 
     let defaultCampus = ""; 
 
+    // 💡 パレットのドラッグを安全にするための修正
+    const palette = document.getElementById('palette');
+    const pHeader = document.getElementById('palette-header');
+    let isDraggingPalette = false;
+    let offsetX, offsetY;
+
+    pHeader.addEventListener('mousedown', e => {
+        isDraggingPalette = true;
+        offsetX = e.clientX - palette.getBoundingClientRect().left;
+        offsetY = e.clientY - palette.getBoundingClientRect().top;
+    });
+    window.addEventListener('mousemove', e => {
+        if (!isDraggingPalette) return;
+        palette.style.left = (e.clientX - offsetX) + 'px';
+        palette.style.top = (e.clientY - offsetY) + 'px';
+        palette.style.right = 'auto';
+    });
+    window.addEventListener('mouseup', () => { isDraggingPalette = false; });
+
+    pHeader.addEventListener('touchstart', e => {
+        isDraggingPalette = true;
+        const touch = e.touches[0];
+        offsetX = touch.clientX - palette.getBoundingClientRect().left;
+        offsetY = touch.clientY - palette.getBoundingClientRect().top;
+    }, {passive: false});
+    window.addEventListener('touchmove', e => {
+        if (!isDraggingPalette) return;
+        const touch = e.touches[0];
+        palette.style.left = (touch.clientX - offsetX) + 'px';
+        palette.style.top = (touch.clientY - offsetY) + 'px';
+        palette.style.right = 'auto';
+        e.preventDefault();
+    }, {passive: false});
+    window.addEventListener('touchend', () => { isDraggingPalette = false; });
+
+    // 💡 モーダル外枠クリックでキャンセル
     const modalBg = document.getElementById('detail-modal');
     modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
     modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
 
+    // 💡 キャンパスごとの模様と色の更新処理
     window.upd = function(el, v) { 
         el.dataset.v = v; 
-        if (v == 1) { el.style.background = '#4CAF50'; el.style.backgroundImage = 'none'; }
-        else if (v == 2) { el.style.background = '#FFEB3B'; el.style.backgroundImage = 'none'; }
-        else if (v == 3) { el.style.background = '#e0e0e0'; el.style.backgroundImage = 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)'; }
-        else { el.style.background = '#fff'; el.style.backgroundImage = 'none'; }
-
         const key = `${el.dataset.r}_${el.dataset.c}`;
         
-        if ((v == 1 || v == 2) && defaultCampus && !window.cellDetails[key]) {
+        let detail = window.cellDetails[key];
+        
+        // 塗った瞬間にデフォルトキャンパスを付与
+        if ((v == 1 || v == 2) && defaultCampus && !detail) {
             window.cellDetails[key] = {campus: defaultCampus, note: ""};
+            detail = window.cellDetails[key];
         } else if (v == 0) {
             delete window.cellDetails[key];
+            detail = null;
+        }
+
+        let campus = detail ? detail.campus : "";
+        let bgImage = 'none';
+        let bgColor = '#fff';
+
+        if (v == 1) bgColor = '#4CAF50';
+        else if (v == 2) bgColor = '#FFEB3B';
+        else if (v == 3) { bgColor = '#e0e0e0'; bgImage = 'repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)'; }
+
+        // キャンパス別の模様
+        if (v == 1 || v == 2) {
+            if (campus === "杉本") bgImage = 'repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 10px, transparent 10px, transparent 20px)';
+            else if (campus === "阿倍野") bgImage = 'repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 10px, transparent 10px, transparent 20px)';
+            else if (campus === "りんくう") bgImage = 'radial-gradient(circle, rgba(255,255,255,0.4) 3px, transparent 4px)';
+            else if (campus === "もりのみや") bgImage = 'repeating-linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 5px, transparent 5px, transparent 10px)';
+        }
+
+        el.style.background = bgColor;
+        if (bgImage !== 'none') {
+            el.style.backgroundImage = bgImage;
+            if (campus === "りんくう") el.style.backgroundSize = '15px 15px';
+            else el.style.backgroundSize = 'auto';
+        } else {
+            el.style.backgroundImage = 'none';
         }
 
         const existingIcon = el.querySelector('.memo-icon');
-        if (window.cellDetails[key] && (window.cellDetails[key].campus || window.cellDetails[key].note)) {
+        if (detail && (detail.campus || detail.note)) {
             if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>');
         } else {
             if (existingIcon) existingIcon.remove();
@@ -400,7 +465,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             document.getElementById("content").innerHTML = args.html_code;
             totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
             window.cellDetails = args.cellDetails || {};
-            defaultCampus = args.defaultCampus || "";
+            defaultCampus = args.defaultCampus || ""; 
             
             if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
             window.renderWeek();
@@ -555,7 +620,6 @@ def main():
     if "app_initialized" not in st.session_state:
         st.session_state.app_initialized = True
 
-    # 💡 成功メッセージの表示（リロード後に出すための仕組みを追加）
     if st.session_state.get("save_success_msg"):
         st.toast(st.session_state.save_success_msg, icon="✅")
         st.session_state.save_success_msg = None
@@ -566,11 +630,9 @@ def main():
 
     if "auth" not in st.session_state: st.session_state.auth = None
     
-    # 💡 入学年度は「現在の西暦」から自動計算（現在の年の6年前〜1年後まで）
     current_year = datetime.now().year
     MASTER_G2 = [f"{year}年度" for year in range(current_year - 6, current_year + 2)]
     
-    # 💡 キャンパスとオプションはスプレッドシート(master_config)から取得
     config_res = call_gas_cached("get_config", method="POST", ttl=3600)
     if config_res.get("status") == "success":
         MASTER_G1 = config_res["data"]["g1"]
@@ -693,7 +755,7 @@ def main():
         safe_def_g2 = [x for x in def_g2 if x in MASTER_G2]
         safe_def_g3 = [x for x in def_g3 if x in MASTER_G3]
 
-        upd_g1 = st.multiselect("🏫 キャンパス", MASTER_G1, default=safe_def_g1, key="upd_g1")
+        upd_g1 = st.multiselect("🏫 現在通っているキャンパス", MASTER_G1, default=safe_def_g1, key="upd_g1")
         upd_g2 = st.multiselect("🎓 入学年度", MASTER_G2, default=safe_def_g2, key="upd_g2")
         upd_g3 = st.multiselect("🤝 オプション", MASTER_G3, default=safe_def_g3, key="upd_g3")
 
@@ -1433,6 +1495,16 @@ def main():
                                     st.error("取得に失敗しました。GAS側の権限承認が済んでいるか確認してください。")
 
             st.markdown("---")
+            
+            # 💡 追加: デフォルトキャンパスのプルダウン設定
+            user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
+            default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
+            campus_options = MASTER_G1 + ["その他/移動中"]
+            default_index = campus_options.index(default_campus_initial) if default_campus_initial in campus_options else 0
+            
+            st.markdown("##### 📍 今回のデフォルト所在地")
+            selected_default_campus = st.selectbox("「可」を塗った時に自動で設定されるキャンパス", campus_options, index=default_index)
+            st.info(f"💡 マスを塗ると自動的に「{selected_default_campus}」として登録されます。個別に変更したい場合やメモを残す場合は、そのマスを**長押し**してください。")
 
             m = st.session_state.df_input[date_strs].values.tolist()
             time_opts_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(time_labels)])
@@ -1539,7 +1611,6 @@ def main():
             {submit_btn_html}
             """
             
-            # 💡 自分の既存の詳細設定データ (cell_details) を取得
             my_cell_details = {}
             for r in st.session_state.event_responses:
                 if str(r['user_id']) == str(user['user_id']) and r.get('cell_details'):
@@ -1549,27 +1620,6 @@ def main():
                     except:
                         pass
 
-            # 💡 ユーザーのプロフィールから一番目のキャンパスをデフォルトとして取得
-            user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
-            default_campus = user_campuses[0] if user_campuses else ""
-
-            # 💡 画面上に現在の設定を表示
-            if default_campus:
-                st.markdown(f"""
-                <div style='background: #e8f5e9; padding: 10px 15px; border-radius: 8px; border-left: 5px solid #4CAF50; margin-bottom: 15px;'>
-                    <b style='color: #2e7d32;'>📍 現在のデフォルト入力拠点: {default_campus}</b><br>
-                    <span style='font-size: 12px; color: #555;'>「可」で塗ると自動的にこのキャンパスが登録されます。別の場所にする場合やメモを残す場合は、<b>マスを長押し</b>してください。</span>
-                </div>
-                """, unsafe_allow_html=True)
-            else:
-                st.markdown(f"""
-                <div style='background: #fff3e0; padding: 10px 15px; border-radius: 8px; border-left: 5px solid #ff9800; margin-bottom: 15px;'>
-                    <b style='color: #e65100;'>📍 デフォルト入力拠点: 未設定</b><br>
-                    <span style='font-size: 12px; color: #555;'>プロフィールの「キャンパス」を設定すると、塗った際に自動で場所が登録されます。個別に場所やメモを設定する場合は、<b>マスを長押し</b>してください。</span>
-                </div>
-                """, unsafe_allow_html=True)
-
-            # 💡 変更: grid_editor に defaultCampus を渡す
             raw = grid_editor(
                 html_code=html_code, 
                 rows=len(time_labels), 
@@ -1579,7 +1629,7 @@ def main():
                 unavailColRows=unavail_col_rows, 
                 saveTs=st.session_state.get("last_saved_ts", 0), 
                 cellDetails=my_cell_details, 
-                defaultCampus=default_campus, 
+                defaultCampus=selected_default_campus, 
                 default=None, 
                 key=f"editor_{event['event_id']}"
             )
@@ -1590,7 +1640,6 @@ def main():
                     st.session_state.df_input = pd.DataFrame(raw["data"], index=time_labels, columns=date_strs)
                     st.session_state.my_comment = raw.get("comment", "")
                     
-                    # 💡 コンポーネントから返ってきた cell_details を取得
                     cell_details_json = raw.get("cell_details", {})
                     
                     all_res = []
@@ -1603,7 +1652,6 @@ def main():
                                 bits[t_idx] = str(int(st.session_state.df_input.loc[time_labels[t_idx], d_id]))
                         all_res.append({"date": d_id, "binary": "".join(bits)})
                     
-                    # 💡 payload に cell_details を追加して GAS へ送信
                     call_gas("submit_binary_response", {
                         "payload": {
                             "event_id": event["event_id"], 
@@ -1641,15 +1689,15 @@ def main():
             all_g2_sorted = sort_groups(list(all_g2), MASTER_G2)
             all_g3_sorted = sort_groups(list(all_g3), MASTER_G3)
 
-            with st.expander("🔍 絞り込みフィルター（回答者・時間帯・日付）", expanded=False):
+            with st.expander("🔍 絞り込みフィルター（回答者・所在地・時間帯・日付）", expanded=False):
                 with st.form("filter_form"):
                     st.markdown("<span style='font-size:14px; color:#555;'>指定した条件に合致するデータだけをグラフに表示します。（未選択の場合はすべて表示）</span>", unsafe_allow_html=True)
                     
-                    st.markdown("##### 👥 回答者")
+                    st.markdown("##### 👥 回答者・所在地")
                     f_col1, f_col2 = st.columns(2)
                     with f_col1:
-                        f_g1 = st.multiselect("🏫 キャンパス", all_g1_sorted)
-                        f_g3 = st.multiselect("🤝 オプション", all_g3_sorted)
+                        f_g1 = st.multiselect("🏫 現在通っているキャンパス (プロフィール)", all_g1_sorted)
+                        f_locs = st.multiselect("📍 所在地 (回答時に指定したキャンパス)", MASTER_G1 + ["その他/移動中"])
                     with f_col2:
                         f_g2 = st.multiselect("🎓 入学年度", all_g2_sorted)
                         f_names = st.multiselect("👤 特定の個人", sorted(all_names))
@@ -1679,7 +1727,20 @@ def main():
                 if f_names and r['user_name'] not in f_names: continue
                 if f_g1 and not set(f_g1).intersection(set(u_g1)): continue
                 if f_g2 and not set(f_g2).intersection(set(u_g2)): continue
-                if f_g3 and not set(f_g3).intersection(set(u_g3)): continue
+                
+                # 💡 追加: 所在地 (回答したキャンパス) フィルター
+                if f_locs:
+                    user_locs = set()
+                    if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
+                        try:
+                            cd = json.loads(r['cell_details'])
+                            for k, v in cd.items():
+                                if v.get('campus'):
+                                    user_locs.add(v['campus'])
+                        except:
+                            pass
+                    if not set(f_locs).intersection(user_locs):
+                        continue
                 
                 filtered_data.append(r)
             
@@ -1728,7 +1789,6 @@ def main():
                                 z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
                                 
                                 if can_view_details:
-                                    # 💡 保存された詳細設定 (cell_details) を解析して表示に加える
                                     campus_str = ""
                                     note_str = ""
                                     if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
