@@ -1793,10 +1793,10 @@ def main():
                     f_col1, f_col2 = st.columns(2)
                     with f_col1:
                         f_g1 = st.multiselect("🏫 現在通っているキャンパス (プロフィール)", all_g1_sorted)
-                        # 💡 修正: 所在地フィルター
                         f_locs = st.multiselect("📍 所在地 (回答時に指定したキャンパス)", MASTER_G1 + ["その他/移動中"])
                     with f_col2:
                         f_g2 = st.multiselect("🎓 入学年度", all_g2_sorted)
+                        f_g3 = st.multiselect("🤝 オプション", all_g3_sorted) # 💡 ここが消えていたためエラーになっていました！復活させました
                         f_names = st.multiselect("👤 特定の個人", sorted(all_names))
                         
                     st.markdown("---")
@@ -1826,6 +1826,20 @@ def main():
                 if f_g1 and not set(f_g1).intersection(set(u_g1)): continue
                 if f_g2 and not set(f_g2).intersection(set(u_g2)): continue
                 if f_g3 and not set(f_g3).intersection(set(u_g3)): continue
+                
+                # 💡 追加: 所在地 (回答したキャンパス) フィルター
+                if f_locs:
+                    user_locs = set()
+                    if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
+                        try:
+                            cd = json.loads(r['cell_details'])
+                            for k, v in cd.items():
+                                if v.get('campus'):
+                                    user_locs.add(v['campus'])
+                        except:
+                            pass
+                    if not set(f_locs).intersection(user_locs):
+                        continue
                 
                 filtered_data.append(r)
             
