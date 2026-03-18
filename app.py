@@ -224,8 +224,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
     .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
     .modal-btn-save:hover { background: #45a049; }
-    .modal-btn-cancel { flex: 1; background: #eee; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-    .modal-btn-cancel:hover { background: #ddd; }
     
     .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
     .c { position: relative; transition: filter 0.2s; }
@@ -265,8 +263,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             <label class="modal-label">📝 補足コメント (任意)</label>
             <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
             <div class="modal-btns">
-                <button class="modal-btn-cancel" onclick="closeModal()">キャンセル</button>
-                <button class="modal-btn-save" onclick="saveModal()">💾 保存</button>
+                <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
             </div>
             <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
         </div>
@@ -325,15 +322,18 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         
         let detail = window.cellDetails[key];
         
-        if ((v == 1 || v == 2) && defaultCampus && !detail) {
-            window.cellDetails[key] = {campus: defaultCampus, note: ""};
-            detail = window.cellDetails[key];
-        } else if (v == 0) {
+        // 💡 通信短縮: デフォルトかつコメントなしの場合はJSONから削除
+        if (v == 0) {
             delete window.cellDetails[key];
             detail = null;
+        } else if ((v == 1 || v == 2) && detail) {
+            if (detail.campus === defaultCampus && !detail.note) {
+                delete window.cellDetails[key];
+                detail = null;
+            }
         }
 
-        let campus = detail ? detail.campus : "";
+        let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : "");
         let bgImage = 'none';
         let bgColor = '#fff';
 
@@ -344,17 +344,18 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         // 💡 キャンパスごとの模様設定
         if (v == 1 || v == 2 || v == 3) {
             let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
-            if (campus === "杉本") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 5px, transparent 5px, transparent 10px)`;
-            else if (campus === "あべの" || campus === "阿倍野") bgImage = `repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 5px, transparent 5px, transparent 10px)`;
+            let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)';
+            if (campus === "杉本") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
+            else if (campus === "あべの" || campus === "阿倍野") bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`;
             else if (campus === "りんくう") bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`;
-            else if (campus === "もりのみや") bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 5px, transparent 5px, transparent 10px)`;
-            else if (campus === "その他/移動中") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 3px, transparent 3px, transparent 6px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 3px, transparent 3px, transparent 6px)`;
-            else if (v == 3 && !campus) bgImage = `repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)`; 
+            else if (campus === "もりのみや") bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
+            else if (campus === "その他/移動中") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`;
+            else if (v == 3 && !campus) bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; 
         }
 
         el.style.background = bgColor;
         el.style.backgroundImage = bgImage;
-        if (campus === "りんくう") el.style.backgroundSize = '12px 12px';
+        if (campus === "りんくう") el.style.backgroundSize = '10px 10px';
         else el.style.backgroundSize = 'auto';
 
         const existingIcon = el.querySelector('.memo-icon');
@@ -620,6 +621,22 @@ def format_deadline_jp(date_str):
         return f"{dt.month}/{dt.day}({wday}) {dt.strftime('%H:%M')}"
     except Exception as e:
         return str(date_str)
+
+# 💡 キャンパス模様のサンプル用HTML
+campus_legend_html = """
+<div style="margin-bottom: 15px; padding: 12px; background: #fff; border-radius: 8px; border: 1px solid #ddd; font-size: 13px; color: #555;">
+    <strong style="display:block; margin-bottom:8px; color:#333;">🎨 キャンパスの模様サンプル (「可」に塗った場合)</strong>
+    <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; border-radius:3px;"></div>なかもず</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>杉本</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>あべの</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.3) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div>りんくう</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>もりのみや</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div>移動・他</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.7) 4px, rgba(255,255,255,0.7) 8px); border-radius:3px; border:1px solid #ccc;"></div>授業等(グレー)</div>
+    </div>
+</div>
+"""
 
 def main():
     if "app_initialized" not in st.session_state:
@@ -943,6 +960,7 @@ def main():
             else:
                 st.error("更新に失敗しました。")
         return
+
     # ----------------------------------------------------
     # ➕ イベント新規作成画面
     # ----------------------------------------------------
@@ -1045,7 +1063,6 @@ def main():
             elif ev_type == "options" and not any(o.strip() for o in opts_list): st.error("最低1つの候補を入力してください。")
             elif not is_all_members and target_scope_json == '{"groups": [], "users": []}': st.error("対象メンバーを指定するか、「全員に公開する」にチェックを入れてください。")
             else:
-                # 💡 Discord向けメンション設定
                 if is_all_members:
                     mention_text = "@everyone"
                 else:
@@ -1512,6 +1529,23 @@ def main():
             else: cell_h = "36px"
 
         tab_in, tab_graph = st.tabs(["📅 入力", "📊 集計"])
+        
+        # 💡 キャンパスごとの模様サンプルを生成して表示
+        campus_legend_html = """
+        <div style="margin-bottom: 10px; padding: 10px; background: #fafafa; border-radius: 8px; border: 1px solid #e0e0e0; font-size: 12px; color: #555;">
+            <strong style="display:block; margin-bottom:8px; color:#333;">🎨 キャンパスの模様</strong>
+            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; border-radius:3px;"></div>なかもず</div>
+                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>杉本</div>
+                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>あべの</div>
+                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div>りんくう</div>
+                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>もりのみや</div>
+                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div>移動・他</div>
+                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.8) 4px, rgba(255,255,255,0.8) 8px); border-radius:3px; border:1px solid #ccc;"></div>授業等(未登録)</div>
+            </div>
+        </div>
+        """
+
         with tab_in:
             if event_type == 'time':
                 st.markdown("##### 📅 カレンダー連携")
@@ -1560,6 +1594,8 @@ def main():
             st.markdown("##### 📍 今回のデフォルト所在地")
             selected_default_campus = st.selectbox("「可」を塗った時に自動で設定されるキャンパス", campus_options, index=default_index)
             st.info(f"💡 マスを塗ると自動的に「{selected_default_campus}」として登録されます。個別に変更したい場合やメモを残す場合は、そのマスを**長押し**してください。")
+            
+            st.markdown(campus_legend_html, unsafe_allow_html=True)
 
             m = st.session_state.df_input[date_strs].values.tolist()
             time_opts_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(time_labels)])
@@ -1696,6 +1732,8 @@ def main():
                     st.session_state.my_comment = raw.get("comment", "")
                     
                     cell_details_json = raw.get("cell_details", {})
+                    # 💡 通信短縮: 空白を削除して送る
+                    cell_details_str = json.dumps(cell_details_json, separators=(',', ':')) if cell_details_json else "{}"
                     
                     all_res = []
                     for d_id in date_strs:
@@ -1712,7 +1750,7 @@ def main():
                             "event_id": event["event_id"], 
                             "user_id": user["user_id"], 
                             "comment": st.session_state.my_comment, 
-                            "cell_details": cell_details_json, 
+                            "cell_details": cell_details_str, 
                             "responses": all_res
                         }
                     }, method="POST")
@@ -1722,6 +1760,8 @@ def main():
 
         with tab_graph:
             st.subheader("📊 全体の集計結果")
+            st.markdown(campus_legend_html, unsafe_allow_html=True)
+            
             col1, col2 = st.columns([2, 1])
             with col1: policy = st.radio("「未定(△)」の計算方法", [0.5, 1.0, 0.0], format_func=lambda x: f"{x}人としてカウント", horizontal=True)
             with col2:
@@ -1836,31 +1876,39 @@ def main():
                             c_idx = disp_date_strs.index(r['date']); b = str(r.get('binary', "")).replace("'", "").zfill(96)
                             for disp_r, t_str in enumerate(disp_time_labels):
                                 orig_r_idx = time_labels.index(t_str)
-                                if event_type == 'time': v = int(b[s_idx + orig_r_idx]) if (s_idx + orig_r_idx) < 96 else 0
-                                else: v = int(b[orig_r_idx]) if orig_r_idx < 96 else 0
                                 
-                                if v == 3: v = 0
+                                # 💡 修正: 授業（3）もツールチップの対象にするため、元の値を保持
+                                if event_type == 'time': orig_v = int(b[s_idx + orig_r_idx]) if (s_idx + orig_r_idx) < 96 else 0
+                                else: orig_v = int(b[orig_r_idx]) if orig_r_idx < 96 else 0
+                                
+                                v = 0 if orig_v == 3 else orig_v
                                 z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
                                 
-                                if can_view_details:
-                                    campus_str = ""
+                                if can_view_details and orig_v in [1, 2, 3]:
+                                    u_campuses = [x.strip() for x in r.get('group_1', '').split(',') if x.strip()]
+                                    u_default_campus = u_campuses[0] if u_campuses else ""
+                                    
+                                    cell_campus = u_default_campus if orig_v in [1, 2] else ""
                                     note_str = ""
+                                    
                                     if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
                                         try:
                                             cd = json.loads(r['cell_details'])
                                             cell_key = f"{orig_r_idx}_{c_idx}"
                                             if cell_key in cd:
                                                 if cd[cell_key].get('campus'): 
-                                                    campus_str = f" ({cd[cell_key]['campus']})"
+                                                    cell_campus = cd[cell_key]['campus']
                                                 if cd[cell_key].get('note'): 
                                                     note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cd[cell_key]['note']}]</span>"
                                         except:
                                             pass
                                             
+                                    campus_str = f" ({cell_campus})" if cell_campus else ""
                                     name_html = f"{r['user_name']}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
                                     
-                                    if v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
-                                    elif v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
+                                    if orig_v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
+                                    elif orig_v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
+                                    elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>📓 {name_html}</span><br>"
                     
                     max_z = np.max(z) if np.max(z) > 0 else 1
                     
