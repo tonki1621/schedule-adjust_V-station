@@ -632,33 +632,63 @@ def format_deadline_jp(date_str):
     except Exception as e:
         return str(date_str)
 
-# 💡 キャンパス模様のサンプル用HTML (表形式にデザイン変更)
+# 💡 キャンパス模様のサンプル用HTML (緑・灰の2パターンを併記)
 campus_legend_html = """
 <div style="margin-bottom: 20px; padding: 15px; background: #fdfdfd; border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
-    <strong style="display:block; margin-bottom:10px; color:#2e7d32; font-size:14px;">🎨 表示アイコン・模様の解説</strong>
-    <table style="width:100%; border-collapse: collapse; font-size: 13px;">
-        <tr style="background: #f1f1f1;">
-            <th style="padding: 8px; border: 1px solid #ddd; width: 25%;">マスの状態</th>
-            <th style="padding: 8px; border: 1px solid #ddd;">所在地ごとの模様（キャンパス）</th>
-        </tr>
-        <tr>
-            <td style="padding: 8px; border: 1px solid #ddd;">
-                <b>◯ 可</b>（緑）<br><br><b>△ 未定</b>（黄）<br><br><b>📓 授業等</b>（灰）
-            </td>
-            <td style="padding: 8px; border: 1px solid #ddd;">
-                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
-                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; border-radius:3px;"></div> なかもず (無地)</div>
-                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> すぎもと (斜線)</div>
-                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> あべの (細線)</div>
-                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div> りんくう (点)</div>
-                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> もりのみや (縦線)</div>
-                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div> 移動/他 (格子)</div>
-                    <div style="display:flex; align-items:center; gap:5px; grid-column: span 3;"><div style="width:16px;height:16px; background:#fff; background-image:repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px); border-radius:3px; border:1px solid #ccc;"></div> バイト/サークル等 (×不可)</div>
-                </div>
-            </td>
-        </tr>
-    </table>
-    <div style="margin-top: 8px; font-size: 11px; color: #888;">※ パレットの「可」で塗ると、現在の拠点キャンパスが自動設定されます。詳細はマスを<b>長押し</b>して編集可能です。</div>
+    <strong style="display:block; margin-bottom:5px; color:#2e7d32; font-size:14px;">🎨 キャンパスごとの模様（色見本）</strong>
+    <div style="font-size: 11.5px; color: #666; margin-bottom: 12px; line-height: 1.4;">
+        左が「可(緑)」または「未定(黄)」、右が「授業等(灰)」として登録された際の見え方です。
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 12px; font-size: 13px; color: #333;">
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; gap:2px;">
+                <div style="width:16px;height:16px; background:#4CAF50; border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+                <div style="width:16px;height:16px; background:#e0e0e0; border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+            </div>
+            <b>なかもず</b>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; gap:2px;">
+                <div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 4px, transparent 4px, transparent 8px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+                <div style="width:16px;height:16px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.7), rgba(255,255,255,0.7) 4px, transparent 4px, transparent 8px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+            </div>
+            <b>すぎもと</b>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; gap:2px;">
+                <div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+                <div style="width:16px;height:16px; background:#e0e0e0; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 4px, transparent 4px, transparent 8px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+            </div>
+            <b>あべの</b>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; gap:2px;">
+                <div style="width:16px;height:16px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.3) 3px, transparent 4px); background-size:10px 10px; border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+                <div style="width:16px;height:16px; background:#e0e0e0; background-image:radial-gradient(circle, rgba(255,255,255,0.7) 3px, transparent 4px); background-size:10px 10px; border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+            </div>
+            <b>りんくう</b>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; gap:2px;">
+                <div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 4px, transparent 4px, transparent 8px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+                <div style="width:16px;height:16px; background:#e0e0e0; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.7), rgba(255,255,255,0.7) 4px, transparent 4px, transparent 8px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+            </div>
+            <b>もりのみや</b>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="display:flex; gap:2px;">
+                <div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 2px, transparent 2px, transparent 4px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+                <div style="width:16px;height:16px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.7), rgba(255,255,255,0.7) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.7), rgba(255,255,255,0.7) 2px, transparent 2px, transparent 4px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+            </div>
+            <b>移動・他</b>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px; grid-column: 1 / -1; margin-top: 5px;">
+            <div style="display:flex; gap:2px;">
+                <div style="width:16px;height:16px; background:#fff; background-image:repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px); border-radius:3px; border:1px solid #ccc; box-sizing:border-box;"></div>
+            </div>
+            <b>バイト/サークル等</b> <span style="font-size:11px; color:#888;">(不可[白]扱いになります)</span>
+        </div>
+    </div>
 </div>
 """
 
