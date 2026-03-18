@@ -211,47 +211,56 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
-    .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
-    .pen-btn:hover { opacity: 0.8; }
+    .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; text-align: center; line-height: 1.1; }
     .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
     
     #detail-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999999; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-    .modal-content { background: #fff; width: 300px; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); animation: popIn 0.2s ease-out; position: relative; }
-    @keyframes popIn { from { transform: scale(0.9); opacity: 0; } to { transform: scale(1); opacity: 1; } }
-    .modal-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 15px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
-    .modal-label { font-size: 12px; font-weight: bold; color: #666; margin-top: 10px; display: block; }
+    .modal-content { background: #fff; width: 320px; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); position: relative; }
+    .modal-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 10px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
+    .modal-label { font-size: 12px; font-weight: bold; color: #666; margin-top: 15px; display: block; }
     .modal-select, .modal-input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
+    
+    /* 💡 ポップアップ内での状態選択ボタン */
+    .status-switch { display: flex; gap: 8px; margin-top: 5px; }
+    .sw-btn { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; background: #f9f9f9; color: #555; transition: 0.2s; }
+    .sw-btn.active[data-v="1"] { background: #4CAF50; color: white; border-color: #4CAF50; }
+    .sw-btn.active[data-v="2"] { background: #FFEB3B; color: #333; border-color: #FBC02D; }
+    .sw-btn.active[data-v="0"] { background: #fff; color: #333; border-color: #999; }
+    
     .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
-    .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
     .modal-btn-save:hover { background: #45a049; }
-    .modal-btn-cancel { flex: 1; background: #eee; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-    .modal-btn-cancel:hover { background: #ddd; }
     
     .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
-    .c { position: relative; transition: filter 0.2s; }
+    .c { position: relative; transition: filter 0.1s; }
     
     @keyframes pressAnim {
         0% { transform: scale(1); filter: brightness(1); }
-        25% { transform: scale(0.95); filter: brightness(0.85); }
-        50% { transform: scale(0.95) rotate(-1deg); filter: brightness(0.8); }
-        75% { transform: scale(0.95) rotate(1deg); filter: brightness(0.8); }
-        100% { transform: scale(0.9) rotate(0deg); filter: brightness(0.7); box-shadow: inset 0 4px 8px rgba(0,0,0,0.3); }
+        100% { transform: scale(0.92); filter: brightness(0.8); box-shadow: inset 0 4px 8px rgba(0,0,0,0.3); }
     }
-    .pressing { animation: pressAnim 0.5s forwards; z-index: 100; }
+    .pressing { animation: pressAnim 0.4s forwards; z-index: 100; }
     
     #palette-header { background: #eee; border-radius: 8px 8px 0 0; margin: -12px -8px 8px -8px; padding: 8px; font-size: 12px; font-weight: bold; color: #555; text-align: center; cursor: move; user-select: none; }
     </style></head><body>
     
     <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
         <div id="palette-header">🤚 ドロップで移動</div>
-        <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
-        <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333;">未定</button>
-        <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
+        <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff; font-size:11px;">可</button>
+        <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333; font-size:11px;">未定</button>
+        <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:11px;">消す</button>
     </div>
 
     <div id="detail-modal">
         <div class="modal-content" id="modal-content-box">
             <div class="modal-title" id="modal-cell-title">詳細設定</div>
+            
+            <label class="modal-label">🚥 予定のステータス</label>
+            <div class="status-switch">
+                <button class="sw-btn" data-v="1" onclick="setModalStatus(1)">◯ 可</button>
+                <button class="sw-btn" data-v="2" onclick="setModalStatus(2)">△ 未定</button>
+                <button class="sw-btn" data-v="0" onclick="setModalStatus(0)">× 不可</button>
+            </div>
+            
             <label class="modal-label">🏫 キャンパスの指定</label>
             <select id="modal-campus" class="modal-select">
                 <option value="">指定なし</option>
@@ -262,11 +271,12 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
                 <option value="もりのみや">もりのみや</option>
                 <option value="その他/移動中">その他 / 移動中</option>
             </select>
+            
             <label class="modal-label">📝 補足コメント (任意)</label>
             <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
+            
             <div class="modal-btns">
-                <button class="modal-btn-cancel" onclick="closeModal()">キャンセル</button>
-                <button class="modal-btn-save" onclick="saveModal()">💾 保存</button>
+                <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
             </div>
             <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
         </div>
@@ -280,44 +290,29 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
     window.cellDetails = {}; 
     let defaultCampus = ""; 
+    let modalStatus = 1;
 
     const palette = document.getElementById('palette');
     const pHeader = document.getElementById('palette-header');
-    let isDraggingPalette = false;
-    let offsetX, offsetY;
+    let isDraggingPalette = false; let offsetX, offsetY;
 
-    pHeader.addEventListener('mousedown', e => {
-        isDraggingPalette = true;
-        offsetX = e.clientX - palette.getBoundingClientRect().left;
-        offsetY = e.clientY - palette.getBoundingClientRect().top;
-    });
-    window.addEventListener('mousemove', e => {
-        if (!isDraggingPalette) return;
-        palette.style.left = (e.clientX - offsetX) + 'px';
-        palette.style.top = (e.clientY - offsetY) + 'px';
-        palette.style.right = 'auto';
-    });
+    pHeader.addEventListener('mousedown', e => { isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; });
+    window.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
     window.addEventListener('mouseup', () => { isDraggingPalette = false; });
-
-    pHeader.addEventListener('touchstart', e => {
-        isDraggingPalette = true;
-        const touch = e.touches[0];
-        offsetX = touch.clientX - palette.getBoundingClientRect().left;
-        offsetY = touch.clientY - palette.getBoundingClientRect().top;
-    }, {passive: false});
-    window.addEventListener('touchmove', e => {
-        if (!isDraggingPalette) return;
-        const touch = e.touches[0];
-        palette.style.left = (touch.clientX - offsetX) + 'px';
-        palette.style.top = (touch.clientY - offsetY) + 'px';
-        palette.style.right = 'auto';
-        e.preventDefault();
-    }, {passive: false});
+    pHeader.addEventListener('touchstart', e => { isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false});
+    window.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
     window.addEventListener('touchend', () => { isDraggingPalette = false; });
 
     const modalBg = document.getElementById('detail-modal');
     modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
     modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
+
+    window.setModalStatus = function(v) {
+        modalStatus = v;
+        document.querySelectorAll('.sw-btn').forEach(b => {
+            b.classList.toggle('active', parseInt(b.dataset.v) === v);
+        });
+    };
 
     window.upd = function(el, v) { 
         el.dataset.v = v; 
@@ -325,18 +320,13 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         
         let detail = window.cellDetails[key];
         
-        // 💡 通信短縮: デフォルトかつコメントなしの場合はJSONから削除
-        if (v == 0) {
-            delete window.cellDetails[key];
-            detail = null;
-        } else if ((v == 1 || v == 2) && detail) {
-            if (detail.campus === defaultCampus && !detail.note) {
-                delete window.cellDetails[key];
-                detail = null;
-            }
+        // デフォルトキャンパス自動適用
+        if ((v == 1 || v == 2) && defaultCampus && !detail) {
+            window.cellDetails[key] = {campus: defaultCampus, note: ""};
+            detail = window.cellDetails[key];
         }
 
-        let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : "");
+        let campus = detail ? detail.campus : "";
         let bgImage = 'none';
         let bgColor = '#fff';
 
@@ -344,7 +334,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         else if (v == 2) bgColor = '#FFEB3B';
         else if (v == 3) bgColor = '#e0e0e0';
 
-        // 💡 キャンパスごとの模様設定
         if (v == 1 || v == 2 || v == 3) {
             let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
             let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)';
@@ -376,7 +365,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         });
         const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
         if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
-        
         setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
     };
     window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
@@ -408,8 +396,16 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
                     const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
                     if(cell) {
                         const cellKey = `${r}_${c}`;
-                        if (campus) window.cellDetails[cellKey] = {campus: campus, note: "定期授業"};
-                        window.upd(cell, 3);
+                        // 💡 追加: バイト・私用は「不可(0)」として反映し、授業は「授業等(3)」とする
+                        if (campus === "💼 バイト/私用") {
+                            window.cellDetails[cellKey] = {campus: "", note: "バイト/私用"};
+                            window.upd(cell, 0); 
+                        } else if (campus) {
+                            window.cellDetails[cellKey] = {campus: campus, note: "定期授業"};
+                            window.upd(cell, 3);
+                        } else {
+                            window.upd(cell, 3);
+                        }
                     }
                 });
             }
@@ -437,8 +433,10 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         const key = `${r}_${c}`;
         const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""};
         
-        document.getElementById('modal-campus').value = detail.campus;
-        document.getElementById('modal-note').value = detail.note;
+        setModalStatus(parseInt(cell.dataset.v) || 1);
+        
+        document.getElementById('modal-campus').value = detail.campus || "";
+        document.getElementById('modal-note').value = detail.note || "";
         document.getElementById('detail-modal').style.display = 'flex';
     };
 
@@ -457,14 +455,13 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         const campus = document.getElementById('modal-campus').value;
         const note = document.getElementById('modal-note').value.trim();
 
-        if(campus || note) {
+        if(campus || note || modalStatus === 0) {
             window.cellDetails[key] = {campus: campus, note: note};
-            if (editingCell.dataset.v == 0) window.upd(editingCell, selectedMode == 0 ? 1 : selectedMode);
+            window.upd(editingCell, modalStatus);
         } else {
             delete window.cellDetails[key];
+            window.upd(editingCell, modalStatus);
         }
-        
-        window.upd(editingCell, editingCell.dataset.v);
         closeModal();
     };
 
@@ -476,6 +473,9 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             window.cellDetails = args.cellDetails || {};
             defaultCampus = args.defaultCampus || ""; 
             
+            // 💡 パレットの文字をキャンパス名付きに
+            document.getElementById('pen-1').innerHTML = defaultCampus ? `可<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可";
+            
             if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
             window.renderWeek();
             
@@ -486,30 +486,19 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
 
             const g = document.getElementById('g'); if(!g) return;
             
-            let down = false;
-            let isErasing = false;
-            let pressTimer = null;
-            let isLongPress = false;
-            let startX = 0, startY = 0;
+            let down = false; let isErasing = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0;
             
             const handleStart = (e, x, y, shift) => {
                 const cell = e.target.closest('.c');
                 if(!cell) return; 
                 
-                down = true; 
-                isErasing = shift;
-                isLongPress = false;
-                startX = x; startY = y;
-                
+                down = true; isErasing = shift; isLongPress = false; startX = x; startY = y;
                 window.upd(cell, isErasing ? 0 : selectedMode); 
                 cell.classList.add('pressing'); 
                 
                 pressTimer = setTimeout(() => {
-                    isLongPress = true;
-                    down = false; 
-                    cell.classList.remove('pressing');
-                    openModal(cell);
-                }, 500);
+                    isLongPress = true; down = false; cell.classList.remove('pressing'); openModal(cell);
+                }, 400);
             };
 
             const handleMove = (e, x, y) => {
@@ -541,10 +530,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             }, {passive: false});
             
             g.addEventListener('touchmove', e => { 
-                if(down) {
-                    handleMove(e, e.touches[0].clientX, e.touches[0].clientY);
-                    e.preventDefault();
-                }
+                if(down) { handleMove(e, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }
             }, {passive: false});
             
             g.addEventListener('touchend', handleEnd);
@@ -553,14 +539,11 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             if(btn) { btn.onclick = () => { 
                 const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); 
                 const commentText = document.getElementById("comment-box").value; 
-                
                 setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
                 btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; document.getElementById('palette').style.display = 'none'; 
             }; }
             
-            document.querySelectorAll('.c').forEach(cell => {
-                window.upd(cell, cell.dataset.v);
-            });
+            document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
         }
     }); init(); </script></body></html>
     """)
@@ -627,23 +610,30 @@ def format_deadline_jp(date_str):
 
 # 💡 キャンパス模様のサンプル用HTML (表形式にデザイン変更)
 campus_legend_html = """
-<div style="margin-bottom: 20px; padding: 12px; background: #fdfdfd; border-radius: 8px; border: 1px solid #ddd; font-size: 13px; color: #444; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
-    <strong style="display:block; margin-bottom:8px; color:#2e7d32;">🎨 キャンパスの模様一覧</strong>
-    <table style="width:100%; border-collapse: collapse; text-align: left; background: #fff;">
-        <tbody>
-            <tr>
-                <td style="padding: 6px; border: 1px solid #eee; width: 33%;"><div style="display:inline-block; width:16px; height:16px; background:#4CAF50; border-radius:3px; vertical-align:middle; margin-right:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.2);"></div> <b>なかもず</b></td>
-                <td style="padding: 6px; border: 1px solid #eee; width: 33%;"><div style="display:inline-block; width:16px; height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px; vertical-align:middle; margin-right:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.2);"></div> <b>杉本</b></td>
-                <td style="padding: 6px; border: 1px solid #eee; width: 33%;"><div style="display:inline-block; width:16px; height:16px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px; vertical-align:middle; margin-right:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.2);"></div> <b>あべの</b></td>
-            </tr>
-            <tr>
-                <td style="padding: 6px; border: 1px solid #eee;"><div style="display:inline-block; width:16px; height:16px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px; vertical-align:middle; margin-right:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.2);"></div> <b>りんくう</b></td>
-                <td style="padding: 6px; border: 1px solid #eee;"><div style="display:inline-block; width:16px; height:16px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px; vertical-align:middle; margin-right:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.2);"></div> <b>もりのみや</b></td>
-                <td style="padding: 6px; border: 1px solid #eee;"><div style="display:inline-block; width:16px; height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px; vertical-align:middle; margin-right:6px; box-shadow: 0 1px 2px rgba(0,0,0,0.2);"></div> <b>移動・他</b></td>
-            </tr>
-        </tbody>
+<div style="margin-bottom: 20px; padding: 15px; background: #fdfdfd; border-radius: 10px; border: 1px solid #ddd; box-shadow: 0 2px 8px rgba(0,0,0,0.05);">
+    <strong style="display:block; margin-bottom:10px; color:#2e7d32; font-size:14px;">🎨 表示アイコン・模様の解説</strong>
+    <table style="width:100%; border-collapse: collapse; font-size: 13px;">
+        <tr style="background: #f1f1f1;">
+            <th style="padding: 8px; border: 1px solid #ddd; width: 25%;">マスの状態</th>
+            <th style="padding: 8px; border: 1px solid #ddd;">所在地ごとの模様（キャンパス）</th>
+        </tr>
+        <tr>
+            <td style="padding: 8px; border: 1px solid #ddd;">
+                <b>◯ 可</b>（緑）<br><br><b>△ 未定</b>（黄）<br><br><b>📓 授業等</b>（灰）
+            </td>
+            <td style="padding: 8px; border: 1px solid #ddd;">
+                <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
+                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; border-radius:3px;"></div> なかもず (無地)</div>
+                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> 杉本 (斜線)</div>
+                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> あべの (細線)</div>
+                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div> りんくう (点)</div>
+                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> もりのみや (縦線)</div>
+                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div> 移動/他 (格子)</div>
+                </div>
+            </td>
+        </tr>
     </table>
-    <div style="margin-top: 6px; font-size: 11.5px; color: #777;">※ 「未定(黄色)」や「授業等(グレー)」の場合も、場所に応じて同じ模様が適用されます。</div>
+    <div style="margin-top: 8px; font-size: 11px; color: #888;">※ パレットの「可」で塗ると、現在の拠点キャンパスが自動設定されます。詳細はマスを<b>長押し</b>して編集可能です。</div>
 </div>
 """
 
@@ -817,7 +807,7 @@ def main():
     # ----------------------------------------------------
     if view_mode == "⏰ 時間割設定":
         st.title("⏰ 時間割設定")
-        st.info("※ここでチェックした授業・予定は、日程調整画面で「不可(×)」として一括反映できます。")
+        st.info("※ここで設定した授業・バイトの予定は、各イベントの日程調整画面で「時間割パワー反映」ボタンを押すことで、不可(×)や授業等(グレー)として一括で自動入力できます。")
         
         st.markdown("""
         <style>
@@ -847,8 +837,6 @@ def main():
                 .tt-time-cell { font-size: 11px !important; padding: 4px 2px !important; border-left: 2px solid #4CAF50 !important; }
                 .tt-time-sub { font-size: 9px !important; display: block; line-height: 1.1; }
                 .status-on, .status-off, .af-status-on { font-size: 10px !important; padding: 2px 0 !important; }
-                [data-testid="stCheckbox"] { margin: 0 auto !important; padding: 0 !important; justify-content: center; }
-                [data-testid="stCheckbox"] label p { display: none !important; }
                 [data-testid="stSelectbox"] { min-width: 0 !important; }
             }
         </style>
@@ -856,17 +844,15 @@ def main():
         """, unsafe_allow_html=True)
         
         fixed_sched = user.get("fixed_schedule", {})
-        
-        try:
-            fixed_locs = json.loads(user.get("group_4", "{}"))
-        except:
-            fixed_locs = {}
+        try: fixed_locs = json.loads(user.get("group_4", "{}"))
+        except: fixed_locs = {}
 
         ui_state = {str(i): {} for i in range(5)}
         days_jp = ["月", "火", "水", "木", "金"]
         col_ratios = [1.1, 1, 1, 1, 1, 1]
         
-        campus_options = MASTER_G1 + ["その他/移動中"]
+        # 💡 バイト等を追加した統合オプション
+        tt_options = ["- (空き)"] + MASTER_G1 + ["その他/移動中", "💼 バイト/私用"]
 
         cols = st.columns(col_ratios)
         cols[0].markdown("<div style='padding:8px;'></div>", unsafe_allow_html=True)
@@ -883,35 +869,54 @@ def main():
             cols[0].markdown(f"<div class='tt-time-cell'>{p_name}<br><span class='tt-time-sub'>{p_time}</span></div>", unsafe_allow_html=True)
             for i in range(5):
                 day_bin = fixed_sched.get(str(i), "0"*96)
-                val = (day_bin[s_idx:e_idx] == "1" * (e_idx - s_idx))
-                checked = cols[i+1].checkbox(" ", value=val, key=f"{p_key}_{i}", label_visibility="collapsed")
-                ui_state[str(i)][p_key] = checked
+                is_occupied = (day_bin[s_idx:e_idx] == "1" * (e_idx - s_idx))
+                saved_loc = fixed_locs.get(str(i), {}).get(p_key, "")
                 
-                if checked: 
-                    saved_loc = fixed_locs.get(str(i), {}).get(p_key, campus_options[0])
-                    loc_idx = campus_options.index(saved_loc) if saved_loc in campus_options else 0
-                    target_campus = cols[i+1].selectbox("場所", campus_options, index=loc_idx, key=f"loc_{p_key}_{i}", label_visibility="collapsed")
-                    ui_state[str(i)][f"{p_key}_loc"] = target_campus
-                    cols[i+1].markdown(f"<div class='status-on' style='font-size:10px; padding:2px 0;'>✔︎ {target_campus}</div>", unsafe_allow_html=True)
-                else: 
+                if not is_occupied: current_val = "- (空き)"
+                elif saved_loc in tt_options: current_val = saved_loc
+                elif saved_loc == "バイト/私用": current_val = "💼 バイト/私用"
+                else: current_val = tt_options[1]
+                
+                selected_opt = cols[i+1].selectbox("予定", tt_options, index=tt_options.index(current_val), key=f"tt_{p_key}_{i}", label_visibility="collapsed")
+                
+                if selected_opt == "- (空き)":
+                    ui_state[str(i)][p_key] = False
                     cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
+                elif selected_opt == "💼 バイト/私用":
+                    ui_state[str(i)][p_key] = True
+                    ui_state[str(i)][f"{p_key}_loc"] = "💼 バイト/私用"
+                    cols[i+1].markdown(f"<div class='status-off' style='background:#f5f5f5; color:#333; font-size:10px; padding:2px 0; border:none;'>💼 バイト等</div>", unsafe_allow_html=True)
+                else:
+                    ui_state[str(i)][p_key] = True
+                    ui_state[str(i)][f"{p_key}_loc"] = selected_opt
+                    cols[i+1].markdown(f"<div class='status-on' style='font-size:10px; padding:2px 0;'>✔︎ {selected_opt}</div>", unsafe_allow_html=True)
             st.markdown("<hr style='margin: 4px 0; border: none; border-bottom: 1px dashed #ddd;'>", unsafe_allow_html=True)
             
         cols = st.columns(col_ratios)
         cols[0].markdown(f"<div class='tt-time-cell' style='border-left-color:#FF9800;'>放課後<br><span class='tt-time-sub'>18:30〜</span></div>", unsafe_allow_html=True)
         for i in range(5):
-            day_bin = fixed_sched.get(str(i), "0"*96); af_bin = day_bin[74:]; val = "1" in af_bin
-            checked = cols[i+1].checkbox(" ", value=val, key=f"af_{i}", label_visibility="collapsed")
-            ui_state[str(i)]["af"] = checked
+            day_bin = fixed_sched.get(str(i), "0"*96); af_bin = day_bin[74:]
+            is_occupied = "1" in af_bin
+            saved_loc = fixed_locs.get(str(i), {}).get("af", "")
             
-            if checked:
-                saved_loc = fixed_locs.get(str(i), {}).get("af", campus_options[0])
-                loc_idx = campus_options.index(saved_loc) if saved_loc in campus_options else 0
-                target_campus = cols[i+1].selectbox("場所", campus_options, index=loc_idx, key=f"loc_af_{i}", label_visibility="collapsed")
-                ui_state[str(i)]["af_loc"] = target_campus
-                cols[i+1].markdown(f"<div class='af-status-on' style='font-size:10px; padding:2px 0;'>🌙 {target_campus}</div>", unsafe_allow_html=True)
-            else: 
+            if not is_occupied: current_val = "- (空き)"
+            elif saved_loc in tt_options: current_val = saved_loc
+            elif saved_loc == "バイト/私用": current_val = "💼 バイト/私用"
+            else: current_val = tt_options[1]
+            
+            selected_opt = cols[i+1].selectbox("予定", tt_options, index=tt_options.index(current_val), key=f"tt_af_{i}", label_visibility="collapsed")
+            
+            if selected_opt == "- (空き)":
+                ui_state[str(i)]["af"] = False
                 cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
+            elif selected_opt == "💼 バイト/私用":
+                ui_state[str(i)]["af"] = True
+                ui_state[str(i)]["af_loc"] = "💼 バイト/私用"
+                cols[i+1].markdown(f"<div class='status-off' style='background:#f5f5f5; color:#333; font-size:10px; padding:2px 0; border:none;'>💼 バイト等</div>", unsafe_allow_html=True)
+            else:
+                ui_state[str(i)]["af"] = True
+                ui_state[str(i)]["af_loc"] = selected_opt
+                cols[i+1].markdown(f"<div class='af-status-on' style='font-size:10px; padding:2px 0;'>🌙 {selected_opt}</div>", unsafe_allow_html=True)
         st.markdown("<div style='height: 5px;'></div>", unsafe_allow_html=True)
         
         cols = st.columns(col_ratios)
@@ -935,24 +940,18 @@ def main():
             new_fixed_sched = {}
             new_fixed_locs = {}
             for i in range(5):
-                wd_str = str(i); new_bin = ["0"] * 96
-                day_locs = {}
+                wd_str = str(i); new_bin = ["0"] * 96; day_locs = {}
                 
                 if ui_state[wd_str]["p1"]: 
-                    new_bin[36:42] = ["1"] * 6
-                    day_locs["p1"] = ui_state[wd_str]["p1_loc"]
+                    new_bin[36:42] = ["1"] * 6; day_locs["p1"] = ui_state[wd_str]["p1_loc"]
                 if ui_state[wd_str]["p2"]: 
-                    new_bin[43:49] = ["1"] * 6
-                    day_locs["p2"] = ui_state[wd_str]["p2_loc"]
+                    new_bin[43:49] = ["1"] * 6; day_locs["p2"] = ui_state[wd_str]["p2_loc"]
                 if ui_state[wd_str]["p3"]: 
-                    new_bin[53:59] = ["1"] * 6
-                    day_locs["p3"] = ui_state[wd_str]["p3_loc"]
+                    new_bin[53:59] = ["1"] * 6; day_locs["p3"] = ui_state[wd_str]["p3_loc"]
                 if ui_state[wd_str]["p4"]: 
-                    new_bin[60:66] = ["1"] * 6
-                    day_locs["p4"] = ui_state[wd_str]["p4_loc"]
+                    new_bin[60:66] = ["1"] * 6; day_locs["p4"] = ui_state[wd_str]["p4_loc"]
                 if ui_state[wd_str]["p5"]: 
-                    new_bin[67:73] = ["1"] * 6
-                    day_locs["p5"] = ui_state[wd_str]["p5_loc"]
+                    new_bin[67:73] = ["1"] * 6; day_locs["p5"] = ui_state[wd_str]["p5_loc"]
                 if ui_state[wd_str]["af"]:
                     end_idx = time_master.index(ui_state[wd_str]["af_end"])
                     new_bin[74:end_idx] = ["1"] * (end_idx - 74)
@@ -1553,11 +1552,10 @@ def main():
             elif zoom_mode.startswith("大"): cell_h = "50px"
             else: cell_h = "36px"
 
-        # 💡 変更: 入力・集計どちらでも常に見えるようにタブの上に配置
+        # 💡 表形式の凡例を配置
         st.markdown(campus_legend_html, unsafe_allow_html=True)
 
         tab_in, tab_graph = st.tabs(["📅 入力", "📊 集計"])
-        
         with tab_in:
             if event_type == 'time':
                 st.markdown("##### 📅 カレンダー連携")
@@ -1597,7 +1595,6 @@ def main():
                                     st.error("取得に失敗しました。GAS側の権限承認が済んでいるか確認してください。")
 
             st.markdown("---")
-            st.markdown(campus_legend_html, unsafe_allow_html=True)
 
             user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
             default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
@@ -1606,7 +1603,6 @@ def main():
             
             st.markdown("##### 📍 今回のデフォルト所在地")
             selected_default_campus = st.selectbox("「可」を塗った時に自動で設定されるキャンパス", campus_options, index=default_index)
-            st.info(f"💡 マスを塗ると自動的に「{selected_default_campus}」として登録されます。個別に変更したい場合やメモを残す場合は、そのマスを**長押し**してください。")
 
             m = st.session_state.df_input[date_strs].values.tolist()
             time_opts_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(time_labels)])
@@ -1664,14 +1660,14 @@ def main():
                 </div>"""
                 submit_btn_html = f"""
                 <div style="margin-top: 20px;">
-                    <label style="font-size: 14px; font-weight: 600; color: #333;">📝 自分の備考・コメント (遅刻・早退など)</label>
+                    <label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント (遅刻・早退など)</label>
                     <textarea id="comment-box" rows="2" style="width: 100%; padding: 10px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; resize: vertical;">{st.session_state.my_comment}</textarea>
                 </div>
                 <button id="submit-btn" style="margin-top: 15px; width: 100%; padding: 14px; background-color: #FF4B4B; color: white; border: none; border-radius: 8px; font-size: 16px; cursor: pointer; font-weight: 600; box-shadow: 0 4px 6px rgba(0,0,0,0.15); transition: 0.2s;">✅ すべて記入して提出 (全体が保存されます)</button>
                 """
             else:
                 pointer_css = "pointer-events: none; opacity: 0.8;"
-                submit_btn_html = f"""<div style="margin-top: 20px;"><label style="font-size: 14px; font-weight: 600; color: #333;">📝 自分の備考・コメント</label><div style="width: 100%; padding: 10px; margin-top: 5px; background: #eee; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; min-height:40px;">{st.session_state.my_comment}</div></div>"""
+                submit_btn_html = f"""<div style="margin-top: 20px;"><label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント</label><div style="width: 100%; padding: 10px; margin-top: 5px; background: #eee; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; min-height:40px;">{st.session_state.my_comment}</div></div>"""
 
             scroll_css = f"height: {scroll_h};" if scroll_h != "auto" else "height: auto;"
 
@@ -1743,18 +1739,26 @@ def main():
                     st.session_state.my_comment = raw.get("comment", "")
                     
                     cell_details_json = raw.get("cell_details", {})
-                    # 💡 通信短縮: 空白を削除して送る
+                    # 💡 通信短縮: 空白を詰めて送る
                     cell_details_str = json.dumps(cell_details_json, separators=(',', ':')) if cell_details_json else "{}"
                     
                     all_res = []
                     for d_id in date_strs:
                         bits = ["0"] * 96
+                        has_data = False
                         for t_idx in range(len(time_labels)): 
-                            if event_type == 'time':
-                                bits[s_idx + t_idx] = str(int(st.session_state.df_input.loc[time_labels[t_idx], d_id]))
-                            else:
-                                bits[t_idx] = str(int(st.session_state.df_input.loc[time_labels[t_idx], d_id]))
-                        all_res.append({"date": d_id, "binary": "".join(bits)})
+                            val = int(st.session_state.df_input.loc[time_labels[t_idx], d_id])
+                            if val > 0: has_data = True
+                            if event_type == 'time': bits[s_idx + t_idx] = str(val)
+                            else: bits[t_idx] = str(val)
+                            
+                        # 💡 爆速化: 一切予定がない白紙の日は送らない (データ圧縮)
+                        if has_data:
+                            all_res.append({"date": d_id, "binary": "".join(bits)})
+                            
+                    # 万が一全部消した場合は、代表して1日分だけALL0を送ってGAS側の削除フラグにする
+                    if not all_res:
+                        all_res.append({"date": date_strs[0], "binary": "0"*96})
                     
                     call_gas("submit_binary_response", {
                         "payload": {
@@ -1771,8 +1775,6 @@ def main():
 
         with tab_graph:
             st.subheader("📊 全体の集計結果")
-            st.markdown(campus_legend_html, unsafe_allow_html=True)
-            
             col1, col2 = st.columns([2, 1])
             with col1: policy = st.radio("「未定(△)」の計算方法", [0.5, 1.0, 0.0], format_func=lambda x: f"{x}人としてカウント", horizontal=True)
             with col2:
@@ -1806,7 +1808,7 @@ def main():
                         f_locs = st.multiselect("📍 所在地 (回答時に指定したキャンパス)", MASTER_G1 + ["その他/移動中"])
                     with f_col2:
                         f_g2 = st.multiselect("🎓 入学年度", all_g2_sorted)
-                        f_g3 = st.multiselect("🤝 オプション", all_g3_sorted) # 💡 ここが消えていたためエラーになっていました！復活させました
+                        f_g3 = st.multiselect("🤝 オプション", all_g3_sorted)
                         f_names = st.multiselect("👤 特定の個人", sorted(all_names))
                         
                     st.markdown("---")
@@ -1826,7 +1828,6 @@ def main():
 
                     submitted = st.form_submit_button("✅ フィルターを適用して集計", type="primary")
 
-            # 💡 通信・処理速度を上げるため、ここでの JSON 解析（重い処理）は1人1回だけに集約
             filtered_data = []
             for r in all_res_data:
                 u_g1 = [x.strip() for x in r.get('group_1', '').split(',') if x.strip()]
@@ -1836,20 +1837,6 @@ def main():
                 if f_g1 and not set(f_g1).intersection(set(u_g1)): continue
                 if f_g2 and not set(f_g2).intersection(set(u_g2)): continue
                 if f_g3 and not set(f_g3).intersection(set(u_g3)): continue
-                
-                # 💡 追加: 所在地 (回答したキャンパス) フィルター
-                if f_locs:
-                    user_locs = set()
-                    if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
-                        try:
-                            cd = json.loads(r['cell_details'])
-                            for k, v in cd.items():
-                                if v.get('campus'):
-                                    user_locs.add(v['campus'])
-                        except:
-                            pass
-                    if not set(f_locs).intersection(user_locs):
-                        continue
                 
                 filtered_data.append(r)
             
@@ -1885,14 +1872,13 @@ def main():
                     comments_list = []
                     
                     for r in filtered_data:
-                        # 日付が合致しないデータはスキップ
+                        # 💡 高速化: 必要なデータだけを1回だけパース
                         if r['date'] not in disp_date_strs:
                             continue
                             
                         c_idx = disp_date_strs.index(r['date'])
                         b = str(r.get('binary', "")).replace("'", "").zfill(96)
                         
-                        # 💡 1マスごとではなく、1人につき1回だけJSONを展開する (大幅な高速化)
                         cd = {}
                         if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
                             try: cd = json.loads(r['cell_details'])
@@ -1907,10 +1893,8 @@ def main():
                         for disp_r, t_str in enumerate(disp_time_labels):
                             orig_r_idx = time_labels.index(t_str)
                             orig_v = int(b[s_idx + orig_r_idx]) if event_type == 'time' else int(b[orig_r_idx])
-                            
                             v = 0 if orig_v == 3 else orig_v
                             
-                            # そのコマのキャンパスとメモを特定
                             cell_campus = u_default_campus if orig_v in [1, 2] else ""
                             cell_note = ""
                             
@@ -1919,10 +1903,10 @@ def main():
                                 if cd[cell_key].get('campus'): cell_campus = cd[cell_key]['campus']
                                 if cd[cell_key].get('note'): cell_note = cd[cell_key]['note']
                             
-                            # 💡 追加: 所在地 (回答したキャンパス) フィルターをセルごとに適用
+                            # 所在地 (回答したキャンパス) フィルターをセルごとに適用
                             if f_locs and orig_v in [1, 2, 3]:
                                 if cell_campus not in f_locs:
-                                    continue # このセル(コマ)の集計をスキップ
+                                    continue 
                                     
                             z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
                             
@@ -1931,7 +1915,7 @@ def main():
                                 note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cell_note}]</span>" if cell_note else ""
                                 name_html = f"{r['user_name']}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
                                 
-                                # 💡 修正: 授業（3）もツールチップの対象にするため、元の値を保持して判定
+                                # 💡 修正: 授業（3）の人もツールチップに表示する
                                 if orig_v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
                                 elif orig_v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
                                 elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>📓 {name_html}</span><br>"
@@ -1963,7 +1947,8 @@ def main():
                             else: tooltip_txt = h[r][c] if h[r][c] else "参加可能者なし"
                                 
                             agg_font_size = "11px" if cell_h == "20px" else "15px"
-                            # 💡 追加: 最初の数行はツールチップを下向きに出す (隠れる問題の解消)
+                            
+                            # 💡 修正: 上の行のツールチップが隠れないように、上部は下向きに開く
                             tt_class = "tooltip-down" if r < 3 else "tooltip-up"
                             
                             cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
@@ -1980,7 +1965,7 @@ def main():
                     .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
                     .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
                     
-                    /* 💡 修正: 上の行のツールチップが隠れないようにするCSS */
+                    /* 💡 ツールチップ CSS */
                     .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }}
                     .agg-cell .tooltip-up {{ bottom: 100%; margin-bottom: 8px; }}
                     .agg-cell .tooltip-down {{ top: 100%; margin-top: 8px; }}
@@ -2148,4 +2133,5 @@ def main():
                 for c in comments_list: st.info(f"**{c['user']}**: {c['comment']}")
 
 if __name__ == "__main__":
+    main()
     main()
