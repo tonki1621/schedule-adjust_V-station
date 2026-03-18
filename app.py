@@ -224,6 +224,8 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
     .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
     .modal-btn-save:hover { background: #45a049; }
+    .modal-btn-cancel { flex: 1; background: #eee; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .modal-btn-cancel:hover { background: #ddd; }
     
     .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
     .c { position: relative; transition: filter 0.2s; }
@@ -263,7 +265,8 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             <label class="modal-label">📝 補足コメント (任意)</label>
             <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
             <div class="modal-btns">
-                <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
+                <button class="modal-btn-cancel" onclick="closeModal()">キャンセル</button>
+                <button class="modal-btn-save" onclick="saveModal()">💾 保存</button>
             </div>
             <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
         </div>
@@ -628,12 +631,12 @@ campus_legend_html = """
     <strong style="display:block; margin-bottom:8px; color:#333;">🎨 キャンパスの模様サンプル (「可」に塗った場合)</strong>
     <div style="display: flex; gap: 15px; flex-wrap: wrap;">
         <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; border-radius:3px;"></div>なかもず</div>
-        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>杉本</div>
-        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>あべの</div>
-        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.3) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div>りんくう</div>
-        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>もりのみや</div>
-        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div>移動・他</div>
-        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.7) 4px, rgba(255,255,255,0.7) 8px); border-radius:3px; border:1px solid #ccc;"></div>授業等(グレー)</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>杉本</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>あべの</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div>りんくう</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>もりのみや</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div>移動・他</div>
+        <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.8) 4px, rgba(255,255,255,0.8) 8px); border-radius:3px; border:1px solid #ccc;"></div>授業等(未登録)</div>
     </div>
 </div>
 """
@@ -1435,6 +1438,22 @@ def main():
 
     event_type = event.get('event_type', 'time')
 
+    # 💡 キャンパス模様のサンプル用HTML
+    campus_legend_html = """
+    <div style="margin-bottom: 15px; padding: 12px; background: #fff; border-radius: 8px; border: 1px solid #ddd; font-size: 13px; color: #555;">
+        <strong style="display:block; margin-bottom:8px; color:#333;">🎨 キャンパスの模様サンプル (「可」に塗った場合)</strong>
+        <div style="display: flex; gap: 15px; flex-wrap: wrap;">
+            <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; border-radius:3px;"></div>なかもず</div>
+            <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>杉本</div>
+            <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>あべの</div>
+            <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div>りんくう</div>
+            <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>もりのみや</div>
+            <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div>移動・他</div>
+            <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.8) 4px, rgba(255,255,255,0.8) 8px); border-radius:3px; border:1px solid #ccc;"></div>授業等</div>
+        </div>
+    </div>
+    """
+
     # ＝＝＝＝＝ 🕒 時間帯 / 🏫 時間割 モード ＝＝＝＝＝
     if event_type in ['time', 'timetable']:
         if event_type == 'time':
@@ -1529,23 +1548,6 @@ def main():
             else: cell_h = "36px"
 
         tab_in, tab_graph = st.tabs(["📅 入力", "📊 集計"])
-        
-        # 💡 キャンパスごとの模様サンプルを生成して表示
-        campus_legend_html = """
-        <div style="margin-bottom: 10px; padding: 10px; background: #fafafa; border-radius: 8px; border: 1px solid #e0e0e0; font-size: 12px; color: #555;">
-            <strong style="display:block; margin-bottom:8px; color:#333;">🎨 キャンパスの模様</strong>
-            <div style="display: flex; gap: 15px; flex-wrap: wrap;">
-                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; border-radius:3px;"></div>なかもず</div>
-                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>杉本</div>
-                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>あべの</div>
-                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div>りんくう</div>
-                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div>もりのみや</div>
-                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div>移動・他</div>
-                <div style="display:flex; align-items:center; gap:4px;"><div style="width:18px;height:18px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,0.8) 4px, rgba(255,255,255,0.8) 8px); border-radius:3px; border:1px solid #ccc;"></div>授業等(未登録)</div>
-            </div>
-        </div>
-        """
-
         with tab_in:
             if event_type == 'time':
                 st.markdown("##### 📅 カレンダー連携")
@@ -1585,6 +1587,7 @@ def main():
                                     st.error("取得に失敗しました。GAS側の権限承認が済んでいるか確認してください。")
 
             st.markdown("---")
+            st.markdown(campus_legend_html, unsafe_allow_html=True)
 
             user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
             default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
@@ -1594,8 +1597,6 @@ def main():
             st.markdown("##### 📍 今回のデフォルト所在地")
             selected_default_campus = st.selectbox("「可」を塗った時に自動で設定されるキャンパス", campus_options, index=default_index)
             st.info(f"💡 マスを塗ると自動的に「{selected_default_campus}」として登録されます。個別に変更したい場合やメモを残す場合は、そのマスを**長押し**してください。")
-            
-            st.markdown(campus_legend_html, unsafe_allow_html=True)
 
             m = st.session_state.df_input[date_strs].values.tolist()
             time_opts_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(time_labels)])
@@ -1792,6 +1793,7 @@ def main():
                     f_col1, f_col2 = st.columns(2)
                     with f_col1:
                         f_g1 = st.multiselect("🏫 現在通っているキャンパス (プロフィール)", all_g1_sorted)
+                        # 💡 修正: 所在地フィルター
                         f_locs = st.multiselect("📍 所在地 (回答時に指定したキャンパス)", MASTER_G1 + ["その他/移動中"])
                     with f_col2:
                         f_g2 = st.multiselect("🎓 入学年度", all_g2_sorted)
@@ -1814,6 +1816,7 @@ def main():
 
                     submitted = st.form_submit_button("✅ フィルターを適用して集計", type="primary")
 
+            # 💡 通信・処理速度を上げるため、ここでの JSON 解析（重い処理）は1人1回だけに集約
             filtered_data = []
             for r in all_res_data:
                 u_g1 = [x.strip() for x in r.get('group_1', '').split(',') if x.strip()]
@@ -1822,19 +1825,7 @@ def main():
                 if f_names and r['user_name'] not in f_names: continue
                 if f_g1 and not set(f_g1).intersection(set(u_g1)): continue
                 if f_g2 and not set(f_g2).intersection(set(u_g2)): continue
-                
-                if f_locs:
-                    user_locs = set()
-                    if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
-                        try:
-                            cd = json.loads(r['cell_details'])
-                            for k, v in cd.items():
-                                if v.get('campus'):
-                                    user_locs.add(v['campus'])
-                        except:
-                            pass
-                    if not set(f_locs).intersection(user_locs):
-                        continue
+                if f_g3 and not set(f_g3).intersection(set(u_g3)): continue
                 
                 filtered_data.append(r)
             
@@ -1870,45 +1861,56 @@ def main():
                     comments_list = []
                     
                     for r in filtered_data:
+                        # 日付が合致しないデータはスキップ
+                        if r['date'] not in disp_date_strs:
+                            continue
+                            
+                        c_idx = disp_date_strs.index(r['date'])
+                        b = str(r.get('binary', "")).replace("'", "").zfill(96)
+                        
+                        # 💡 1マスごとではなく、1人につき1回だけJSONを展開する (大幅な高速化)
+                        cd = {}
+                        if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
+                            try: cd = json.loads(r['cell_details'])
+                            except: pass
+                            
+                        u_campuses = [x.strip() for x in r.get('group_1', '').split(',') if x.strip()]
+                        u_default_campus = u_campuses[0] if u_campuses else ""
+
                         if can_view_details and r.get('comment') and r['comment'].strip() != "":
                             if {"user": r['user_name'], "comment": r['comment']} not in comments_list: comments_list.append({"user": r['user_name'], "comment": r['comment']})
-                        if r['date'] in disp_date_strs:
-                            c_idx = disp_date_strs.index(r['date']); b = str(r.get('binary', "")).replace("'", "").zfill(96)
-                            for disp_r, t_str in enumerate(disp_time_labels):
-                                orig_r_idx = time_labels.index(t_str)
-                                
-                                # 💡 修正: 授業（3）もツールチップの対象にするため、元の値を保持
-                                if event_type == 'time': orig_v = int(b[s_idx + orig_r_idx]) if (s_idx + orig_r_idx) < 96 else 0
-                                else: orig_v = int(b[orig_r_idx]) if orig_r_idx < 96 else 0
-                                
-                                v = 0 if orig_v == 3 else orig_v
-                                z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
-                                
-                                if can_view_details and orig_v in [1, 2, 3]:
-                                    u_campuses = [x.strip() for x in r.get('group_1', '').split(',') if x.strip()]
-                                    u_default_campus = u_campuses[0] if u_campuses else ""
+                        
+                        for disp_r, t_str in enumerate(disp_time_labels):
+                            orig_r_idx = time_labels.index(t_str)
+                            orig_v = int(b[s_idx + orig_r_idx]) if event_type == 'time' else int(b[orig_r_idx])
+                            
+                            v = 0 if orig_v == 3 else orig_v
+                            
+                            # そのコマのキャンパスとメモを特定
+                            cell_campus = u_default_campus if orig_v in [1, 2] else ""
+                            cell_note = ""
+                            
+                            cell_key = f"{orig_r_idx}_{c_idx}"
+                            if cell_key in cd:
+                                if cd[cell_key].get('campus'): cell_campus = cd[cell_key]['campus']
+                                if cd[cell_key].get('note'): cell_note = cd[cell_key]['note']
+                            
+                            # 💡 追加: 所在地 (回答したキャンパス) フィルターをセルごとに適用
+                            if f_locs and orig_v in [1, 2, 3]:
+                                if cell_campus not in f_locs:
+                                    continue # このセル(コマ)の集計をスキップ
                                     
-                                    cell_campus = u_default_campus if orig_v in [1, 2] else ""
-                                    note_str = ""
-                                    
-                                    if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
-                                        try:
-                                            cd = json.loads(r['cell_details'])
-                                            cell_key = f"{orig_r_idx}_{c_idx}"
-                                            if cell_key in cd:
-                                                if cd[cell_key].get('campus'): 
-                                                    cell_campus = cd[cell_key]['campus']
-                                                if cd[cell_key].get('note'): 
-                                                    note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cd[cell_key]['note']}]</span>"
-                                        except:
-                                            pass
-                                            
-                                    campus_str = f" ({cell_campus})" if cell_campus else ""
-                                    name_html = f"{r['user_name']}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
-                                    
-                                    if orig_v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
-                                    elif orig_v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
-                                    elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>📓 {name_html}</span><br>"
+                            z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
+                            
+                            if can_view_details and orig_v in [1, 2, 3]:
+                                campus_str = f" ({cell_campus})" if cell_campus else ""
+                                note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cell_note}]</span>" if cell_note else ""
+                                name_html = f"{r['user_name']}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
+                                
+                                # 💡 修正: 授業（3）もツールチップの対象にするため、元の値を保持して判定
+                                if orig_v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
+                                elif orig_v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
+                                elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>📓 {name_html}</span><br>"
                     
                     max_z = np.max(z) if np.max(z) > 0 else 1
                     
@@ -1937,22 +1939,31 @@ def main():
                             else: tooltip_txt = h[r][c] if h[r][c] else "参加可能者なし"
                                 
                             agg_font_size = "11px" if cell_h == "20px" else "15px"
-                            cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="tooltip">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
+                            # 💡 追加: 最初の数行はツールチップを下向きに出す (隠れる問題の解消)
+                            tt_class = "tooltip-down" if r < 3 else "tooltip-up"
+                            
+                            cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
                         agg_day_cols += f'<div class="agg-day-col"><div class="agg-header">{lbl}</div>{cells_html}</div>'
 
                     agg_scroll_h = "680px" if event_type == "time" else "auto"
 
                     agg_css = f"""
                     <style>
-                    .agg-wrapper {{ max-height: 75vh; height: {agg_scroll_h}; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; }}
+                    .agg-wrapper {{ max-height: 75vh; height: {agg_scroll_h}; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; padding-bottom: 50px; }}
                     .agg-time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; }}
                     .agg-header {{ position: sticky; top: 0; z-index: 11; background: #eee; font-size: 13px; font-weight: bold; text-align: center; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-sizing: border-box; line-height: 1.2; }}
                     .agg-top-left {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
                     .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
                     .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
-                    .agg-cell .tooltip {{ visibility: hidden; width: 160px; background-color: rgba(0,0,0,0.85); color: #fff; text-align: left; border-radius: 6px; padding: 8px; position: absolute; z-index: 30; bottom: 100%; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11px; font-weight: normal; line-height: 1.4; pointer-events: none; white-space: pre-wrap; margin-bottom: 5px; box-shadow: 0 4px 6px rgba(0,0,0,0.3); }}
-                    .agg-cell .tooltip::after {{ content: ""; position: absolute; top: 100%; left: 50%; margin-left: -5px; border-width: 5px; border-style: solid; border-color: rgba(0,0,0,0.85) transparent transparent transparent; }}
-                    .agg-cell:hover .tooltip {{ visibility: visible; opacity: 1; }}
+                    
+                    /* 💡 修正: 上の行のツールチップが隠れないようにするCSS */
+                    .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }}
+                    .agg-cell .tooltip-up {{ bottom: 100%; margin-bottom: 8px; }}
+                    .agg-cell .tooltip-down {{ top: 100%; margin-top: 8px; }}
+                    .agg-cell .tooltip-up::after {{ content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: rgba(30,30,30,0.95) transparent transparent transparent; }}
+                    .agg-cell .tooltip-down::after {{ content: ""; position: absolute; bottom: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: transparent transparent rgba(30,30,30,0.95) transparent; }}
+                    .agg-cell:hover .tooltip-up, .agg-cell:hover .tooltip-down {{ visibility: visible; opacity: 1; }}
+                    
                     .agg-time-cell {{ background: #f0f2f6; font-size: 12px; font-weight: bold; color: #555; display: flex; align-items: center; justify-content: center; border-right: 1px solid #ccc; box-sizing: border-box; }}
                     </style>
                     """
