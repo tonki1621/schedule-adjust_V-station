@@ -220,7 +220,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .modal-label { font-size: 12px; font-weight: bold; color: #666; margin-top: 15px; display: block; }
     .modal-select, .modal-input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
     
-    /* 💡 ポップアップ内での状態選択ボタン */
     .status-switch { display: flex; gap: 8px; margin-top: 5px; }
     .sw-btn { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; background: #f9f9f9; color: #555; transition: 0.2s; }
     .sw-btn.active[data-v="1"] { background: #4CAF50; color: white; border-color: #4CAF50; }
@@ -265,8 +264,8 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             <select id="modal-campus" class="modal-select">
                 <option value="">指定なし</option>
                 <option value="なかもず">なかもず</option>
-                <option value="杉本">杉本</option>
-                <option value="阿倍野">阿倍野</option>
+                <option value="すぎもと">すぎもと</option>
+                <option value="あべの">あべの</option>
                 <option value="りんくう">りんくう</option>
                 <option value="もりのみや">もりのみや</option>
                 <option value="その他/移動中">その他 / 移動中</option>
@@ -321,7 +320,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         let detail = window.cellDetails[key];
         
         if (v == 0) {
-            if (detail && detail.note === "バイト/私用") {
+            if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) {
                 // そのまま保持
             } else {
                 delete window.cellDetails[key];
@@ -347,15 +346,15 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         if (v == 1) bgColor = '#4CAF50';
         else if (v == 2) bgColor = '#FFEB3B';
         else if (v == 3) bgColor = '#e0e0e0';
-        else if (v == 0) bgColor = '#fff';
 
-        if (v == 1 || v == 2 || v == 3 || (v == 0 && note === "バイト/私用")) {
+        // 💡 ひらがな対応＆バイト用の模様対応
+        if (v == 1 || v == 2 || v == 3 || (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用"))) {
             let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
             let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)';
             
-            if (v == 0 && note === "バイト/私用") {
-                bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.05) 4px, rgba(0,0,0,0.05) 8px)`;
-            } else if (campus === "杉本") {
+            if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) {
+                bgImage = `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px)`;
+            } else if (campus === "すぎもと" || campus === "杉本") {
                 bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
             } else if (campus === "あべの" || campus === "阿倍野") {
                 bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`;
@@ -423,8 +422,8 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
                     const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
                     if(cell) {
                         const cellKey = `${r}_${c}`;
-                        if (campus === "💼 バイト/私用") {
-                            window.cellDetails[cellKey] = {campus: "", note: "バイト/私用"};
+                        if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") {
+                            window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"};
                             window.upd(cell, 0); 
                         } else if (campus) {
                             window.cellDetails[cellKey] = {campus: campus, note: "定期授業"};
@@ -649,11 +648,12 @@ campus_legend_html = """
             <td style="padding: 8px; border: 1px solid #ddd;">
                 <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px;">
                     <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; border-radius:3px;"></div> なかもず (無地)</div>
-                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> 杉本 (斜線)</div>
-                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> あべの (細線)</div>
+                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> すぎもと (斜線)</div>
+                    <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> あべの (細線)</div>
                     <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.5) 3px, transparent 4px); background-size:10px 10px; border-radius:3px;"></div> りんくう (点)</div>
                     <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 4px, transparent 4px, transparent 8px); border-radius:3px;"></div> もりのみや (縦線)</div>
                     <div style="display:flex; align-items:center; gap:5px;"><div style="width:16px;height:16px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.4), rgba(255,255,255,0.4) 2px, transparent 2px, transparent 4px); border-radius:3px;"></div> 移動/他 (格子)</div>
+                    <div style="display:flex; align-items:center; gap:5px; grid-column: span 3;"><div style="width:16px;height:16px; background:#fff; background-image:repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px); border-radius:3px; border:1px solid #ccc;"></div> バイト/サークル等 (×不可)</div>
                 </div>
             </td>
         </tr>
@@ -876,7 +876,7 @@ def main():
         days_jp = ["月", "火", "水", "木", "金"]
         col_ratios = [1.1, 1, 1, 1, 1, 1]
         
-        tt_options = ["- (空き)"] + MASTER_G1 + ["その他/移動中", "💼 バイト/私用"]
+        tt_options = ["- (空き)"] + MASTER_G1 + ["その他/移動中", "💼 バイト/サークル等"]
 
         cols = st.columns(col_ratios)
         cols[0].markdown("<div style='padding:8px;'></div>", unsafe_allow_html=True)
@@ -898,7 +898,7 @@ def main():
                 
                 if not is_occupied: current_val = "- (空き)"
                 elif saved_loc in tt_options: current_val = saved_loc
-                elif saved_loc == "バイト/私用": current_val = "💼 バイト/私用"
+                elif "バイト" in saved_loc or "私用" in saved_loc: current_val = "💼 バイト/サークル等"
                 else: current_val = tt_options[1]
                 
                 selected_opt = cols[i+1].selectbox("予定", tt_options, index=tt_options.index(current_val), key=f"tt_{p_key}_{i}", label_visibility="collapsed")
@@ -906,9 +906,9 @@ def main():
                 if selected_opt == "- (空き)":
                     ui_state[str(i)][p_key] = False
                     cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
-                elif selected_opt == "💼 バイト/私用":
+                elif selected_opt == "💼 バイト/サークル等":
                     ui_state[str(i)][p_key] = True
-                    ui_state[str(i)][f"{p_key}_loc"] = "💼 バイト/私用"
+                    ui_state[str(i)][f"{p_key}_loc"] = "💼 バイト/サークル等"
                     cols[i+1].markdown(f"<div class='status-off' style='background:#f5f5f5; color:#333; font-size:10px; padding:2px 0; border:none;'>💼 バイト等</div>", unsafe_allow_html=True)
                 else:
                     ui_state[str(i)][p_key] = True
@@ -925,7 +925,7 @@ def main():
             
             if not is_occupied: current_val = "- (空き)"
             elif saved_loc in tt_options: current_val = saved_loc
-            elif saved_loc == "バイト/私用": current_val = "💼 バイト/私用"
+            elif "バイト" in saved_loc or "私用" in saved_loc: current_val = "💼 バイト/サークル等"
             else: current_val = tt_options[1]
             
             selected_opt = cols[i+1].selectbox("予定", tt_options, index=tt_options.index(current_val), key=f"tt_af_{i}", label_visibility="collapsed")
@@ -933,9 +933,9 @@ def main():
             if selected_opt == "- (空き)":
                 ui_state[str(i)]["af"] = False
                 cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
-            elif selected_opt == "💼 バイト/私用":
+            elif selected_opt == "💼 バイト/サークル等":
                 ui_state[str(i)]["af"] = True
-                ui_state[str(i)]["af_loc"] = "💼 バイト/私用"
+                ui_state[str(i)]["af_loc"] = "💼 バイト/サークル等"
                 cols[i+1].markdown(f"<div class='status-off' style='background:#f5f5f5; color:#333; font-size:10px; padding:2px 0; border:none;'>💼 バイト等</div>", unsafe_allow_html=True)
             else:
                 ui_state[str(i)]["af"] = True
