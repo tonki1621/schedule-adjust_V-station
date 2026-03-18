@@ -224,6 +224,8 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
     .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
     .modal-btn-save:hover { background: #45a049; }
+    .modal-btn-cancel { flex: 1; background: #eee; color: #333; border: none; padding: 10px; border-radius: 6px; font-weight: bold; cursor: pointer; }
+    .modal-btn-cancel:hover { background: #ddd; }
     
     .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
     .c { position: relative; transition: filter 0.2s; }
@@ -263,7 +265,8 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
             <label class="modal-label">📝 補足コメント (任意)</label>
             <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
             <div class="modal-btns">
-                <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
+                <button class="modal-btn-cancel" onclick="closeModal()">キャンセル</button>
+                <button class="modal-btn-save" onclick="saveModal()">💾 保存</button>
             </div>
             <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
         </div>
@@ -342,7 +345,7 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         if (v == 1 || v == 2 || v == 3) {
             let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
             if (campus === "杉本") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 5px, transparent 5px, transparent 10px)`;
-            else if (campus === "あべの") bgImage = `repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 5px, transparent 5px, transparent 10px)`;
+            else if (campus === "あべの" || campus === "阿倍野") bgImage = `repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 5px, transparent 5px, transparent 10px)`;
             else if (campus === "りんくう") bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`;
             else if (campus === "もりのみや") bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 5px, transparent 5px, transparent 10px)`;
             else if (campus === "その他/移動中") bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 3px, transparent 3px, transparent 6px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 3px, transparent 3px, transparent 6px)`;
@@ -828,7 +831,6 @@ def main():
         
         fixed_sched = user.get("fixed_schedule", {})
         
-        # 💡 group_4 から場所情報を読み込む
         try:
             fixed_locs = json.loads(user.get("group_4", "{}"))
         except:
@@ -941,7 +943,6 @@ def main():
             else:
                 st.error("更新に失敗しました。")
         return
-
     # ----------------------------------------------------
     # ➕ イベント新規作成画面
     # ----------------------------------------------------
@@ -1445,7 +1446,6 @@ def main():
                     unavail_rows = []
                     for gi in unavail_global_idxs:
                         if s_idx <= gi <= e_idx:
-                            # 💡 どのコマに属するか判定してキャンパスを取得
                             campus = ""
                             if 36 <= gi < 42: campus = fixed_locs.get(wd, {}).get("p1", "")
                             elif 43 <= gi < 49: campus = fixed_locs.get(wd, {}).get("p2", "")
@@ -1783,7 +1783,6 @@ def main():
                 if f_g1 and not set(f_g1).intersection(set(u_g1)): continue
                 if f_g2 and not set(f_g2).intersection(set(u_g2)): continue
                 
-                # 💡 追加: 所在地 (回答したキャンパス) フィルター
                 if f_locs:
                     user_locs = set()
                     if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
