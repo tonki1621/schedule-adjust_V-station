@@ -58,6 +58,36 @@ def save_response_hybrid(payload):
     
     return True
 
+# --- Firestoreからの回答読み込み関数 ---
+def fetch_responses_from_firestore(event_id, all_users):
+    docs = db.collection("responses").where("event_id", "==", event_id).stream()
+    user_map = {str(u["user_id"]): u for u in all_users}
+    
+    flat_responses = []
+    for doc in docs:
+        data = doc.to_dict()
+        uid = str(data.get("user_id"))
+        uinfo = user_map.get(uid, {"name": "不明", "group_1": "", "group_2": "", "group_3": "", "group_4": ""})
+        
+        for r in data.get("responses", []):
+            flat_responses.append({
+                "user_id": uid,
+                "user_name": uinfo.get("name", "不明"),
+                "group_1": uinfo.get("group_1", ""),
+                "group_2": uinfo.get("group_2", ""),
+                "group_3": uinfo.get("group_3", ""),
+                "group_4": uinfo.get("group_4", ""),
+                "date": r.get("date"),
+                "binary": r.get("binary"),
+                "comment": data.get("comment", ""),
+                "cell_details": data.get("cell_details", "{}")
+            })
+    return flat_responses
+
+def get_user_answered_events(user_id):
+    docs = db.collection("responses").where("user_id", "==", user_id).stream()
+    return [doc.to_dict().get("event_id") for doc in docs]
+
 st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide")
 
 # 💡 ご自身のStreamlitアプリのURLに変更してください
@@ -1430,18 +1460,40 @@ def main():
     st.markdown(f'<div class="user-header"><div style="font-size: 1.1em;"><b>{role_emoji} {user["name"]}</b> さん {group_str}</div><div style="font-size: 0.8em; background: #e0e0e0; padding: 3px 8px; border-radius: 12px;">ID: {user["user_id"]}</div></div>', unsafe_allow_html=True)
 
     current_ev_id = st.session_state.get("target_ev_id", "")
+    
+    # 1. ユーザーとイベント情報だけをGASから取得（event_idを空にして重い読み込みを回避）
     all_data_res = call_gas_cached("get_all_data", {
         "user_id": user["user_id"],
-        "event_id": current_ev_id
-    }, ttl=60)
+        "event_id": "" 
+    }, ttl=300) # キャッシュ寿命を5分に伸ばしてさらに高速化
     
     events = []
     if all_data_res.get("status") == "success":
         payload = all_data_res.get("data", {})
         events = payload.get("events", [])
         st.session_state.cached_users = payload.get("users", [])
-        if payload.get("responses") is not None:
-            st.session_state.event_responses = payload.get("responses")
+        
+        # 2. 自分が回答済みのイベント一覧をFirestoreから爆速取得してフラグを上書き
+        fs_answered_ids = get_user_answered_events(user["user_id"])
+        for ev in events:
+            if ev["event_id"] in fs_answered_ids:
+                ev["is_answered"] = True
+                
+        # 3. 選択中のイベントの回答データをFirestoreから爆速取得
+        if current_ev_id:
+            fs_responses = fetch_responses_from_firestore(current_ev_id, st.session_state.cached_users)
+            fs_uids = {r["user_id"] for r in fs_responses}
+            
+            # 💡 過去データの互換性維持：Firestoreにない人（過去に回答した人）の分だけGASから補完
+            gas_res = call_gas_cached("get_responses", {"event_id": current_ev_id}, ttl=300)
+            gas_responses = gas_res.get("data", []) if gas_res.get("status") == "success" else []
+            
+            combined_responses = fs_responses.copy()
+            for gr in gas_responses:
+                if gr["user_id"] not in fs_uids:
+                    combined_responses.append(gr)
+                    
+            st.session_state.event_responses = combined_responses
     else:
         st.error("データの取得に失敗しました。")
 
