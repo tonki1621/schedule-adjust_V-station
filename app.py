@@ -8,6 +8,55 @@ from datetime import datetime, timedelta
 import requests
 import streamlit.components.v1 as components
 import numpy as np
+from google.oauth2 import service_account
+from google.cloud import firestore
+import threading
+
+# --- Firebase の初期化 ---
+@st.cache_resource
+def get_firestore_client():
+    key_dict = dict(st.secrets["firebase"])
+    creds = service_account.Credentials.from_service_account_info(key_dict)
+    db = firestore.Client(credentials=creds, project=key_dict["project_id"])
+    return db
+
+db = get_firestore_client()
+
+# --- ハイブリッド保存関数（Firestore + GASバックアップ） ---
+def save_response_hybrid(payload):
+    # 1. Firestoreへ書き込み (レスポンス最優先)
+    try:
+        event_id = payload["event_id"]
+        user_id = payload["user_id"]
+        
+        # responsesコレクション内に、イベントIDとユーザーIDを繋げたドキュメントを作成
+        doc_ref = db.collection("responses").document(f"{event_id}_{user_id}")
+        
+        data = {
+            "event_id": event_id,
+            "user_id": user_id,
+            "comment": payload.get("comment", ""),
+            "cell_details": payload.get("cell_details", "{}"),
+            "responses": payload.get("responses", []),
+            "updated_at": firestore.SERVER_TIMESTAMP
+        }
+        doc_ref.set(data)
+    except Exception as e:
+        st.error(f"Firestoreへの保存に失敗しました: {e}")
+        return False
+
+    # 2. GAS (Google Sheets) へ非同期でバックアップ
+    # ※ ユーザーを待たせずに裏側でリクエストを飛ばします
+    def backup_to_gas(p):
+        try:
+            requests.post(GAS_URL, json={"action": "submit_binary_response", "payload": p})
+        except Exception as e:
+            print(f"GAS backup failed: {e}")
+            
+    thread = threading.Thread(target=backup_to_gas, args=(payload,))
+    thread.start()
+    
+    return True
 
 st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide")
 
@@ -1790,18 +1839,24 @@ def main():
                     if not all_res:
                         all_res.append({"date": date_strs[0], "binary": "0"*96})
                     
-                    call_gas("submit_binary_response", {
-                        "payload": {
-                            "event_id": event["event_id"], 
-                            "user_id": user["user_id"], 
-                            "comment": st.session_state.my_comment, 
-                            "cell_details": cell_details_str, 
-                            "responses": all_res
-                        }
-                    }, method="POST")
-                    clear_cache()
-                    st.session_state.save_success_msg = "回答を保存しました！"
-                    st.rerun()
+                    # 修正前
+                    # call_gas("submit_binary_response", { ... }, method="POST")
+                    # clear_cache()
+                    # st.session_state.save_success_msg = "回答を保存しました！"
+                    # st.rerun()
+
+                    # 修正後
+                    payload = {
+                        "event_id": event["event_id"], 
+                        "user_id": user["user_id"], 
+                        "comment": st.session_state.my_comment, 
+                        "cell_details": cell_details_str, 
+                        "responses": all_res
+                    }
+                    if save_response_hybrid(payload):
+                        clear_cache()
+                        st.session_state.save_success_msg = "回答を保存しました！"
+                        st.rerun()
 
         with tab_graph:
             st.subheader("📊 全体の集計結果")
@@ -2054,11 +2109,25 @@ def main():
                 b_str = raw.get("binary", "0"*96).ljust(96, "0")[:96]
                 user_comment = raw.get("comment", "")
                 
-                res = [{"date": "options", "binary": b_str}]
-                call_gas("submit_binary_response", {"payload": {"event_id": event["event_id"], "user_id": user["user_id"], "comment": user_comment, "responses": res}}, method="POST")
-                clear_cache()
-                st.session_state.save_success_msg = "回答を保存しました！"
-                st.rerun()
+                # 修正前
+                # res = [{"date": "options", "binary": b_str}]
+                # call_gas("submit_binary_response", {"payload": ...}, method="POST")
+                # clear_cache()
+                # st.session_state.save_success_msg = "回答を保存しました！"
+                # st.rerun()
+
+                # 修正後
+                res_data = [{"date": "options", "binary": b_str}]
+                payload = {
+                    "event_id": event["event_id"], 
+                    "user_id": user["user_id"], 
+                    "comment": user_comment, 
+                    "responses": res_data
+                }
+                if save_response_hybrid(payload):
+                    clear_cache()
+                    st.session_state.save_success_msg = "回答を保存しました！"
+                    st.rerun()
 
         with tab_graph:
             st.subheader("📊 予定の集計結果")
