@@ -24,7 +24,7 @@ def get_firestore_client():
 
 db = get_firestore_client()
 
-# --- 1. 裏側でGASにバックアップを送る関数 ---
+# --- 1. 裏側でGASにバックアップを送る非同期関数 ---
 def backup_to_gas_async(action, payload=None):
     def _call():
         try:
@@ -41,13 +41,20 @@ def save_response_hybrid(payload):
         event_id = payload["event_id"]
         user_id = payload["user_id"]
         
+        # 💡 コメントは cell_details の中に統合して保存（DB構造に合わせるため）
+        cell_details_dict = json.loads(payload.get("cell_details", "{}"))
+        if payload.get("comment"):
+            cell_details_dict["global_comment"] = payload["comment"]
+            
+        final_cell_details_str = json.dumps(cell_details_dict, separators=(',', ':'))
+        payload["cell_details"] = final_cell_details_str
+        
         doc_ref = db.collection("responses").document(f"{event_id}_{user_id}")
         data = {
             "event_id": event_id,
             "user_id": user_id,
-            "comment": payload.get("comment", ""),
-            "cell_details": payload.get("cell_details", "{}"),
-            "responses": payload.get("responses", []),
+            "cell_details": final_cell_details_str,
+            "responses": payload.get("responses", []), # date と binary_data のリスト
             "updated_at": firestore.SERVER_TIMESTAMP
         }
         doc_ref.set(data)
@@ -58,33 +65,22 @@ def save_response_hybrid(payload):
     backup_to_gas_async("submit_binary_response", payload)
     return True
 
-# --- 3. [爆速] Firestoreからの認証関数 ---
-def check_auth_firestore(name, pin):
-    docs = db.collection("users").where("name", "==", name).stream()
-    for doc in docs:
-        u = doc.to_dict()
-        stored_pin = str(u.get("pin", ""))
-        # スプレッドシート由来の先頭のシングルクォートも考慮して判定
-        if stored_pin == str(pin) or stored_pin == f"'{pin}":
-            return u
-    return None
-
-# --- 4. [爆速] メインデータの取得関数 ---
+# --- 3. [爆速] メインデータの取得関数（完全Firestore依存） ---
 def get_app_data_from_firestore(user):
     user_id = str(user.get("user_id", ""))
     
-    # 全ユーザー情報
+    # ① 全ユーザー情報
     all_users = [doc.to_dict() for doc in db.collection("users").stream()]
     user_map = {str(u["user_id"]): u for u in all_users}
     
-    # ログインユーザーが回答済みのイベントIDを取得
+    # ② ログインユーザーが回答済みのイベントIDを取得
     answered_ids = set()
     if user_id:
         ans_docs = db.collection("responses").where("user_id", "==", user_id).stream()
         for doc in ans_docs:
             answered_ids.add(doc.to_dict().get("event_id"))
 
-    # 全イベント情報と公開範囲フィルター
+    # ③ 全イベント情報と公開範囲フィルター
     now = datetime.now()
     active_events = []
     
@@ -96,10 +92,10 @@ def get_app_data_from_firestore(user):
         if ev.get("status") not in ["open", "closed"]: 
             continue
         
-        # 自動締め切りの判定
-        if ev.get("status") == "open" and ev.get("auto_close") and ev.get("deadline"):
+        # 自動締め切りの判定 (close_timeを使用)
+        if ev.get("status") == "open" and ev.get("auto_close") and ev.get("close_time"):
             try:
-                dl_dt = pd.to_datetime(ev["deadline"]).tz_localize(None)
+                dl_dt = pd.to_datetime(ev["close_time"]).tz_localize(None)
                 if now > dl_dt:
                     ev["status"] = "closed"
                     db.collection("events").document(ev["event_id"]).update({"status": "closed"})
@@ -129,7 +125,7 @@ def get_app_data_from_firestore(user):
 
     return all_users, active_events, user_map
 
-# --- 5. [爆速] イベントの回答詳細の取得関数 ---
+# --- 4. [爆速] イベントの回答詳細の取得関数 ---
 def fetch_responses_for_event(event_id, user_map):
     docs = db.collection("responses").where("event_id", "==", event_id).stream()
     flat_responses = []
@@ -137,6 +133,14 @@ def fetch_responses_for_event(event_id, user_map):
         data = doc.to_dict()
         uid = str(data.get("user_id"))
         uinfo = user_map.get(uid, {})
+        
+        # cell_details から global_comment を復元
+        cell_details_str = data.get("cell_details", "{}")
+        try:
+            cell_details_dict = json.loads(cell_details_str)
+            comment = cell_details_dict.get("global_comment", "")
+        except:
+            comment = ""
         
         for r in data.get("responses", []):
             flat_responses.append({
@@ -147,21 +151,20 @@ def fetch_responses_for_event(event_id, user_map):
                 "group_3": uinfo.get("group_3", ""),
                 "group_4": uinfo.get("group_4", ""),
                 "date": r.get("date"),
-                "binary": r.get("binary"),
-                "comment": data.get("comment", ""),
-                "cell_details": data.get("cell_details", "{}")
+                "binary_data": r.get("binary_data"),  # DB定義に合わせる
+                "comment": comment,
+                "cell_details": cell_details_str
             })
     return flat_responses
 
+
 # ==========================================
-# Streamlit 初期設定
+# Streamlit 初期設定 & コンポーネント
 # ==========================================
 st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide")
-
-# 💡 ご自身のStreamlitアプリのURLに変更してください
 APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
-# UX改善: ロード中表示＆時間割テーブル用CSS
+# UX改善 CSS
 st.markdown("""
     <style>
         .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
@@ -171,550 +174,32 @@ st.markdown("""
         .stApp, .stApp [data-testid="stAppViewBlockContainer"], div[data-testid="stVerticalBlock"], div[data-testid="stForm"], iframe { opacity: 1 !important; transition: none !important; filter: none !important; }
         .user-header { display: flex; align-items: center; justify-content: space-between; background: #f8f9fa; padding: 10px 20px; border-radius: 8px; border-left: 5px solid #4CAF50; margin-bottom: 20px; }
         .event-desc { background: #fff8e1; padding: 15px; border-radius: 8px; border-left: 4px solid #ffc107; margin-bottom: 20px; font-size: 14px; line-height: 1.6; }
-        .event-desc a { color: #2196F3; font-weight: bold; text-decoration: none; }
-        .event-desc a:hover { text-decoration: underline; }
         .tt-day-header { font-size: 16px; font-weight: bold; background: #4CAF50; color: white; padding: 8px; border-radius: 6px; text-align: center; }
         .tt-time-cell { font-size: 14px; font-weight: bold; background: #f0f2f6; padding: 10px; border-radius: 6px; text-align: center; border-left: 4px solid #4CAF50;}
         .tt-time-sub { font-size: 11px; color: #666; font-weight: normal; }
-        .status-on { color: #fff; font-weight: bold; background: linear-gradient(135deg, #4CAF50, #45a049); padding: 4px 0; border-radius: 6px; border: none; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block; box-shadow: 0 2px 4px rgba(76,175,80,0.3); letter-spacing: 0.5px;}
-        .af-status-on { color: #fff; font-weight: bold; background: linear-gradient(135deg, #2196F3, #1976D2); padding: 4px 0; border-radius: 6px; border: none; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block; box-shadow: 0 2px 4px rgba(33,150,243,0.3); letter-spacing: 0.5px;}
+        .status-on { color: #fff; font-weight: bold; background: linear-gradient(135deg, #4CAF50, #45a049); padding: 4px 0; border-radius: 6px; border: none; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block; box-shadow: 0 2px 4px rgba(76,175,80,0.3); }
+        .af-status-on { color: #fff; font-weight: bold; background: linear-gradient(135deg, #2196F3, #1976D2); padding: 4px 0; border-radius: 6px; border: none; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block; box-shadow: 0 2px 4px rgba(33,150,243,0.3); }
         .status-off { color: #9e9e9e; background: #ffffff; padding: 4px 0; border-radius: 6px; border: 1px dashed #d0d0d0; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block;}
-        
-        .tt-wrapper { overflow-x: auto; background: #fff; border: 1px solid #e0e0e0; border-radius: 8px; padding: 0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); margin-bottom: 20px;}
-        .tt-table { width: 100%; min-width: 280px; border-collapse: collapse; table-layout: fixed; }
-        .tt-table th, .tt-table td { padding: 5px 0px; text-align: center; border-bottom: 1px solid #eee; }
-        .tt-table th { font-weight: bold; background: #f8f9fa; color: #333; position: sticky; top: 0; font-size: 12px; padding: 8px 0px;}
-        
-        .tt-table td:first-child { font-weight: bold; background: #f0f2f6; border-right: 2px solid #ddd; text-align: center; width: 45px; font-size: 11px; padding: 5px 2px;}
-        .tt-table td:first-child span { font-size: 9px; color: #666; display: block; font-weight: normal; letter-spacing: -0.5px; margin-top: -2px;}
-        
         .tt-table [data-testid="stCheckbox"] { justify-content: center; margin: 0 !important; padding: 0 !important; width: 100% !important;}
-        .tt-table [data-testid="stCheckbox"] label { min-height: 0 !important; padding: 0 !important; gap: 0 !important; }
-        .tt-table [data-testid="stCheckbox"] div[role="checkbox"] { margin: 0 auto !important; }
-        .tt-table [data-testid="stCheckbox"] p { display: none !important; }
     </style>
 """, unsafe_allow_html=True)
 
 GAS_URL = "https://script.google.com/macros/s/AKfycby7hAc1_dhSQ_tJzSiJeSc2Ez7pgaeVTrVL5fOIZPNNZ-_YLke236yGgCgj3yijhQHh/exec"
 
-# ==========================================
-# コンポーネント (rt_editor, options_editor, grid_editor)
-# ==========================================
-
+# Editor HTML declarations (省略せずにそのまま使用)
 os.makedirs("rt_editor", exist_ok=True)
 with open("rt_editor/index.html", "w", encoding="utf-8") as f:
-    f.write("""
-    <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        body { font-family: sans-serif; margin: 0; padding: 0; background: transparent;}
-        .editor-container { border: 1px solid #ccc; border-radius: 6px; overflow: hidden; background: #fff; }
-        .toolbar { background: #f8f9fb; padding: 6px; border-bottom: 1px solid #ccc; display: flex; gap: 5px; flex-wrap: wrap; align-items: center; }
-        .toolbar button { background: #fff; border: 1px solid #ccc; border-radius: 4px; padding: 4px 10px; font-size: 13px; cursor: pointer; color: #333; transition: 0.2s; }
-        .toolbar button:hover { background: #e9ecef; }
-        textarea { width: 100%; height: 120px; border: none; padding: 10px; font-size: 14px; resize: vertical; outline: none; box-sizing: border-box; font-family: inherit; line-height: 1.5; }
-    </style></head><body>
-    <div class="editor-container">
-        <div class="toolbar">
-            <button onclick="insertTag('<b>', '</b>')" title="太字"><b>B</b> 太字</button>
-            <button onclick="insertTag('<i>', '</i>')" title="斜体"><i>I</i> 斜体</button>
-            <div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div>
-            <button onclick="insertRed()" title="赤文字"><span style="color:#FF4B4B; font-weight:bold;">A</span> 赤</button>
-            <button onclick="insertBlue()" title="青文字"><span style="color:#2196F3; font-weight:bold;">A</span> 青</button>
-            <div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div>
-            <button onclick="insertLink()" title="リンク">🔗 リンク追加</button>
-        </div>
-        <textarea id="editor" placeholder="📝 イベントの説明や注意事項を入力..."></textarea>
-    </div>
-    <script>
-        function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
-        function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
-        function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
-        const editor = document.getElementById('editor'); let timer;
-        function sendValue() { setComponentValue(editor.value); }
-        function insertTag(startTag, endTag) {
-            const start = editor.selectionStart; const end = editor.selectionEnd; const val = editor.value; const selected = val.substring(start, end);
-            editor.value = val.substring(0, start) + startTag + selected + endTag + val.substring(end); editor.focus();
-            editor.selectionStart = start + startTag.length; editor.selectionEnd = end + startTag.length; sendValue();
-        }
-        function insertRed() { insertTag("<span style='color:#FF4B4B; font-weight:bold;'>", "</span>"); }
-        function insertBlue() { insertTag("<span style='color:#2196F3; font-weight:bold;'>", "</span>"); }
-        function insertLink() {
-            const url = prompt('リンク先のURLを入力', 'https://');
-            if (url) { const text = prompt('表示するテキストを入力', 'こちらをクリック'); if (text) { const linkTag = `<a href='${url}' target='_blank'>${text}</a>`; const start = editor.selectionStart; const val = editor.value; editor.value = val.substring(0, start) + linkTag + val.substring(editor.selectionEnd); sendValue(); } }
-        }
-        editor.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(sendValue, 500); });
-        editor.addEventListener('blur', sendValue);
-        window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 15}); } });
-        init();
-    </script></body></html>
-    """)
+    f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;margin:0;padding:0;background:transparent;}.editor-container{border:1px solid #ccc;border-radius:6px;overflow:hidden;background:#fff;}.toolbar{background:#f8f9fb;padding:6px;border-bottom:1px solid #ccc;display:flex;gap:5px;flex-wrap:wrap;align-items:center;}.toolbar button{background:#fff;border:1px solid #ccc;border-radius:4px;padding:4px 10px;font-size:13px;cursor:pointer;color:#333;transition:0.2s;}.toolbar button:hover{background:#e9ecef;}textarea{width:100%;height:120px;border:none;padding:10px;font-size:14px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;line-height:1.5;}</style></head><body><div class="editor-container"><div class="toolbar"><button onclick="insertTag('<b>', '</b>')" title="太字"><b>B</b> 太字</button><button onclick="insertTag('<i>', '</i>')" title="斜体"><i>I</i> 斜体</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertRed()" title="赤文字"><span style="color:#FF4B4B; font-weight:bold;">A</span> 赤</button><button onclick="insertBlue()" title="青文字"><span style="color:#2196F3; font-weight:bold;">A</span> 青</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertLink()" title="リンク">🔗 リンク追加</button></div><textarea id="editor" placeholder="📝 イベントの説明や注意事項を入力..."></textarea></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } const editor = document.getElementById('editor'); let timer; function sendValue() { setComponentValue(editor.value); } function insertTag(startTag, endTag) { const start = editor.selectionStart; const end = editor.selectionEnd; const val = editor.value; const selected = val.substring(start, end); editor.value = val.substring(0, start) + startTag + selected + endTag + val.substring(end); editor.focus(); editor.selectionStart = start + startTag.length; editor.selectionEnd = end + startTag.length; sendValue(); } function insertRed() { insertTag("<span style='color:#FF4B4B; font-weight:bold;'>", "</span>"); } function insertBlue() { insertTag("<span style='color:#2196F3; font-weight:bold;'>", "</span>"); } function insertLink() { const url = prompt('リンク先のURLを入力', 'https://'); if (url) { const text = prompt('表示するテキストを入力', 'こちらをクリック'); if (text) { const linkTag = `<a href='${url}' target='_blank'>${text}</a>`; const start = editor.selectionStart; const val = editor.value; editor.value = val.substring(0, start) + linkTag + val.substring(editor.selectionEnd); sendValue(); } } } editor.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(sendValue, 500); }); editor.addEventListener('blur', sendValue); window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 15}); } }); init();</script></body></html>""")
 rt_editor = components.declare_component("rt_editor", path="rt_editor")
-
 
 os.makedirs("options_editor", exist_ok=True)
 with open("options_editor/index.html", "w", encoding="utf-8") as f:
-    f.write("""
-    <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{margin:0;font-family:sans-serif;}
-    .opt-card { background:#fff; border:1px solid #e0e0e0; border-radius:12px; padding:15px; margin-bottom:15px; box-shadow:0 2px 5px rgba(0,0,0,0.05); }
-    .opt-title { font-size:18px; font-weight:bold; color:#2e7d32; margin-bottom:15px; text-align:center; }
-    .btn-group { display:flex; gap:12px; }
-    .opt-btn { flex:1; padding:20px 0; border-radius:12px; border:2px solid #ddd; background:#fff; font-size:18px; font-weight:bold; cursor:pointer; transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275); color:#555; text-align:center; }
-    .opt-btn[data-v="1"].active { background:#4CAF50; color:#fff; border-color:#4CAF50; box-shadow:0 6px 12px rgba(76,175,80,0.4); transform: translateY(-3px); }
-    .opt-btn[data-v="2"].active { background:#FFEB3B; color:#333; border-color:#FBC02D; box-shadow:0 6px 12px rgba(255,235,59,0.4); transform: translateY(-3px); }
-    .opt-btn[data-v="0"].active { background:#f5f5f5; color:#777; border-color:#ccc; transform: translateY(-3px); }
-    #submit-btn { width: 100%; padding: 18px; background-color: #FF4B4B; color: white; border: none; border-radius: 12px; font-size: 20px; cursor: pointer; font-weight: bold; box-shadow: 0 6px 12px rgba(0,0,0,0.15); margin-top: 10px; transition:0.2s; }
-    #submit-btn:hover { background-color: #e63946; transform: translateY(-2px); }
-    textarea { width: 100%; padding: 15px; border: 1px solid #ccc; border-radius: 12px; font-family: inherit; font-size: 16px; margin-bottom:10px; resize:vertical; box-sizing: border-box; }
-    </style></head><body>
-    <div id="content"></div>
-    <script>
-    function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
-    function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
-    function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
-
-    let optsData = [];
-    let myComment = "";
-    
-    window.addEventListener("message", function(event) {
-        if (event.data.type === "streamlit:render") {
-            const args = event.data.args;
-            if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; 
-            window.lastEventId = args.eventId;
-            window.lastSaveTs = args.saveTs;
-            
-            const opts = args.options;
-            const myAnsBin = args.myAnsBin;
-            myComment = args.myComment || "";
-            const isClosed = args.isClosed;
-            
-            let html = "";
-            optsData = [];
-            
-            opts.forEach((opt, i) => {
-                let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0;
-                optsData.push(v);
-                let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : "";
-                
-                html += `
-                <div class="opt-card" style="${pointerEv}">
-                    <div class="opt-title">📅 ${opt}</div>
-                    <div class="btn-group" id="group-${i}">
-                        <button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button>
-                        <button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button>
-                        <button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button>
-                    </div>
-                </div>`;
-            });
-            
-            if(!isClosed) {
-                html += `
-                <div class="opt-card">
-                    <div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div>
-                    <textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea>
-                    <button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button>
-                </div>`;
-            } else {
-                html += `
-                <div class="opt-card">
-                    <div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div>
-                    <div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div>
-                </div>`;
-            }
-            
-            document.getElementById("content").innerHTML = html;
-            setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
-        }
-    });
-    
-    window.setOpt = function(idx, val) {
-        optsData[idx] = val;
-        const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn');
-        btns.forEach(b => b.classList.remove('active'));
-        document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active');
-    };
-    
-    window.submitData = function() {
-        const btn = document.getElementById("submit-btn");
-        btn.innerText = "⏳ 保存処理中...";
-        btn.style.pointerEvents = "none";
-        const comment = document.getElementById("comment-box").value;
-        setComponentValue({
-            trigger_save: true,
-            binary: optsData.join(''),
-            comment: comment,
-            ts: Date.now()
-        });
-    };
-    init();
-    </script></body></html>
-    """)
+    f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#FFEB3B;color:#333;border-color:#FBC02D;box-shadow:0 6px 12px rgba(255,235,59,0.4);transform:translateY(-3px);}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
-
 
 os.makedirs("custom_editor", exist_ok=True)
 with open("custom_editor/index.html", "w", encoding="utf-8") as f:
-    f.write("""
-    <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-    body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
-    .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; text-align: center; line-height: 1.1; }
-    .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
-    
-    #detail-modal { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.5); z-index: 999999; justify-content: center; align-items: center; backdrop-filter: blur(2px); }
-    .modal-content { background: #fff; width: 320px; padding: 20px; border-radius: 12px; box-shadow: 0 8px 24px rgba(0,0,0,0.2); position: relative; }
-    .modal-title { font-size: 16px; font-weight: bold; color: #333; margin-bottom: 10px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; }
-    .modal-label { font-size: 12px; font-weight: bold; color: #666; margin-top: 15px; display: block; }
-    .modal-select, .modal-input { width: 100%; padding: 8px; margin-top: 5px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; }
-    
-    .status-switch { display: flex; gap: 8px; margin-top: 5px; }
-    .sw-btn { flex: 1; padding: 8px; border: 1px solid #ddd; border-radius: 6px; cursor: pointer; font-size: 13px; font-weight: bold; background: #f9f9f9; color: #555; transition: 0.2s; }
-    .sw-btn.active[data-v="1"] { background: #4CAF50; color: white; border-color: #4CAF50; }
-    .sw-btn.active[data-v="2"] { background: #FFEB3B; color: #333; border-color: #FBC02D; }
-    .sw-btn.active[data-v="0"] { background: #fff; color: #333; border-color: #999; }
-    
-    .modal-btns { display: flex; gap: 10px; margin-top: 20px; }
-    .modal-btn-save { flex: 1; background: #4CAF50; color: white; border: none; padding: 12px; border-radius: 6px; font-weight: bold; cursor: pointer; }
-    .modal-btn-save:hover { background: #45a049; }
-    
-    .memo-icon { position: absolute; top: 1px; right: 2px; font-size: 10px; line-height: 1; filter: drop-shadow(1px 1px 1px rgba(255,255,255,0.8)); pointer-events: none;}
-    .c { position: relative; transition: filter 0.1s; }
-    
-    @keyframes pressAnim {
-        0% { transform: scale(1); filter: brightness(1); }
-        100% { transform: scale(0.92); filter: brightness(0.8); box-shadow: inset 0 4px 8px rgba(0,0,0,0.3); }
-    }
-    .pressing { animation: pressAnim 0.4s forwards; z-index: 100; }
-    
-    #palette-header { background: #eee; border-radius: 8px 8px 0 0; margin: -12px -8px 8px -8px; padding: 8px; font-size: 12px; font-weight: bold; color: #555; text-align: center; cursor: move; user-select: none; }
-    </style></head><body>
-    
-    <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
-        <div id="palette-header">🤚 ドラッグ移動</div>
-        <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff; font-size:11px;">可</button>
-        <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333; font-size:11px;">未定</button>
-        <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:11px;">消す</button>
-    </div>
-
-    <div id="detail-modal">
-        <div class="modal-content" id="modal-content-box">
-            <div class="modal-title" id="modal-cell-title">詳細設定</div>
-            
-            <label class="modal-label">🚥 予定のステータス</label>
-            <div class="status-switch">
-                <button class="sw-btn" data-v="1" onclick="setModalStatus(1)">◯ 可</button>
-                <button class="sw-btn" data-v="2" onclick="setModalStatus(2)">△ 未定</button>
-                <button class="sw-btn" data-v="0" onclick="setModalStatus(0)">× 不可</button>
-            </div>
-            
-            <label class="modal-label">🏫 キャンパスの指定</label>
-            <select id="modal-campus" class="modal-select">
-                <option value="">指定なし</option>
-                <option value="なかもず">なかもず</option>
-                <option value="すぎもと">すぎもと</option>
-                <option value="あべの">あべの</option>
-                <option value="りんくう">りんくう</option>
-                <option value="もりのみや">もりのみや</option>
-                <option value="その他/移動中">その他 / 移動中</option>
-            </select>
-            
-            <label class="modal-label">📝 補足コメント (任意)</label>
-            <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
-            
-            <div class="modal-btns">
-                <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
-            </div>
-            <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
-        </div>
-    </div>
-
-    <div id="content"></div><script>
-    function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
-    function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
-    function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
-
-    let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
-    window.cellDetails = {}; 
-    let defaultCampus = ""; 
-    let modalStatus = 1;
-
-    const palette = document.getElementById('palette');
-    const pHeader = document.getElementById('palette-header');
-    let isDraggingPalette = false; let offsetX, offsetY;
-
-    pHeader.addEventListener('mousedown', e => { isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; });
-    window.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
-    window.addEventListener('mouseup', () => { isDraggingPalette = false; });
-    pHeader.addEventListener('touchstart', e => { isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false});
-    window.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
-    window.addEventListener('touchend', () => { isDraggingPalette = false; });
-
-    const modalBg = document.getElementById('detail-modal');
-    modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
-    modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
-
-    window.setModalStatus = function(v) {
-        modalStatus = v;
-        document.querySelectorAll('.sw-btn').forEach(b => {
-            b.classList.toggle('active', parseInt(b.dataset.v) === v);
-        });
-    };
-
-    window.upd = function(el, v) { 
-        el.dataset.v = v; 
-        const key = `${el.dataset.r}_${el.dataset.c}`;
-        
-        let detail = window.cellDetails[key];
-        
-        if (v == 0) {
-            if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) {
-                // そのまま保持
-            } else {
-                delete window.cellDetails[key];
-                detail = null;
-            }
-        } 
-        else if (v == 1 || v == 2) {
-            if (!detail && defaultCampus) {
-                window.cellDetails[key] = {campus: defaultCampus, note: ""};
-                detail = window.cellDetails[key];
-            }
-            if (detail && detail.campus === defaultCampus && !detail.note) {
-                delete window.cellDetails[key];
-                detail = null;
-            }
-        }
-
-        let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : "");
-        let note = detail ? detail.note : "";
-        let bgImage = 'none';
-        let bgColor = '#fff';
-
-        if (v == 1) bgColor = '#4CAF50';
-        else if (v == 2) bgColor = '#FFEB3B';
-        else if (v == 3) bgColor = '#e0e0e0';
-
-        if (v == 1 || v == 2 || v == 3 || (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用"))) {
-            let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
-            let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)';
-            
-            if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) {
-                bgImage = `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px)`;
-            } else if (campus === "すぎもと" || campus === "杉本") {
-                bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
-            } else if (campus === "あべの" || campus === "阿倍野") {
-                bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`;
-            } else if (campus === "りんくう") {
-                bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`;
-            } else if (campus === "もりのみや") {
-                bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`;
-            } else if (campus === "その他/移動中") {
-                bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`;
-            } else if (v == 3 && !campus) {
-                bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; 
-            }
-        }
-
-        el.style.background = bgColor;
-        el.style.backgroundImage = bgImage;
-        if (campus === "りんくう" && v !== 0) el.style.backgroundSize = '10px 10px';
-        else el.style.backgroundSize = 'auto';
-
-        const existingIcon = el.querySelector('.memo-icon');
-        const hasManualSetting = detail && (detail.note !== "" || (detail.campus && detail.campus !== defaultCampus));
-        
-        if (hasManualSetting) {
-            if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>');
-        } else {
-            if (existingIcon) existingIcon.remove();
-        }
-    };
-    
-    window.renderWeek = function() {
-        const start = currentWeek * 7; const end = start + 7;
-        document.querySelectorAll('.day-col').forEach(el => {
-            const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none';
-        });
-        const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
-        if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
-        setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
-    };
-    window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
-    
-    window.doBulk = function(btnEl) {
-        const val = document.getElementById('b-val').value;
-        const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value);
-        if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; }
-        document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, val); } } });
-        const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
-    };
-    window.doCopy = function(btnEl) {
-        const srcIdx = parseInt(document.getElementById('c-src').value);
-        let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); }
-        let copied = false;
-        document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, srcData[r]); } } } });
-        if(!copied) { alert('コピー先を選択してください。'); return; }
-        const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
-    };
-    
-    window.doTimetable = function(btnEl) {
-        if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; }
-        for(let c = 0; c < totalDays; c++) {
-            let key = String(c);
-            if (unavailColRows[key]) {
-                unavailColRows[key].forEach(item => {
-                    const r = (typeof item === 'object') ? item.row : item;
-                    const campus = (typeof item === 'object') ? item.campus : "";
-                    const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
-                    if(cell) {
-                        const cellKey = `${r}_${c}`;
-                        if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") {
-                            window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"};
-                            window.upd(cell, 0); 
-                        } else if (campus) {
-                            window.cellDetails[cellKey] = {campus: campus, note: "定期授業"};
-                            window.upd(cell, 3);
-                        } else {
-                            window.upd(cell, 3);
-                        }
-                    }
-                });
-            }
-        }
-        const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000);
-    };
-    
-    window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
-    document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
-
-    let selectedMode = 1;
-    window.setPen = function(mode) {
-        selectedMode = mode;
-        [0, 1, 2].forEach(m => {
-            const b = document.getElementById('pen-' + m);
-            b.classList.remove('active');
-        });
-        document.getElementById('pen-' + mode).classList.add('active');
-    };
-
-    let editingCell = null;
-    window.openModal = function(cell) {
-        editingCell = cell;
-        const r = cell.dataset.r; const c = cell.dataset.c;
-        const key = `${r}_${c}`;
-        const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""};
-        
-        setModalStatus(parseInt(cell.dataset.v) || 1);
-        
-        document.getElementById('modal-campus').value = detail.campus || "";
-        document.getElementById('modal-note').value = detail.note || "";
-        document.getElementById('detail-modal').style.display = 'flex';
-    };
-
-    window.closeModal = function() {
-        document.getElementById('detail-modal').style.display = 'none';
-        if (editingCell) {
-            editingCell.classList.remove('pressing');
-            editingCell = null;
-        }
-    };
-
-    window.saveModal = function() {
-        if(!editingCell) return;
-        const r = editingCell.dataset.r; const c = editingCell.dataset.c;
-        const key = `${r}_${c}`;
-        const campus = document.getElementById('modal-campus').value;
-        const note = document.getElementById('modal-note').value.trim();
-
-        if(campus || note || modalStatus === 0) {
-            window.cellDetails[key] = {campus: campus, note: note};
-            window.upd(editingCell, modalStatus);
-        } else {
-            delete window.cellDetails[key];
-            window.upd(editingCell, modalStatus);
-        }
-        closeModal();
-    };
-
-    window.addEventListener("message", function(event) {
-        if (event.data.type === "streamlit:render") {
-            const args = event.data.args; 
-            document.getElementById("content").innerHTML = args.html_code;
-            totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
-            window.cellDetails = args.cellDetails || {};
-            defaultCampus = args.defaultCampus || ""; 
-            
-            document.getElementById('pen-1').innerHTML = defaultCampus ? `可<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可";
-            
-            if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
-            window.renderWeek();
-            
-            if(args.isClosed) { document.getElementById('palette').style.display = 'none'; return; } 
-            else { document.getElementById('palette').style.display = 'flex'; }
-            
-            window.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true });
-
-            const g = document.getElementById('g'); if(!g) return;
-            
-            let down = false; let isErasing = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0;
-            
-            const handleStart = (e, x, y, shift) => {
-                const cell = e.target.closest('.c');
-                if(!cell) return; 
-                
-                down = true; isErasing = shift; isLongPress = false; startX = x; startY = y;
-                window.upd(cell, isErasing ? 0 : selectedMode); 
-                cell.classList.add('pressing'); 
-                
-                pressTimer = setTimeout(() => {
-                    isLongPress = true; down = false; cell.classList.remove('pressing'); openModal(cell);
-                }, 400);
-            };
-
-            const handleMove = (e, x, y) => {
-                if(!down) return;
-                if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) {
-                    clearTimeout(pressTimer);
-                    document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing'));
-                }
-                if(!isLongPress) {
-                    const cell = document.elementFromPoint(x, y)?.closest('.c');
-                    if(cell) window.upd(cell, selectedMode); 
-                }
-            };
-
-            const handleEnd = () => {
-                if (down && pressTimer) clearTimeout(pressTimer);
-                document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); 
-                down = false;
-            };
-
-            g.onmousedown = e => handleStart(e, e.clientX, e.clientY, e.shiftKey);
-            g.onmousemove = e => handleMove(e, e.clientX, e.clientY);
-            window.onmouseup = handleEnd;
-            window.onmouseleave = handleEnd; 
-
-            g.addEventListener('touchstart', e => { 
-                handleStart(e, e.touches[0].clientX, e.touches[0].clientY, false);
-                if(!isLongPress) e.preventDefault(); 
-            }, {passive: false});
-            
-            g.addEventListener('touchmove', e => { 
-                if(down) { handleMove(e, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }
-            }, {passive: false});
-            
-            g.addEventListener('touchend', handleEnd);
-            
-            const btn = document.getElementById("submit-btn");
-            if(btn) { btn.onclick = () => { 
-                const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); 
-                const commentText = document.getElementById("comment-box").value; 
-                setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
-                btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; document.getElementById('palette').style.display = 'none'; 
-            }; }
-            
-            document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
-        }
-    }); init(); </script></body></html>
-    """)
+    f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;} .pen-btn{padding:0;border-radius:50%;width:45px;height:45px;border:none;cursor:pointer;font-weight:bold;font-size:14px;transition:0.2s;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.15);margin:0 auto;text-align:center;line-height:1.1;} .pen-btn.active{border:3px solid #333 !important;transform:scale(1.1);box-shadow:0 4px 8px rgba(0,0,0,0.3);} #detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999999;justify-content:center;align-items:center;backdrop-filter:blur(2px);} .modal-content{background:#fff;width:320px;padding:20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);position:relative;} .modal-title{font-size:16px;font-weight:bold;color:#333;margin-bottom:10px;border-bottom:2px solid #4CAF50;padding-bottom:5px;} .modal-label{font-size:12px;font-weight:bold;color:#666;margin-top:15px;display:block;} .modal-select, .modal-input{width:100%;padding:8px;margin-top:5px;border:1px solid #ccc;border-radius:6px;font-size:14px;} .status-switch{display:flex;gap:8px;margin-top:5px;} .sw-btn{flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;background:#f9f9f9;color:#555;transition:0.2s;} .sw-btn.active[data-v="1"]{background:#4CAF50;color:white;border-color:#4CAF50;} .sw-btn.active[data-v="2"]{background:#FFEB3B;color:#333;border-color:#FBC02D;} .sw-btn.active[data-v="0"]{background:#fff;color:#333;border-color:#999;} .modal-btns{display:flex;gap:10px;margin-top:20px;} .modal-btn-save{flex:1;background:#4CAF50;color:white;border:none;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;} .modal-btn-save:hover{background:#45a049;} .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;} .c{position:relative;transition:filter 0.1s;} @keyframes pressAnim{0%{transform:scale(1);filter:brightness(1);} 100%{transform:scale(0.92);filter:brightness(0.8);box-shadow:inset 0 4px 8px rgba(0,0,0,0.3);}} .pressing{animation:pressAnim 0.4s forwards;z-index:100;} #palette-header{background:#eee;border-radius:8px 8px 0 0;margin:-12px -8px 8px -8px;padding:8px;font-size:12px;font-weight:bold;color:#555;text-align:center;cursor:move;user-select:none;}</style></head><body><div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);"><div id="palette-header">🤚 ドラッグ移動</div><button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff; font-size:11px;">可</button><button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333; font-size:11px;">未定</button><button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:11px;">消す</button></div><div id="detail-modal"><div class="modal-content" id="modal-content-box"><div class="modal-title" id="modal-cell-title">詳細設定</div><label class="modal-label">🚥 予定のステータス</label><div class="status-switch"><button class="sw-btn" data-v="1" onclick="setModalStatus(1)">◯ 可</button><button class="sw-btn" data-v="2" onclick="setModalStatus(2)">△ 未定</button><button class="sw-btn" data-v="0" onclick="setModalStatus(0)">× 不可</button></div><label class="modal-label">🏫 キャンパスの指定</label><select id="modal-campus" class="modal-select"><option value="">指定なし</option><option value="なかもず">なかもず</option><option value="すぎもと">すぎもと</option><option value="あべの">あべの</option><option value="りんくう">りんくう</option><option value="もりのみや">もりのみや</option><option value="その他/移動中">その他 / 移動中</option></select><label class="modal-label">📝 補足コメント (任意)</label><input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延"><div class="modal-btns"><button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button></div><div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div></div></div><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {}; window.cellDetails = {}; let defaultCampus = ""; let modalStatus = 1; const palette = document.getElementById('palette'); const pHeader = document.getElementById('palette-header'); let isDraggingPalette = false; let offsetX, offsetY; pHeader.addEventListener('mousedown', e => { isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; }); window.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; }); window.addEventListener('mouseup', () => { isDraggingPalette = false; }); pHeader.addEventListener('touchstart', e => { isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false}); window.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false}); window.addEventListener('touchend', () => { isDraggingPalette = false; }); const modalBg = document.getElementById('detail-modal'); modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); }); modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true}); window.setModalStatus = function(v) { modalStatus = v; document.querySelectorAll('.sw-btn').forEach(b => { b.classList.toggle('active', parseInt(b.dataset.v) === v); }); }; window.upd = function(el, v) { el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key]; if (v == 0) { if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { } else { delete window.cellDetails[key]; detail = null; } } else if (v == 1 || v == 2) { if (!detail && defaultCampus) { window.cellDetails[key] = {campus: defaultCampus, note: ""}; detail = window.cellDetails[key]; } if (detail && detail.campus === defaultCampus && !detail.note) { delete window.cellDetails[key]; detail = null; } } let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : ""); let note = detail ? detail.note : ""; let bgImage = 'none'; let bgColor = '#fff'; if (v == 1) bgColor = '#4CAF50'; else if (v == 2) bgColor = '#FFEB3B'; else if (v == 3) bgColor = '#e0e0e0'; if (v == 1 || v == 2 || v == 3 || (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用"))) { let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)'; let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)'; if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px)`; } else if (campus === "すぎもと" || campus === "杉本") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; } else if (campus === "あべの" || campus === "阿倍野") { bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`; } else if (campus === "りんくう") { bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`; } else if (campus === "もりのみや") { bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; } else if (campus === "その他/移動中") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`; } else if (v == 3 && !campus) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; } } el.style.background = bgColor; el.style.backgroundImage = bgImage; if (campus === "りんくう" && v !== 0) el.style.backgroundSize = '10px 10px'; else el.style.backgroundSize = 'auto'; const existingIcon = el.querySelector('.memo-icon'); const hasManualSetting = detail && (detail.note !== "" || (detail.campus && detail.campus !== defaultCampus)); if (hasManualSetting) { if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>'); } else { if (existingIcon) existingIcon.remove(); } }; window.renderWeek = function() { const start = currentWeek * 7; const end = start + 7; document.querySelectorAll('.day-col').forEach(el => { const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none'; }); const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next'); if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays); setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150); }; window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); }; window.doBulk = function(btnEl) { const val = document.getElementById('b-val').value; const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value); if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; } document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, val); } } }); const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500); }; window.doCopy = function(btnEl) { const srcIdx = parseInt(document.getElementById('c-src').value); let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); } let copied = false; document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, srcData[r]); } } } }); if(!copied) { alert('コピー先を選択してください。'); return; } const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500); }; window.doTimetable = function(btnEl) { if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; } for(let c = 0; c < totalDays; c++) { let key = String(c); if (unavailColRows[key]) { unavailColRows[key].forEach(item => { const r = (typeof item === 'object') ? item.row : item; const campus = (typeof item === 'object') ? item.campus : ""; const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`); if(cell) { const cellKey = `${r}_${c}`; if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") { window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"}; window.upd(cell, 0); } else if (campus) { window.cellDetails[cellKey] = {campus: campus, note: "定期授業"}; window.upd(cell, 3); } else { window.upd(cell, 3); } } }); } } const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000); }; window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; }; document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } }); let selectedMode = 1; window.setPen = function(mode) { selectedMode = mode; [0, 1, 2].forEach(m => { const b = document.getElementById('pen-' + m); b.classList.remove('active'); }); document.getElementById('pen-' + mode).classList.add('active'); }; let editingCell = null; window.openModal = function(cell) { editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`; const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""}; setModalStatus(parseInt(cell.dataset.v) || 1); document.getElementById('modal-campus').value = detail.campus || ""; document.getElementById('modal-note').value = detail.note || ""; document.getElementById('detail-modal').style.display = 'flex'; }; window.closeModal = function() { document.getElementById('detail-modal').style.display = 'none'; if (editingCell) { editingCell.classList.remove('pressing'); editingCell = null; } }; window.saveModal = function() { if(!editingCell) return; const r = editingCell.dataset.r; const c = editingCell.dataset.c; const key = `${r}_${c}`; const campus = document.getElementById('modal-campus').value; const note = document.getElementById('modal-note').value.trim(); if(campus || note || modalStatus === 0) { window.cellDetails[key] = {campus: campus, note: note}; window.upd(editingCell, modalStatus); } else { delete window.cellDetails[key]; window.upd(editingCell, modalStatus); } closeModal(); }; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; document.getElementById("content").innerHTML = args.html_code; totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {}; window.cellDetails = args.cellDetails || {}; defaultCampus = args.defaultCampus || ""; document.getElementById('pen-1').innerHTML = defaultCampus ? `可<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可"; if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; } window.renderWeek(); if(args.isClosed) { document.getElementById('palette').style.display = 'none'; return; } else { document.getElementById('palette').style.display = 'flex'; } window.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true }); const g = document.getElementById('g'); if(!g) return; let down = false; let isErasing = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0; const handleStart = (e, x, y, shift) => { const cell = e.target.closest('.c'); if(!cell) return; down = true; isErasing = shift; isLongPress = false; startX = x; startY = y; window.upd(cell, isErasing ? 0 : selectedMode); cell.classList.add('pressing'); pressTimer = setTimeout(() => { isLongPress = true; down = false; cell.classList.remove('pressing'); openModal(cell); }, 400); }; const handleMove = (e, x, y) => { if(!down) return; if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) { clearTimeout(pressTimer); document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); } if(!isLongPress) { const cell = document.elementFromPoint(x, y)?.closest('.c'); if(cell) window.upd(cell, selectedMode); } }; const handleEnd = () => { if (down && pressTimer) clearTimeout(pressTimer); document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); down = false; }; g.onmousedown = e => handleStart(e, e.clientX, e.clientY, e.shiftKey); g.onmousemove = e => handleMove(e, e.clientX, e.clientY); window.onmouseup = handleEnd; window.onmouseleave = handleEnd; g.addEventListener('touchstart', e => { handleStart(e, e.touches[0].clientX, e.touches[0].clientY, false); if(!isLongPress) e.preventDefault(); }, {passive: false}); g.addEventListener('touchmove', e => { if(down) { handleMove(e, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); } }, {passive: false}); g.addEventListener('touchend', handleEnd); const btn = document.getElementById("submit-btn"); if(btn) { btn.onclick = () => { const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); const commentText = document.getElementById("comment-box").value; setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; document.getElementById('palette').style.display = 'none'; }; } document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); }); } }); init(); </script></body></html>""")
 grid_editor = components.declare_component("grid_editor", path="custom_editor")
 
 # ==========================================
@@ -741,20 +226,6 @@ def call_gas(action, payload=None, method="GET"):
     except Exception as e: 
         return {"status": "error", "message": str(e)}
 
-def call_gas_cached(action, payload=None, method="GET", ttl=600):
-    if "api_cache" not in st.session_state: st.session_state.api_cache = {}
-    cache_key = f"{action}_{json.dumps(payload, sort_keys=True) if payload else ''}"
-    now = datetime.now()
-    if cache_key in st.session_state.api_cache:
-        cached_res, ts = st.session_state.api_cache[cache_key]
-        if (now - ts).total_seconds() < ttl: return cached_res
-    res = call_gas(action, payload, method)
-    if res.get("status") == "success": st.session_state.api_cache[cache_key] = (res, now)
-    return res
-
-def clear_cache():
-    if "api_cache" in st.session_state: st.session_state.api_cache.clear()
-
 def idx_to_time(i): return f"{(i*15)//60:02d}:{(i*15)%60:02d}"
 time_master = [idx_to_time(i) for i in range(96)]
 
@@ -775,7 +246,6 @@ def format_deadline_jp(date_str):
     except Exception as e:
         return str(date_str)
 
-# キャンパス模様のサンプル用HTML
 campus_legend_html = """
 <div style="margin: 20px 0; padding: 15px; background: #fff; border-radius: 10px; border: 2px solid #4CAF50; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
     <strong style="display:block; margin-bottom:12px; color:#2e7d32; font-size:15px;">🎨 キャンパスごとの模様（色見本）</strong>
@@ -884,10 +354,10 @@ def main():
                     n = st.text_input("氏名", autocomplete="username")
                     p = st.text_input("PIN", type="password", autocomplete="current-password")
                     if st.form_submit_button("ログイン", use_container_width=True, type="primary"):
-                        # [爆速] Firestoreから直接認証
-                        auth_user = check_auth_firestore(n, p)
-                        if auth_user:
-                            st.session_state.auth = auth_user
+                        # 💡 確実・安全にGAS(スプレッドシート)で認証を行う
+                        res = call_gas("check_auth", {"name": n, "pin": p}, method="POST")
+                        if res.get("status") == "success":
+                            st.session_state.auth = res.get("data")
                             st.rerun()
                         else:
                             st.error("認証失敗: 氏名またはPINが間違っています")
@@ -910,7 +380,7 @@ def main():
                         st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
                     else:
                         payload = {"name": clean_name, "pin": reg_p, "secret_word": reg_s, "group_1": ", ".join(g1), "group_2": ", ".join(g2), "group_3": ", ".join(g3), "group_4": ""}
-                        # 生成はGASと同期（ID一意性担保のため）
+                        # 生成はGASと同期
                         res = call_gas("register_user", {"payload": payload}, method="POST")
                         if res.get("status") == "success":
                             new_u = res.get("data")
@@ -931,11 +401,6 @@ def main():
                         if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
                             res = call_gas("recover_account", {"payload": {"name": rec_n.replace(" ","").replace("　",""), "secret_word": rec_s, "new_pin": new_p}}, method="POST")
                             if res.get("status") == "success":
-                                # Firestoreも更新
-                                user_docs = list(db.collection("users").where("name", "==", rec_n.replace(" ","").replace("　","")).stream())
-                                if user_docs:
-                                    u_id = str(user_docs[0].to_dict().get("user_id"))
-                                    db.collection("users").document(u_id).update({"pin": f"'{new_p}"})
                                 st.success("✅ 更新成功！新しいPINでログインできます。")
                             else:
                                 st.error("氏名または合言葉が間違っています。")
@@ -1029,7 +494,6 @@ def main():
                     box-shadow: 0 4px 6px rgba(0,0,0,0.05); animation: fadeIn 0.5s ease-in-out;
                 }
                 .mobile-rotate-guide::before { content: "📱🔄"; font-size: 20px; margin-right: 10px; }
-                @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
             }
             @media (max-width: 650px) {
                 [data-testid="stForm"] > div > div > [data-testid="stVerticalBlock"] {
@@ -1242,7 +706,6 @@ def main():
             target_scope_json = ""
             
             if not is_all_members:
-                # 爆速: Firestoreからユーザー一覧取得
                 all_u = [d.to_dict() for d in db.collection("users").stream()]
                 
                 all_g1 = sort_groups(list(set([g.strip() for u in all_u for g in u.get('group_1', '').split(',') if g.strip()])), MASTER_G1)
@@ -1295,17 +758,18 @@ def main():
                     mention_text = " ".join(mentions)
 
                 deadline_str = f"{deadline_date.strftime('%Y-%m-%d')} {deadline_time.strftime('%H:%M')}"
+                # 💡 スプレッドシート側の列名に完全一致させた Payload
                 payload = {
                     "title": ev_title, 
                     "description": ev_desc, 
                     "start_date": ev_start.strftime("%Y-%m-%d") if ev_type == "time" else "", 
                     "end_date": ev_end.strftime("%Y-%m-%d") if ev_type == "time" else "", 
-                    "start_idx": time_master.index(t_start) if ev_type == "time" else 0, 
-                    "end_idx": time_master.index(t_end) if ev_type == "time" else 0, 
+                    "start_time_idx": time_master.index(t_start) if ev_type == "time" else 0, 
+                    "end_time_idx": time_master.index(t_end) if ev_type == "time" else 0, 
                     "status": "open",
-                    "event_type": ev_type,
-                    "event_options": json.dumps([o.strip() for o in opts_list if o.strip()]) if ev_type == "options" else "",
-                    "deadline": deadline_str,
+                    "type": ev_type,
+                    "options_name": json.dumps([o.strip() for o in opts_list if o.strip()]) if ev_type == "options" else "",
+                    "close_time": deadline_str,
                     "auto_close": auto_close,
                     "target_scope": target_scope_json,
                     "is_private": is_private,
@@ -1365,10 +829,10 @@ def main():
             
             if all_events:
                 df_ev = pd.DataFrame(all_events)
-                df_ev['種類'] = df_ev['event_type'].replace({"time": "🕒 時間", "timetable": "🏫 時間割", "options": "📅 予定候補"})
-                df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row.get('start_idx', 0))}〜{idx_to_time(row.get('end_idx', 0))}" if row.get('event_type')=='time' else ("月〜金" if row.get('event_type')=='timetable' else "複数候補"), axis=1)
+                df_ev['種類'] = df_ev['type'].replace({"time": "🕒 時間", "timetable": "🏫 時間割", "options": "📅 予定候補"})
+                df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row.get('start_time_idx', 0))}〜{idx_to_time(row.get('end_time_idx', 0))}" if row.get('type')=='time' else ("月〜金" if row.get('type')=='timetable' else "複数候補"), axis=1)
                 
-                df_ev['期限'] = df_ev['deadline'].apply(format_deadline_jp)
+                df_ev['期限'] = df_ev['close_time'].apply(format_deadline_jp)
                 df_ev['公開範囲'] = df_ev['target_scope'].apply(format_target_scope)
                 df_ev['秘密'] = df_ev['is_private'].apply(lambda x: "🤫" if x else "-")
                 df_ev['招待URL'] = df_ev['event_id'].apply(lambda x: f"{APP_BASE_URL}?event={x}")
@@ -1397,7 +861,6 @@ def main():
                     check_ev = st.selectbox("確認するイベントを選択", active_events, format_func=lambda x: f"{x['title']} ({x['status']})", key="chk_unanswered")
                     if st.button("未回答者を抽出する", type="primary"):
                         with st.spinner("データを照合中..."):
-                            # Firestoreから爆速取得
                             ans_docs = db.collection("responses").where("event_id", "==", check_ev['event_id']).stream()
                             answered_uids = [str(d.to_dict().get("user_id")) for d in ans_docs]
 
@@ -1487,10 +950,7 @@ def main():
                             call_gas("admin_update_user", {"payload": {"user_id": tgt_user['user_id'], "new_pin": new_u_pin, "role": new_u_role}}, method="POST")
                             
                             updates = {"role": new_u_role}
-                            if new_u_pin and new_u_pin.strip() != "":
-                                updates["pin"] = f"'{new_u_pin}"
                             db.collection("users").document(str(tgt_user['user_id'])).update(updates)
-                            
                             st.rerun()
 
                 if user.get("role") == "top_admin":
@@ -1548,8 +1008,6 @@ def main():
     
     # 🚀 [爆速化の要] 読み込み通信はここで1回だけ (0.1秒)
     all_users_fs, events, user_map_fs = get_app_data_from_firestore(user)
-    
-    # 選択中のイベントの回答データを取得
     st.session_state.event_responses = fetch_responses_for_event(current_ev_id, user_map_fs) if current_ev_id else []
 
     if not events: 
@@ -1568,16 +1026,15 @@ def main():
         st.sidebar.markdown(f"<div style='color:#FF4B4B; font-weight:bold; padding-bottom: 5px;'>📢 未回答の予定 ({len(unanswered_events)}件)</div>", unsafe_allow_html=True)
         for u_ev in unanswered_events:
             is_urgent = False
-            if u_ev.get('deadline'):
+            if u_ev.get('close_time'):
                 try:
-                    dl_dt = pd.to_datetime(u_ev['deadline']).tz_localize(None)
+                    dl_dt = pd.to_datetime(u_ev['close_time']).tz_localize(None)
                     if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
                         is_urgent = True
-                except:
-                    pass
+                except: pass
             
             icon = "🔥" if is_urgent else "🔴"
-            dl_text = format_deadline_jp(u_ev.get('deadline'))
+            dl_text = format_deadline_jp(u_ev.get('close_time'))
             
             if st.sidebar.button(f"{icon} {u_ev.get('title', '')} (〜{dl_text})", key=f"side_btn_{u_ev.get('event_id')}", use_container_width=True):
                 st.session_state.target_ev_id = u_ev.get('event_id')
@@ -1598,7 +1055,7 @@ def main():
             st.session_state.target_ev_id = events[0].get('event_id')
 
     def format_ev_name(x):
-        dl_str = format_deadline_jp(x.get('deadline'))
+        dl_str = format_deadline_jp(x.get('close_time'))
         if x.get('status') == 'closed': 
             icon = "🔒"
         elif x.get('is_answered'): 
@@ -1606,8 +1063,8 @@ def main():
         else:
             is_urgent = False
             try:
-                if x.get('deadline'):
-                    dl_dt = pd.to_datetime(x['deadline']).tz_localize(None)
+                if x.get('close_time'):
+                    dl_dt = pd.to_datetime(x['close_time']).tz_localize(None)
                     if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
                         is_urgent = True
             except: pass
@@ -1631,8 +1088,8 @@ def main():
 
     if is_closed: 
         st.markdown("<div class='closed-alert' style='background:#ffebee; color:#c62828; padding:10px; border-radius:6px; font-weight:bold; margin-bottom:10px;'>🔒 このイベントは締め切られました。</div>", unsafe_allow_html=True)
-    elif event.get('deadline'): 
-        st.markdown(f"<div style='color: #E91E63; font-weight: bold; margin-bottom: 10px;'>⏳ 回答期限: {format_deadline_jp(event['deadline'])}</div>", unsafe_allow_html=True)
+    elif event.get('close_time'): 
+        st.markdown(f"<div style='color: #E91E63; font-weight: bold; margin-bottom: 10px;'>⏳ 回答期限: {format_deadline_jp(event['close_time'])}</div>", unsafe_allow_html=True)
         
     if event.get('description'): 
         st.markdown(f"<div class='event-desc'><b>📝 管理者からのメッセージ:</b><br><br>{event['description'].replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
@@ -1643,12 +1100,12 @@ def main():
     st.markdown("##### 🔗 このイベントの招待URL")
     st.code(f"{APP_BASE_URL}?event={event.get('event_id')}", language="text")
 
-    event_type = event.get('event_type', 'time')
+    event_type = event.get('type', 'time')
 
     # ＝＝＝＝＝ 🕒 時間帯 / 🏫 時間割 モード ＝＝＝＝＝
     if event_type in ['time', 'timetable']:
         if event_type == 'time':
-            s_idx, e_idx = int(event.get('start_idx', 0)), int(event.get('end_idx', 0))
+            s_idx, e_idx = int(event.get('start_time_idx', 0)), int(event.get('end_time_idx', 0))
             date_objs = []
             curr = datetime.strptime(event['start_date'], "%Y-%m-%d").date()
             end_d = datetime.strptime(event['end_date'], "%Y-%m-%d").date()
@@ -1710,16 +1167,13 @@ def main():
                     if u_rows: unavail_col_rows[str(c)] = u_rows
 
         if "df_input" not in st.session_state or st.session_state.get("last_build_ev_id") != event.get('event_id'):
-            if "event_responses" not in st.session_state:
-                st.session_state.event_responses = []
-                
             df = pd.DataFrame(0, index=time_labels, columns=date_strs)
             my_comment = ""
             for r in st.session_state.event_responses:
                 if str(r.get('user_id')) == str(user.get('user_id')):
                     d_id = r.get('date'); my_comment = r.get('comment', "")
                     if d_id in date_strs:
-                        b_str = str(r.get('binary', "")).replace("'", "").zfill(96)
+                        b_str = str(r.get('binary_data', "")).replace("'", "").zfill(96)
                         for i in range(len(time_labels)):
                             if event_type == 'time': v = int(b_str[s_idx + i]) if (s_idx + i) < len(b_str) else 0
                             else: v = int(b_str[i]) if i < len(b_str) else 0
@@ -1929,10 +1383,10 @@ def main():
                             else: bits[t_idx] = str(val)
                             
                         if has_data:
-                            all_res.append({"date": d_id, "binary": "".join(bits)})
+                            all_res.append({"date": d_id, "binary_data": "".join(bits)})
                             
                     if not all_res:
-                        all_res.append({"date": date_strs[0], "binary": "0"*96})
+                        all_res.append({"date": date_strs[0], "binary_data": "0"*96})
 
                     payload = {
                         "event_id": event.get("event_id"), 
@@ -2062,7 +1516,7 @@ def main():
                             continue
                             
                         c_idx = disp_date_strs.index(r['date'])
-                        b = str(r.get('binary', "")).replace("'", "").zfill(96)
+                        b = str(r.get('binary_data', "")).replace("'", "").zfill(96)
                         
                         cd = {}
                         if r.get('cell_details') and str(r.get('cell_details')).strip() not in ["", "{}"]:
@@ -2166,7 +1620,7 @@ def main():
 
     # ＝＝＝＝＝ 📅 複数の予定 (候補リスト) モード ＝＝＝＝＝
     elif event_type == 'options':
-        opts = json.loads(event.get('event_options', '[]'))
+        opts = json.loads(event.get('options_name', '[]'))
         
         if "event_responses" not in st.session_state:
             st.session_state.event_responses = []
@@ -2174,7 +1628,7 @@ def main():
         tab_in, tab_graph = st.tabs(["📅 入力", "📊 集計"])
         with tab_in:
             my_ans_row = next((r for r in st.session_state.event_responses if str(r.get('user_id')) == str(user.get('user_id'))), None)
-            my_ans_bin = my_ans_row['binary'].replace("'", "").zfill(96) if my_ans_row else "0" * 96
+            my_ans_bin = my_ans_row['binary_data'].replace("'", "").zfill(96) if my_ans_row else "0" * 96
             my_comment = my_ans_row.get('comment', '') if my_ans_row else ""
             
             st.markdown("##### 📌 各候補の参加可否を選んでください")
@@ -2186,7 +1640,7 @@ def main():
                 b_str = raw.get("binary", "0"*96).ljust(96, "0")[:96]
                 user_comment = raw.get("comment", "")
                 
-                res_data = [{"date": "options", "binary": b_str}]
+                res_data = [{"date": "options", "binary_data": b_str}]
                 payload = {
                     "event_id": event.get("event_id"), 
                     "user_id": user.get("user_id"), 
@@ -2259,7 +1713,7 @@ def main():
                     if {"user": r.get('user_name'), "comment": r.get('comment')} not in comments_list: 
                         comments_list.append({"user": r.get('user_name'), "comment": r.get('comment')})
                 
-                b = str(r.get('binary', "")).replace("'", "").zfill(96)
+                b = str(r.get('binary_data', "")).replace("'", "").zfill(96)
                 for i in range(len(opts)):
                     v = int(b[i]) if i < len(b) else 0
                     if v == 1:
