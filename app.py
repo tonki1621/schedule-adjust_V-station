@@ -12,7 +12,9 @@ from google.oauth2 import service_account
 from google.cloud import firestore
 import threading
 
-# --- Firebase の初期化 ---
+# ==========================================
+# Firebase の初期化 ＆ 高速連携関数
+# ==========================================
 @st.cache_resource
 def get_firestore_client():
     key_dict = dict(st.secrets["firebase"])
@@ -22,16 +24,24 @@ def get_firestore_client():
 
 db = get_firestore_client()
 
-# --- ハイブリッド保存関数（Firestore + GASバックアップ） ---
+# --- 1. 裏側でGASにバックアップを送る関数 ---
+def backup_to_gas_async(action, payload=None):
+    def _call():
+        try:
+            p = payload or {}
+            p["action"] = action
+            requests.post(GAS_URL, json=p)
+        except Exception as e:
+            print(f"GAS backup failed: {e}")
+    threading.Thread(target=_call).start()
+
+# --- 2. 回答データのハイブリッド保存関数 ---
 def save_response_hybrid(payload):
-    # 1. Firestoreへ書き込み (レスポンス最優先)
     try:
         event_id = payload["event_id"]
         user_id = payload["user_id"]
         
-        # responsesコレクション内に、イベントIDとユーザーIDを繋げたドキュメントを作成
         doc_ref = db.collection("responses").document(f"{event_id}_{user_id}")
-        
         data = {
             "event_id": event_id,
             "user_id": user_id,
@@ -45,29 +55,88 @@ def save_response_hybrid(payload):
         st.error(f"Firestoreへの保存に失敗しました: {e}")
         return False
 
-    # 2. GAS (Google Sheets) へ非同期でバックアップ
-    # ※ ユーザーを待たせずに裏側でリクエストを飛ばします
-    def backup_to_gas(p):
-        try:
-            requests.post(GAS_URL, json={"action": "submit_binary_response", "payload": p})
-        except Exception as e:
-            print(f"GAS backup failed: {e}")
-            
-    thread = threading.Thread(target=backup_to_gas, args=(payload,))
-    thread.start()
-    
+    backup_to_gas_async("submit_binary_response", payload)
     return True
 
-# --- Firestoreからの回答読み込み関数 ---
-def fetch_responses_from_firestore(event_id, all_users):
-    docs = db.collection("responses").where("event_id", "==", event_id).stream()
+# --- 3. [爆速] Firestoreからの認証関数 ---
+def check_auth_firestore(name, pin):
+    docs = db.collection("users").where("name", "==", name).stream()
+    for doc in docs:
+        u = doc.to_dict()
+        stored_pin = str(u.get("pin", ""))
+        # スプレッドシート由来の先頭のシングルクォートも考慮して判定
+        if stored_pin == str(pin) or stored_pin == f"'{pin}":
+            return u
+    return None
+
+# --- 4. [爆速] メインデータの取得関数 ---
+def get_app_data_from_firestore(user):
+    user_id = str(user.get("user_id", ""))
+    
+    # 全ユーザー情報
+    all_users = [doc.to_dict() for doc in db.collection("users").stream()]
     user_map = {str(u["user_id"]): u for u in all_users}
     
+    # ログインユーザーが回答済みのイベントIDを取得
+    answered_ids = set()
+    if user_id:
+        ans_docs = db.collection("responses").where("user_id", "==", user_id).stream()
+        for doc in ans_docs:
+            answered_ids.add(doc.to_dict().get("event_id"))
+
+    # 全イベント情報と公開範囲フィルター
+    now = datetime.now()
+    active_events = []
+    
+    user_groups = [g.strip() for g in user.get("group_1","").split(",") + user.get("group_2","").split(",") + user.get("group_3","").split(",") + user.get("group_4","").split(",") if g.strip()]
+    
+    all_events_docs = db.collection("events").stream()
+    for doc in all_events_docs:
+        ev = doc.to_dict()
+        if ev.get("status") not in ["open", "closed"]: 
+            continue
+        
+        # 自動締め切りの判定
+        if ev.get("status") == "open" and ev.get("auto_close") and ev.get("deadline"):
+            try:
+                dl_dt = pd.to_datetime(ev["deadline"]).tz_localize(None)
+                if now > dl_dt:
+                    ev["status"] = "closed"
+                    db.collection("events").document(ev["event_id"]).update({"status": "closed"})
+                    backup_to_gas_async("update_event_status", {"event_id": ev["event_id"], "status": "closed"})
+            except: 
+                pass
+
+        # 公開範囲の判定
+        is_target = True
+        scope_str = ev.get("target_scope", "")
+        if scope_str and scope_str.startswith("{"):
+            try:
+                scope = json.loads(scope_str)
+                t_groups = scope.get("groups", [])
+                t_users = scope.get("users", [])
+                if t_groups or t_users:
+                    in_group = any(g in user_groups for g in t_groups)
+                    in_user = user_id in t_users
+                    if not in_group and not in_user:
+                        is_target = False
+            except: 
+                pass
+            
+        if is_target:
+            ev["is_answered"] = ev["event_id"] in answered_ids
+            active_events.append(ev)
+
+    return all_users, active_events, user_map
+
+# --- 5. [爆速] イベントの回答詳細の取得関数 ---
+def fetch_responses_for_event(event_id, user_map):
+    docs = db.collection("responses").where("event_id", "==", event_id).stream()
     flat_responses = []
     for doc in docs:
         data = doc.to_dict()
         uid = str(data.get("user_id"))
-        uinfo = user_map.get(uid, {"name": "不明", "group_1": "", "group_2": "", "group_3": "", "group_4": ""})
+        uinfo = user_map.get(uid, {})
         
         for r in data.get("responses", []):
             flat_responses.append({
@@ -84,18 +153,15 @@ def fetch_responses_from_firestore(event_id, all_users):
             })
     return flat_responses
 
-def get_user_answered_events(user_id):
-    docs = db.collection("responses").where("user_id", "==", user_id).stream()
-    return [doc.to_dict().get("event_id") for doc in docs]
-
+# ==========================================
+# Streamlit 初期設定
+# ==========================================
 st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide")
 
 # 💡 ご自身のStreamlitアプリのURLに変更してください
 APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
-# ==========================================
 # UX改善: ロード中表示＆時間割テーブル用CSS
-# ==========================================
 st.markdown("""
     <style>
         .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
@@ -426,7 +492,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
         else if (v == 2) bgColor = '#FFEB3B';
         else if (v == 3) bgColor = '#e0e0e0';
 
-        // 💡 ひらがな対応＆バイト用の模様対応
         if (v == 1 || v == 2 || v == 3 || (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用"))) {
             let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
             let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)';
@@ -652,7 +717,6 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     """)
 grid_editor = components.declare_component("grid_editor", path="custom_editor")
 
-
 # ==========================================
 # ユーティリティとメイン処理
 # ==========================================
@@ -711,7 +775,7 @@ def format_deadline_jp(date_str):
     except Exception as e:
         return str(date_str)
 
-# 💡 キャンパス模様のサンプル用HTML (大きく、表の直上に配置するためのデザイン)
+# キャンパス模様のサンプル用HTML
 campus_legend_html = """
 <div style="margin: 20px 0; padding: 15px; background: #fff; border-radius: 10px; border: 2px solid #4CAF50; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
     <strong style="display:block; margin-bottom:12px; color:#2e7d32; font-size:15px;">🎨 キャンパスごとの模様（色見本）</strong>
@@ -788,10 +852,11 @@ def main():
     current_year = datetime.now().year
     MASTER_G2 = [f"{year}年度" for year in range(current_year - 6, current_year + 2)]
     
-    config_res = call_gas_cached("get_config", method="POST", ttl=3600)
-    if config_res.get("status") == "success":
-        MASTER_G1 = config_res["data"]["g1"]
-        MASTER_G3 = config_res["data"]["g3"]
+    config_doc = db.collection("config").document("master").get()
+    if config_doc.exists:
+        config_data = config_doc.to_dict()
+        MASTER_G1 = config_data.get("g1", ["なかもず", "もりのみや", "すぎもと", "あべの", "りんくう"])
+        MASTER_G3 = config_data.get("g3", ["卒業生ネットワーク関係者"])
     else:
         MASTER_G1 = ["なかもず", "もりのみや", "すぎもと", "あべの", "りんくう"]
         MASTER_G3 = ["卒業生ネットワーク関係者"]
@@ -819,9 +884,10 @@ def main():
                     n = st.text_input("氏名", autocomplete="username")
                     p = st.text_input("PIN", type="password", autocomplete="current-password")
                     if st.form_submit_button("ログイン", use_container_width=True, type="primary"):
-                        res = call_gas("check_auth", {"name": n, "pin": p}, method="POST")
-                        if res.get("status") == "success":
-                            st.session_state.auth = res.get("data")
+                        # [爆速] Firestoreから直接認証
+                        auth_user = check_auth_firestore(n, p)
+                        if auth_user:
+                            st.session_state.auth = auth_user
                             st.rerun()
                         else:
                             st.error("認証失敗: 氏名またはPINが間違っています")
@@ -840,13 +906,16 @@ def main():
                 
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
                     clean_name = reg_n.replace(" ", "").replace("　", "")
-                    if not clean_name or not reg_p or not reg_s: st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
+                    if not clean_name or not reg_p or not reg_s: 
+                        st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
                     else:
                         payload = {"name": clean_name, "pin": reg_p, "secret_word": reg_s, "group_1": ", ".join(g1), "group_2": ", ".join(g2), "group_3": ", ".join(g3), "group_4": ""}
+                        # 生成はGASと同期（ID一意性担保のため）
                         res = call_gas("register_user", {"payload": payload}, method="POST")
                         if res.get("status") == "success":
-                            clear_cache()
-                            st.session_state.auth = res.get("data")
+                            new_u = res.get("data")
+                            db.collection("users").document(str(new_u["user_id"])).set(new_u)
+                            st.session_state.auth = new_u
                             st.rerun()
                         else:
                             st.error(f"エラー: {res.get('message')}")
@@ -862,7 +931,11 @@ def main():
                         if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
                             res = call_gas("recover_account", {"payload": {"name": rec_n.replace(" ","").replace("　",""), "secret_word": rec_s, "new_pin": new_p}}, method="POST")
                             if res.get("status") == "success":
-                                clear_cache()
+                                # Firestoreも更新
+                                user_docs = list(db.collection("users").where("name", "==", rec_n.replace(" ","").replace("　","")).stream())
+                                if user_docs:
+                                    u_id = str(user_docs[0].to_dict().get("user_id"))
+                                    db.collection("users").document(u_id).update({"pin": f"'{new_p}"})
                                 st.success("✅ 更新成功！新しいPINでログインできます。")
                             else:
                                 st.error("氏名または合言葉が間違っています。")
@@ -927,8 +1000,9 @@ def main():
             res = call_gas("update_user", {"payload": payload}, method="POST")
             
             if res.get("status") == "success":
-                clear_cache()
-                st.session_state.auth = res.get("data")
+                updated_u = res.get("data")
+                db.collection("users").document(str(updated_u["user_id"])).update(updated_u)
+                st.session_state.auth = updated_u
                 st.success("✅ プロフィールを保存しました！")
                 time.sleep(1.5)
                 st.rerun()
@@ -1096,7 +1170,9 @@ def main():
             payload = {"user_id": user['user_id'], "fixed_schedule": new_fixed_sched, "group_4": json.dumps(new_fixed_locs)}
             res = call_gas("update_user", {"payload": payload}, method="POST")
             if res.get("status") == "success":
-                st.session_state.auth = res.get("data")
+                updated_u = res.get("data")
+                db.collection("users").document(str(updated_u["user_id"])).update(updated_u)
+                st.session_state.auth = updated_u
                 st.rerun()
             else:
                 st.error("更新に失敗しました。")
@@ -1166,8 +1242,8 @@ def main():
             target_scope_json = ""
             
             if not is_all_members:
-                u_res = call_gas_cached("get_all_users", method="POST", ttl=600)
-                all_u = u_res.get("data", [])
+                # 爆速: Firestoreからユーザー一覧取得
+                all_u = [d.to_dict() for d in db.collection("users").stream()]
                 
                 all_g1 = sort_groups(list(set([g.strip() for u in all_u for g in u.get('group_1', '').split(',') if g.strip()])), MASTER_G1)
                 all_g2 = sort_groups(list(set([g.strip() for u in all_u for g in u.get('group_2', '').split(',') if g.strip()])), MASTER_G2)
@@ -1180,7 +1256,7 @@ def main():
                     t_g3 = st.multiselect("🤝 オプション", all_g3, key="tgt_g3")
                 with col_t2:
                     t_g2 = st.multiselect("🎓 入学年度", all_g2, key="tgt_g2")
-                    t_users = st.multiselect("👤 特定の個人", sorted(all_u, key=lambda x: x['name']), format_func=lambda x: f"{x['name']} (ID: {x['user_id']})", key="tgt_users")
+                    t_users = st.multiselect("👤 特定の個人", sorted(all_u, key=lambda x: x.get('name', '')), format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})", key="tgt_users")
                 
                 target_scope_json = json.dumps({
                     "groups": t_g1 + t_g2 + t_g3,
@@ -1236,8 +1312,9 @@ def main():
                     "skip_discord": skip_discord,
                     "mention_text": mention_text
                 }
+                
+                # GASでIDを確定させてFirestoreに同期
                 res = call_gas("create_event", {"payload": payload}, method="POST")
-                clear_cache()
                 st.success(f"「{ev_title}」を作成しました！")
             
                 created_event_id = None
@@ -1249,6 +1326,9 @@ def main():
                         created_event_id = res.get("event_id")
                 
                 if created_event_id:
+                    payload["event_id"] = created_event_id
+                    db.collection("events").document(created_event_id).set(payload)
+                    
                     share_url = f"{APP_BASE_URL}?event={created_event_id}"
                     st.info("👇 以下の招待リンクをコピーして、参加者に送ってください（右上のアイコンでコピーできます）")
                     st.code(share_url, language="text")
@@ -1266,29 +1346,27 @@ def main():
         tab_manage, tab_users = st.tabs(["📝 イベント・アーカイブ管理", "👥 ユーザー管理"])
 
         with tab_manage:
-            u_res = call_gas_cached("get_all_users", method="POST", ttl=600)
-            all_users_admin = u_res.get("data", [])
-            user_map = {u['user_id']: u['name'] for u in all_users_admin}
+            all_users_admin = [d.to_dict() for d in db.collection("users").stream()]
+            user_map = {str(u.get('user_id')): u.get('name') for u in all_users_admin}
 
             def format_target_scope(scope_str):
                 if not scope_str or not scope_str.startswith('{'): return "全員"
                 try:
                     scope = json.loads(scope_str)
                     groups = scope.get("groups", []); users = scope.get("users", [])
-                    user_names = [user_map.get(uid, uid) for uid in users]
+                    user_names = [user_map.get(str(uid), str(uid)) for uid in users]
                     res = []
                     if groups: res.append(f"📁 {', '.join(groups)}")
                     if user_names: res.append(f"👤 {', '.join(user_names)}")
                     return " / ".join(res) if res else "全員"
                 except: return "限定"
 
-            all_ev_res = call_gas_cached("get_all_events", ttl=60)
-            all_events = all_ev_res.get("data", [])
+            all_events = [d.to_dict() for d in db.collection("events").stream()]
             
             if all_events:
                 df_ev = pd.DataFrame(all_events)
                 df_ev['種類'] = df_ev['event_type'].replace({"time": "🕒 時間", "timetable": "🏫 時間割", "options": "📅 予定候補"})
-                df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row['start_idx'])}〜{idx_to_time(row['end_idx'])}" if row['event_type']=='time' else ("月〜金" if row['event_type']=='timetable' else "複数候補"), axis=1)
+                df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row.get('start_idx', 0))}〜{idx_to_time(row.get('end_idx', 0))}" if row.get('event_type')=='time' else ("月〜金" if row.get('event_type')=='timetable' else "複数候補"), axis=1)
                 
                 df_ev['期限'] = df_ev['deadline'].apply(format_deadline_jp)
                 df_ev['公開範囲'] = df_ev['target_scope'].apply(format_target_scope)
@@ -1297,7 +1375,7 @@ def main():
                 
                 df_display = df_ev[['event_id', 'title', '種類', '詳細', '期限', '公開範囲', '秘密', '招待URL', 'status']]
                 
-                active_events = [ev for ev in all_events if ev['status'] in ['open', 'closed']]
+                active_events = [ev for ev in all_events if ev.get('status') in ['open', 'closed']]
                 st.subheader("🟢 現在のイベント")
                 html_table_ev = df_display[df_display['status'].isin(['open', 'closed'])].to_html(index=False, border=0, classes="custom-tbl")
                 st.markdown("<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; word-break: break-all; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_ev}</div>', unsafe_allow_html=True)
@@ -1310,7 +1388,7 @@ def main():
                         new_status = st.selectbox("ステータス", ["open", "closed", "archived"], index=1)
                         if st.form_submit_button("更新する"):
                             call_gas("update_event_status", {"payload": {"event_id": target_ev['event_id'], "status": new_status}}, method="POST")
-                            clear_cache()
+                            db.collection("events").document(target_ev['event_id']).update({"status": new_status})
                             st.rerun()
                             
                 st.markdown("---")
@@ -1319,10 +1397,9 @@ def main():
                     check_ev = st.selectbox("確認するイベントを選択", active_events, format_func=lambda x: f"{x['title']} ({x['status']})", key="chk_unanswered")
                     if st.button("未回答者を抽出する", type="primary"):
                         with st.spinner("データを照合中..."):
-                            resp_res = call_gas("get_responses", {"event_id": check_ev['event_id']})
-                            answered_uids = []
-                            if resp_res.get("status") == "success":
-                                answered_uids = [str(r['user_id']) for r in resp_res.get("data", [])]
+                            # Firestoreから爆速取得
+                            ans_docs = db.collection("responses").where("event_id", "==", check_ev['event_id']).stream()
+                            answered_uids = [str(d.to_dict().get("user_id")) for d in ans_docs]
 
                             target_users = []
                             scope_str = check_ev.get('target_scope', '')
@@ -1337,21 +1414,21 @@ def main():
                                 except: pass
 
                             for u in all_users_admin:
-                                uid = str(u['user_id'])
+                                uid = str(u.get('user_id'))
                                 if uid in answered_uids: continue
 
                                 if is_all:
-                                    target_users.append(u['name'])
+                                    target_users.append(u.get('name', ''))
                                 else:
                                     if uid in t_uids:
-                                        target_users.append(u['name'])
+                                        target_users.append(u.get('name', ''))
                                         continue
                                     u_g = []
                                     for g_key in ['group_1', 'group_2', 'group_3']:
-                                        u_g.extend([x.strip() for x in u.get(g_key, '').split(',') if x.strip()])
+                                        u_g.extend([x.strip() for x in str(u.get(g_key, '')).split(',') if x.strip()])
                                     
                                     if set(t_groups).intersection(set(u_g)):
-                                        target_users.append(u['name'])
+                                        target_users.append(u.get('name', ''))
 
                             if target_users:
                                 st.warning(f"⚠️ 対象者のうち、未回答の人が {len(target_users)} 名います。")
@@ -1369,11 +1446,9 @@ def main():
         with tab_users:
             st.subheader("👥 ユーザー一覧と権限管理")
             
-            u_res_all = call_gas_cached("get_all_users", method="POST", ttl=600)
-            all_users = u_res_all.get("data", [])
+            all_users = [d.to_dict() for d in db.collection("users").stream()]
             
             if st.button("🔄 ユーザー一覧を最新に更新"):
-                clear_cache()
                 st.rerun()
 
             if all_users:
@@ -1389,37 +1464,42 @@ def main():
                 
                 st.markdown("---")
                 st.subheader("🚨 ユーザー情報の更新 (PINリセット等)")
-                tgt_user = st.selectbox("対象ユーザー", all_users, format_func=lambda x: f"{x['name']} (ID: {x['user_id']})")
+                tgt_user = st.selectbox("対象ユーザー", all_users, format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})")
                 
                 with st.form("admin_user_update"):
                     new_u_pin = st.text_input("新しいPIN (リセットする場合)", type="password", autocomplete="new-password")
-                    if user["role"] == "top_admin":
+                    if user.get("role") == "top_admin":
                         role_opts = ["guest", "user", "admin"]
-                        if tgt_user['role'] == 'top_admin':
+                        if tgt_user.get('role') == 'top_admin':
                             st.info("※最高管理者の権限はここで変更できません。下の譲渡メニューを使用してください。")
                             new_u_role = "top_admin"
                         else:
-                            current_role = tgt_user['role'] if tgt_user['role'] in role_opts else "guest"
+                            current_role = tgt_user.get('role') if tgt_user.get('role') in role_opts else "guest"
                             new_u_role = st.selectbox("権限の変更", role_opts, index=role_opts.index(current_role))
                     else:
                         st.info("※権限（Role）の変更は top_admin のみ可能です。")
-                        new_u_role = tgt_user['role']
+                        new_u_role = tgt_user.get('role')
 
                     if st.form_submit_button("更新実行", type="primary"):
-                        if tgt_user['role'] == 'top_admin' and new_u_role != 'top_admin':
+                        if tgt_user.get('role') == 'top_admin' and new_u_role != 'top_admin':
                             st.error("最高管理者の権限は変更できません。")
                         else:
                             call_gas("admin_update_user", {"payload": {"user_id": tgt_user['user_id'], "new_pin": new_u_pin, "role": new_u_role}}, method="POST")
-                            clear_cache()
+                            
+                            updates = {"role": new_u_role}
+                            if new_u_pin and new_u_pin.strip() != "":
+                                updates["pin"] = f"'{new_u_pin}"
+                            db.collection("users").document(str(tgt_user['user_id'])).update(updates)
+                            
                             st.rerun()
 
-                if user["role"] == "top_admin":
+                if user.get("role") == "top_admin":
                     st.markdown("---")
                     st.subheader("👑 最高管理者 (top_admin) の譲渡")
                     st.warning("⚠️ この操作を実行すると、あなたは `admin` に降格し、元に戻すことはできません。")
                     
-                    candidates = [u for u in all_users if u['user_id'] != user['user_id']]
-                    new_top = st.selectbox("譲渡先ユーザー", candidates, format_func=lambda x: f"{x['name']} (ID: {x['user_id']})")
+                    candidates = [u for u in all_users if u.get('user_id') != user.get('user_id')]
+                    new_top = st.selectbox("譲渡先ユーザー", candidates, format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})")
                     
                     st.markdown("<span style='font-size:13px; color:#555;'>PINリセットなどのSOSを受け取るための、新しい管理者の<b>DiscordユーザーID（18桁前後の数字）</b>を入力してください。<br>※Discordの設定から「開発者モード」をオンにし、プロフィールを右クリックしてIDをコピーできます。</span>", unsafe_allow_html=True)
                     new_discord_id = st.text_input("DiscordユーザーID (例: 123456789012345678)")
@@ -1445,7 +1525,12 @@ def main():
                             mention_str = f"<@{clean_id}>"
                                 
                             call_gas("transfer_top_admin", {"payload": {"caller_id": user['user_id'], "target_id": new_top['user_id'], "discord_id": mention_str}}, method="POST")
-                            clear_cache()
+                            
+                            db.collection("users").document(str(user['user_id'])).update({"role": "admin"})
+                            updates_top = {"role": "top_admin"}
+                            if mention_str: updates_top["discord_id"] = mention_str
+                            db.collection("users").document(str(new_top['user_id'])).update(updates_top)
+                            
                             st.session_state.auth = None
                             st.rerun()
         return
@@ -1457,45 +1542,15 @@ def main():
     active_groups = [g for g in active_groups if g]
     group_str = f"<span style='color: #666; font-size: 0.9em; margin-left: 10px;'>({' / '.join(active_groups)})</span>" if active_groups else "<span style='color: #aaa; font-size: 0.9em; margin-left: 10px;'>(未所属)</span>"
     role_emoji = {"top_admin": "👑", "admin": "🛠️", "user": "📝", "guest": "👤"}.get(user.get("role"), "👤")
-    st.markdown(f'<div class="user-header"><div style="font-size: 1.1em;"><b>{role_emoji} {user["name"]}</b> さん {group_str}</div><div style="font-size: 0.8em; background: #e0e0e0; padding: 3px 8px; border-radius: 12px;">ID: {user["user_id"]}</div></div>', unsafe_allow_html=True)
+    st.markdown(f'<div class="user-header"><div style="font-size: 1.1em;"><b>{role_emoji} {user.get("name", "")}</b> さん {group_str}</div><div style="font-size: 0.8em; background: #e0e0e0; padding: 3px 8px; border-radius: 12px;">ID: {user.get("user_id", "")}</div></div>', unsafe_allow_html=True)
 
     current_ev_id = st.session_state.get("target_ev_id", "")
     
-    # 1. ユーザーとイベント情報だけをGASから取得（event_idを空にして重い読み込みを回避）
-    all_data_res = call_gas_cached("get_all_data", {
-        "user_id": user["user_id"],
-        "event_id": "" 
-    }, ttl=300) # キャッシュ寿命を5分に伸ばしてさらに高速化
+    # 🚀 [爆速化の要] 読み込み通信はここで1回だけ (0.1秒)
+    all_users_fs, events, user_map_fs = get_app_data_from_firestore(user)
     
-    events = []
-    if all_data_res.get("status") == "success":
-        payload = all_data_res.get("data", {})
-        events = payload.get("events", [])
-        st.session_state.cached_users = payload.get("users", [])
-        
-        # 2. 自分が回答済みのイベント一覧をFirestoreから爆速取得してフラグを上書き
-        fs_answered_ids = get_user_answered_events(user["user_id"])
-        for ev in events:
-            if ev["event_id"] in fs_answered_ids:
-                ev["is_answered"] = True
-                
-        # 3. 選択中のイベントの回答データをFirestoreから爆速取得
-        if current_ev_id:
-            fs_responses = fetch_responses_from_firestore(current_ev_id, st.session_state.cached_users)
-            fs_uids = {r["user_id"] for r in fs_responses}
-            
-            # 💡 過去データの互換性維持：Firestoreにない人（過去に回答した人）の分だけGASから補完
-            gas_res = call_gas_cached("get_responses", {"event_id": current_ev_id}, ttl=300)
-            gas_responses = gas_res.get("data", []) if gas_res.get("status") == "success" else []
-            
-            combined_responses = fs_responses.copy()
-            for gr in gas_responses:
-                if gr["user_id"] not in fs_uids:
-                    combined_responses.append(gr)
-                    
-            st.session_state.event_responses = combined_responses
-    else:
-        st.error("データの取得に失敗しました。")
+    # 選択中のイベントの回答データを取得
+    st.session_state.event_responses = fetch_responses_for_event(current_ev_id, user_map_fs) if current_ev_id else []
 
     if not events: 
         st.info("現在表示できるイベントはありません。")
@@ -1504,24 +1559,18 @@ def main():
     now_dt = datetime.now()
 
     unanswered_events = []
-    seen_ids = set()
     for ev in events:
-        eid = ev.get('event_id')
-        if not ev.get('is_answered') and ev['status'] == 'open' and eid not in seen_ids:
+        if not ev.get('is_answered') and ev.get('status') == 'open':
             unanswered_events.append(ev)
-            seen_ids.add(eid)
             
     if unanswered_events:
         st.sidebar.markdown("---")
         st.sidebar.markdown(f"<div style='color:#FF4B4B; font-weight:bold; padding-bottom: 5px;'>📢 未回答の予定 ({len(unanswered_events)}件)</div>", unsafe_allow_html=True)
         for u_ev in unanswered_events:
             is_urgent = False
-            
             if u_ev.get('deadline'):
                 try:
-                    dl_dt = pd.to_datetime(u_ev['deadline'])
-                    if dl_dt.tzinfo is not None:
-                        dl_dt = dl_dt.tz_convert(None)
+                    dl_dt = pd.to_datetime(u_ev['deadline']).tz_localize(None)
                     if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
                         is_urgent = True
                 except:
@@ -1530,8 +1579,8 @@ def main():
             icon = "🔥" if is_urgent else "🔴"
             dl_text = format_deadline_jp(u_ev.get('deadline'))
             
-            if st.sidebar.button(f"{icon} {u_ev['title']} (〜{dl_text})", key=f"side_btn_{u_ev['event_id']}", use_container_width=True):
-                st.session_state.target_ev_id = u_ev['event_id']
+            if st.sidebar.button(f"{icon} {u_ev.get('title', '')} (〜{dl_text})", key=f"side_btn_{u_ev.get('event_id')}", use_container_width=True):
+                st.session_state.target_ev_id = u_ev.get('event_id')
                 st.rerun()
 
     if unanswered_events:
@@ -1542,16 +1591,15 @@ def main():
     
     if target_id:
         for i, ev in enumerate(events):
-            if ev['event_id'] == target_id:
+            if ev.get('event_id') == target_id:
                 default_idx = i
                 break
         else:
-            st.session_state.target_ev_id = events[0]['event_id']
+            st.session_state.target_ev_id = events[0].get('event_id')
 
     def format_ev_name(x):
         dl_str = format_deadline_jp(x.get('deadline'))
-        
-        if x['status'] == 'closed': 
+        if x.get('status') == 'closed': 
             icon = "🔒"
         elif x.get('is_answered'): 
             icon = "✅"
@@ -1559,22 +1607,21 @@ def main():
             is_urgent = False
             try:
                 if x.get('deadline'):
-                    dl_dt = pd.to_datetime(x['deadline'])
-                    if dl_dt.tzinfo is not None: dl_dt = dl_dt.tz_convert(None)
+                    dl_dt = pd.to_datetime(x['deadline']).tz_localize(None)
                     if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
                         is_urgent = True
             except: pass
             icon = "🔥" if is_urgent else "🔴"
             
-        return f"{icon} {x['title']} [締切: {dl_str}]"
+        return f"{icon} {x.get('title', '')} [締切: {dl_str}]"
 
     event = st.selectbox("🎯 対象イベント選択", events, index=default_idx, format_func=format_ev_name)
     
-    if st.session_state.get("target_ev_id") != event['event_id']:
-        st.session_state.target_ev_id = event['event_id']
+    if st.session_state.get("target_ev_id") != event.get('event_id'):
+        st.session_state.target_ev_id = event.get('event_id')
         st.rerun()
 
-    is_closed = event['status'] == 'closed'
+    is_closed = event.get('status') == 'closed'
     is_private_event = event.get('is_private', False)
     
     can_view_details = True
@@ -1594,14 +1641,14 @@ def main():
         st.info("🤫 **このイベントはプライベート設定されています。** 管理者以外には、誰が回答したかの名前やコメントは表示されず、全体の人数のみが表示されます。")
 
     st.markdown("##### 🔗 このイベントの招待URL")
-    st.code(f"{APP_BASE_URL}?event={event['event_id']}", language="text")
+    st.code(f"{APP_BASE_URL}?event={event.get('event_id')}", language="text")
 
     event_type = event.get('event_type', 'time')
 
     # ＝＝＝＝＝ 🕒 時間帯 / 🏫 時間割 モード ＝＝＝＝＝
     if event_type in ['time', 'timetable']:
         if event_type == 'time':
-            s_idx, e_idx = int(event['start_idx']), int(event['end_idx'])
+            s_idx, e_idx = int(event.get('start_idx', 0)), int(event.get('end_idx', 0))
             date_objs = []
             curr = datetime.strptime(event['start_date'], "%Y-%m-%d").date()
             end_d = datetime.strptime(event['end_date'], "%Y-%m-%d").date()
@@ -1662,15 +1709,15 @@ def main():
                     if "1" in day_bin[74:]: u_rows.append({"row": 5, "campus": fixed_locs.get(wd, {}).get("af", "")})
                     if u_rows: unavail_col_rows[str(c)] = u_rows
 
-        if "df_input" not in st.session_state or st.session_state.get("last_build_ev_id") != event['event_id']:
+        if "df_input" not in st.session_state or st.session_state.get("last_build_ev_id") != event.get('event_id'):
             if "event_responses" not in st.session_state:
                 st.session_state.event_responses = []
                 
             df = pd.DataFrame(0, index=time_labels, columns=date_strs)
             my_comment = ""
             for r in st.session_state.event_responses:
-                if str(r['user_id']) == str(user['user_id']):
-                    d_id = r['date']; my_comment = r.get('comment', "")
+                if str(r.get('user_id')) == str(user.get('user_id')):
+                    d_id = r.get('date'); my_comment = r.get('comment', "")
                     if d_id in date_strs:
                         b_str = str(r.get('binary', "")).replace("'", "").zfill(96)
                         for i in range(len(time_labels)):
@@ -1680,7 +1727,7 @@ def main():
                             
             st.session_state.df_input = df
             st.session_state.my_comment = my_comment
-            st.session_state.last_build_ev_id = event['event_id']
+            st.session_state.last_build_ev_id = event.get('event_id')
 
         if event_type == 'time':
             st.markdown("<div style='margin-bottom: 5px; font-weight: bold; color: #333;'>🔍 カレンダーの表示サイズ（マスの縦幅）</div>", unsafe_allow_html=True)
@@ -1707,8 +1754,8 @@ def main():
                             with st.spinner("予定を取得中..."):
                                 res = call_gas("import_google_calendar", {
                                     "payload": {
-                                        "start_date": event['start_date'],
-                                        "end_date": event['end_date'],
+                                        "start_date": event.get('start_date'),
+                                        "end_date": event.get('end_date'),
                                         "ical_url": user_cal_url
                                     }
                                 }, method="POST")
@@ -1732,7 +1779,7 @@ def main():
 
             st.markdown("---")
 
-            user_campuses = [x.strip() for x in user.get('group_1', '').split(',') if x.strip()]
+            user_campuses = [x.strip() for x in str(user.get('group_1', '')).split(',') if x.strip()]
             default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
             campus_options = MASTER_G1 + ["その他/移動中"]
             default_index = campus_options.index(default_campus_initial) if default_campus_initial in campus_options else 0
@@ -1740,7 +1787,6 @@ def main():
             st.markdown("##### 📍 今回のデフォルト所在地")
             selected_default_campus = st.selectbox("「可」を塗った時に自動で設定されるキャンパス", campus_options, index=default_index)
 
-            # 💡 ここに凡例を表示（入力カレンダーの直上）
             st.markdown(campus_legend_html, unsafe_allow_html=True)
 
             m = st.session_state.df_input[date_strs].values.tolist()
@@ -1842,7 +1888,7 @@ def main():
             
             my_cell_details = {}
             for r in st.session_state.event_responses:
-                if str(r['user_id']) == str(user['user_id']) and r.get('cell_details'):
+                if str(r.get('user_id')) == str(user.get('user_id')) and r.get('cell_details'):
                     try:
                         my_cell_details = json.loads(r['cell_details'])
                         break
@@ -1853,14 +1899,14 @@ def main():
                 html_code=html_code, 
                 rows=len(time_labels), 
                 cols=len(date_strs), 
-                eventId=event['event_id'], 
+                eventId=event.get('event_id'), 
                 isClosed=is_closed, 
                 unavailColRows=unavail_col_rows, 
                 saveTs=st.session_state.get("last_saved_ts", 0), 
                 cellDetails=my_cell_details, 
                 defaultCampus=selected_default_campus, 
                 default=None, 
-                key=f"editor_{event['event_id']}"
+                key=f"editor_{event.get('event_id')}"
             )
             
             if raw and isinstance(raw, dict) and "data" in raw:
@@ -1870,7 +1916,6 @@ def main():
                     st.session_state.my_comment = raw.get("comment", "")
                     
                     cell_details_json = raw.get("cell_details", {})
-                    # 💡 通信短縮: 空白を詰めて送る
                     cell_details_str = json.dumps(cell_details_json, separators=(',', ':')) if cell_details_json else "{}"
                     
                     all_res = []
@@ -1883,30 +1928,20 @@ def main():
                             if event_type == 'time': bits[s_idx + t_idx] = str(val)
                             else: bits[t_idx] = str(val)
                             
-                        # 💡 爆速化: 一切予定がない白紙の日は送らない (データ圧縮)
                         if has_data:
                             all_res.append({"date": d_id, "binary": "".join(bits)})
                             
-                    # 万が一全部消した場合は、代表して1日分だけALL0を送ってGAS側の削除フラグにする
                     if not all_res:
                         all_res.append({"date": date_strs[0], "binary": "0"*96})
-                    
-                    # 修正前
-                    # call_gas("submit_binary_response", { ... }, method="POST")
-                    # clear_cache()
-                    # st.session_state.save_success_msg = "回答を保存しました！"
-                    # st.rerun()
 
-                    # 修正後
                     payload = {
-                        "event_id": event["event_id"], 
-                        "user_id": user["user_id"], 
+                        "event_id": event.get("event_id"), 
+                        "user_id": user.get("user_id"), 
                         "comment": st.session_state.my_comment, 
                         "cell_details": cell_details_str, 
                         "responses": all_res
                     }
                     if save_response_hybrid(payload):
-                        clear_cache()
                         st.session_state.save_success_msg = "回答を保存しました！"
                         st.rerun()
 
@@ -1916,18 +1951,17 @@ def main():
             with col1: policy = st.radio("「未定(△)」の計算方法", [0.5, 1.0, 0.0], format_func=lambda x: f"{x}人としてカウント", horizontal=True)
             with col2:
                 if st.button("🔄 最新の回答を取得", use_container_width=True):
-                    clear_cache()
                     st.rerun()
 
             all_res_data = st.session_state.event_responses
-            all_names = list(set([r['user_name'] for r in all_res_data]))
+            all_names = list(set([r.get('user_name', '不明') for r in all_res_data]))
             all_g1, all_g2, all_g3 = set(), set(), set()
             for r in all_res_data:
-                for g in r.get('group_1', '').split(','):
+                for g in str(r.get('group_1', '')).split(','):
                     if g.strip(): all_g1.add(g.strip())
-                for g in r.get('group_2', '').split(','):
+                for g in str(r.get('group_2', '')).split(','):
                     if g.strip(): all_g2.add(g.strip())
-                for g in r.get('group_3', '').split(','):
+                for g in str(r.get('group_3', '')).split(','):
                     if g.strip(): all_g3.add(g.strip())
 
             all_g1_sorted = sort_groups(list(all_g1), MASTER_G1)
@@ -1965,21 +1999,19 @@ def main():
 
                     submitted = st.form_submit_button("✅ フィルターを適用して集計", type="primary")
 
-            # 💡 通信・処理速度を上げるため、ここでの JSON 解析（重い処理）は1人1回だけに集約
             filtered_data = []
             for r in all_res_data:
-                u_g1 = [x.strip() for x in r.get('group_1', '').split(',') if x.strip()]
-                u_g2 = [x.strip() for x in r.get('group_2', '').split(',') if x.strip()]
-                u_g3 = [x.strip() for x in r.get('group_3', '').split(',') if x.strip()]
-                if f_names and r['user_name'] not in f_names: continue
+                u_g1 = [x.strip() for x in str(r.get('group_1', '')).split(',') if x.strip()]
+                u_g2 = [x.strip() for x in str(r.get('group_2', '')).split(',') if x.strip()]
+                u_g3 = [x.strip() for x in str(r.get('group_3', '')).split(',') if x.strip()]
+                if f_names and r.get('user_name') not in f_names: continue
                 if f_g1 and not set(f_g1).intersection(set(u_g1)): continue
                 if f_g2 and not set(f_g2).intersection(set(u_g2)): continue
                 if f_g3 and not set(f_g3).intersection(set(u_g3)): continue
                 
-                # 💡 追加: 所在地 (回答したキャンパス) フィルター
                 if f_locs:
                     user_locs = set()
-                    if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
+                    if r.get('cell_details') and str(r.get('cell_details')).strip() not in ["", "{}"]:
                         try:
                             cd = json.loads(r['cell_details'])
                             for k, v in cd.items():
@@ -2010,13 +2042,12 @@ def main():
                 disp_date_strs = date_strs
                 disp_clean_date_labels = clean_date_labels
 
-            unique_all = len(set([r['user_id'] for r in all_res_data]))
-            unique_filtered = len(set([r['user_id'] for r in filtered_data]))
+            unique_all = len(set([r.get('user_id') for r in all_res_data]))
+            unique_filtered = len(set([r.get('user_id') for r in filtered_data]))
             if unique_all != unique_filtered:
                 st.info(f"🔍 フィルター適用中： 回答者 **{unique_all}人** 中、条件に合う **{unique_filtered}人** のデータを集計しています。")
 
             if st.checkbox("集計グラフを表示", value=True):
-                # 💡 ここに凡例を表示（集計グラフの直上）
                 st.markdown(campus_legend_html, unsafe_allow_html=True)
                 
                 if not disp_date_strs or not disp_time_labels:
@@ -2027,24 +2058,23 @@ def main():
                     comments_list = []
                     
                     for r in filtered_data:
-                        # 日付が合致しないデータはスキップ
-                        if r['date'] not in disp_date_strs:
+                        if r.get('date') not in disp_date_strs:
                             continue
                             
                         c_idx = disp_date_strs.index(r['date'])
                         b = str(r.get('binary', "")).replace("'", "").zfill(96)
                         
-                        # 💡 1マスごとではなく、1人につき1回だけJSONを展開する (大幅な高速化)
                         cd = {}
-                        if r.get('cell_details') and str(r['cell_details']).strip() not in ["", "{}"]:
+                        if r.get('cell_details') and str(r.get('cell_details')).strip() not in ["", "{}"]:
                             try: cd = json.loads(r['cell_details'])
                             except: pass
                             
-                        u_campuses = [x.strip() for x in r.get('group_1', '').split(',') if x.strip()]
+                        u_campuses = [x.strip() for x in str(r.get('group_1', '')).split(',') if x.strip()]
                         u_default_campus = u_campuses[0] if u_campuses else ""
 
-                        if can_view_details and r.get('comment') and r['comment'].strip() != "":
-                            if {"user": r['user_name'], "comment": r['comment']} not in comments_list: comments_list.append({"user": r['user_name'], "comment": r['comment']})
+                        if can_view_details and r.get('comment') and r.get('comment').strip() != "":
+                            if {"user": r.get('user_name'), "comment": r.get('comment')} not in comments_list: 
+                                comments_list.append({"user": r.get('user_name'), "comment": r.get('comment')})
                         
                         for disp_r, t_str in enumerate(disp_time_labels):
                             orig_r_idx = time_labels.index(t_str)
@@ -2052,7 +2082,6 @@ def main():
                             
                             v = 0 if orig_v == 3 else orig_v
                             
-                            # そのコマのキャンパスとメモを特定
                             cell_campus = u_default_campus if orig_v in [1, 2] else ""
                             cell_note = ""
                             
@@ -2061,19 +2090,17 @@ def main():
                                 if cd[cell_key].get('campus'): cell_campus = cd[cell_key]['campus']
                                 if cd[cell_key].get('note'): cell_note = cd[cell_key]['note']
                             
-                            # 所在地 (回答したキャンパス) フィルターをセルごとに適用
                             if f_locs and orig_v in [1, 2, 3]:
                                 if cell_campus not in f_locs:
-                                    continue # このセル(コマ)の集計をスキップ
+                                    continue 
                                     
                             z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
                             
                             if can_view_details and orig_v in [1, 2, 3]:
                                 campus_str = f" ({cell_campus})" if cell_campus else ""
                                 note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cell_note}]</span>" if cell_note else ""
-                                name_html = f"{r['user_name']}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
+                                name_html = f"{r.get('user_name', '')}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
                                 
-                                # 💡 修正: 授業（3）もツールチップの対象にするため、元の値を保持して判定
                                 if orig_v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
                                 elif orig_v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
                                 elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>📓 {name_html}</span><br>"
@@ -2105,7 +2132,6 @@ def main():
                             else: tooltip_txt = h[r][c] if h[r][c] else "参加可能者なし"
                                 
                             agg_font_size = "11px" if cell_h == "20px" else "15px"
-                            # 💡 修正: 上の行のツールチップが隠れないように、上部は下向きに開く
                             tt_class = "tooltip-down" if r < 3 else "tooltip-up"
                             
                             cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
@@ -2122,7 +2148,6 @@ def main():
                     .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
                     .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
                     
-                    /* 💡 修正: 上の行のツールチップが隠れないようにするCSS */
                     .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }}
                     .agg-cell .tooltip-up {{ bottom: 100%; margin-bottom: 8px; }}
                     .agg-cell .tooltip-down {{ top: 100%; margin-top: 8px; }}
@@ -2148,36 +2173,27 @@ def main():
 
         tab_in, tab_graph = st.tabs(["📅 入力", "📊 集計"])
         with tab_in:
-            my_ans_row = next((r for r in st.session_state.event_responses if str(r['user_id']) == str(user['user_id'])), None)
+            my_ans_row = next((r for r in st.session_state.event_responses if str(r.get('user_id')) == str(user.get('user_id'))), None)
             my_ans_bin = my_ans_row['binary'].replace("'", "").zfill(96) if my_ans_row else "0" * 96
             my_comment = my_ans_row.get('comment', '') if my_ans_row else ""
             
             st.markdown("##### 📌 各候補の参加可否を選んでください")
             
-            raw = options_editor(options=opts, myAnsBin=my_ans_bin, myComment=my_comment, eventId=event['event_id'], isClosed=is_closed, saveTs=st.session_state.get("last_saved_ts", 0), key=f"opt_editor_{event['event_id']}")
+            raw = options_editor(options=opts, myAnsBin=my_ans_bin, myComment=my_comment, eventId=event.get('event_id'), isClosed=is_closed, saveTs=st.session_state.get("last_saved_ts", 0), key=f"opt_editor_{event.get('event_id')}")
             
             if raw and isinstance(raw, dict) and raw.get("trigger_save") and st.session_state.get("last_saved_ts") != raw.get("ts"):
                 st.session_state.last_saved_ts = raw.get("ts")
                 b_str = raw.get("binary", "0"*96).ljust(96, "0")[:96]
                 user_comment = raw.get("comment", "")
                 
-                # 修正前
-                # res = [{"date": "options", "binary": b_str}]
-                # call_gas("submit_binary_response", {"payload": ...}, method="POST")
-                # clear_cache()
-                # st.session_state.save_success_msg = "回答を保存しました！"
-                # st.rerun()
-
-                # 修正後
                 res_data = [{"date": "options", "binary": b_str}]
                 payload = {
-                    "event_id": event["event_id"], 
-                    "user_id": user["user_id"], 
+                    "event_id": event.get("event_id"), 
+                    "user_id": user.get("user_id"), 
                     "comment": user_comment, 
                     "responses": res_data
                 }
                 if save_response_hybrid(payload):
-                    clear_cache()
                     st.session_state.save_success_msg = "回答を保存しました！"
                     st.rerun()
 
@@ -2187,18 +2203,17 @@ def main():
             with col1: policy = st.radio("「未定(△)」の計算方法", [0.5, 1.0, 0.0], format_func=lambda x: f"{x}人としてカウント", horizontal=True, key="opt_policy")
             with col2:
                 if st.button("🔄 最新の回答を取得", use_container_width=True, key="opt_refresh"):
-                    clear_cache()
                     st.rerun()
 
             all_res_data = st.session_state.event_responses
-            all_names = list(set([r['user_name'] for r in all_res_data]))
+            all_names = list(set([r.get('user_name', '不明') for r in all_res_data]))
             all_g1, all_g2, all_g3 = set(), set(), set()
             for r in all_res_data:
-                for g in r.get('group_1', '').split(','):
+                for g in str(r.get('group_1', '')).split(','):
                     if g.strip(): all_g1.add(g.strip())
-                for g in r.get('group_2', '').split(','):
+                for g in str(r.get('group_2', '')).split(','):
                     if g.strip(): all_g2.add(g.strip())
-                for g in r.get('group_3', '').split(','):
+                for g in str(r.get('group_3', '')).split(','):
                     if g.strip(): all_g3.add(g.strip())
 
             all_g1_sorted = sort_groups(list(all_g1), MASTER_G1)
@@ -2220,18 +2235,18 @@ def main():
 
             filtered_data = []
             for r in all_res_data:
-                u_g1 = [x.strip() for x in r.get('group_1', '').split(',') if x.strip()]
-                u_g2 = [x.strip() for x in r.get('group_2', '').split(',') if x.strip()]
-                u_g3 = [x.strip() for x in r.get('group_3', '').split(',') if x.strip()]
-                if f_names and r['user_name'] not in f_names: continue
+                u_g1 = [x.strip() for x in str(r.get('group_1', '')).split(',') if x.strip()]
+                u_g2 = [x.strip() for x in str(r.get('group_2', '')).split(',') if x.strip()]
+                u_g3 = [x.strip() for x in str(r.get('group_3', '')).split(',') if x.strip()]
+                if f_names and r.get('user_name') not in f_names: continue
                 if f_g1 and not set(f_g1).intersection(set(u_g1)): continue
                 if f_g2 and not set(f_g2).intersection(set(u_g2)): continue
                 if f_g3 and not set(f_g3).intersection(set(u_g3)): continue
 
                 filtered_data.append(r)
 
-            unique_all = len(set([r['user_id'] for r in all_res_data]))
-            unique_filtered = len(set([r['user_id'] for r in filtered_data]))
+            unique_all = len(set([r.get('user_id') for r in all_res_data]))
+            unique_filtered = len(set([r.get('user_id') for r in filtered_data]))
             if unique_all != unique_filtered:
                 st.info(f"🔍 フィルター適用中： 回答者 **{unique_all}人** 中、条件に合う **{unique_filtered}人** のデータを集計しています。")
 
@@ -2240,20 +2255,21 @@ def main():
             comments_list = []
             
             for r in filtered_data:
-                if can_view_details and r.get('comment') and r['comment'].strip() != "":
-                    if {"user": r['user_name'], "comment": r['comment']} not in comments_list: comments_list.append({"user": r['user_name'], "comment": r['comment']})
+                if can_view_details and r.get('comment') and r.get('comment').strip() != "":
+                    if {"user": r.get('user_name'), "comment": r.get('comment')} not in comments_list: 
+                        comments_list.append({"user": r.get('user_name'), "comment": r.get('comment')})
                 
                 b = str(r.get('binary', "")).replace("'", "").zfill(96)
                 for i in range(len(opts)):
                     v = int(b[i]) if i < len(b) else 0
                     if v == 1:
                         counts[i] += 1.0
-                        if can_view_details: details[i]["yes"].append(r['user_name'])
+                        if can_view_details: details[i]["yes"].append(r.get('user_name', ''))
                     elif v == 2:
                         counts[i] += policy
-                        if can_view_details: details[i]["maybe"].append(r['user_name'])
+                        if can_view_details: details[i]["maybe"].append(r.get('user_name', ''))
                     else:
-                        if can_view_details: details[i]["no"].append(r['user_name'])
+                        if can_view_details: details[i]["no"].append(r.get('user_name', ''))
                         
             max_c = max(counts) if counts and max(counts) > 0 else 1
             
