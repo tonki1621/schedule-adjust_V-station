@@ -1107,8 +1107,14 @@ def main():
         if event_type == 'time':
             s_idx, e_idx = int(event.get('start_time_idx', 0)), int(event.get('end_time_idx', 0))
             date_objs = []
-            curr = datetime.strptime(event['start_date'], "%Y-%m-%d").date()
-            end_d = datetime.strptime(event['end_date'], "%Y-%m-%d").date()
+            # フォーマットの揺れ（時刻付きやスラッシュ区切りなど）を自動吸収
+            try:
+                curr = pd.to_datetime(event.get('start_date')).date()
+                end_d = pd.to_datetime(event.get('end_date')).date()
+            except:
+                # 万が一日付が空っぽ等のエラーデータだった場合の安全策
+                curr = datetime.today().date()
+                end_d = curr + timedelta(days=7)
             while curr <= end_d: date_objs.append(curr); curr += timedelta(days=1)
             date_strs = [d.strftime("%Y-%m-%d") for d in date_objs]
             clean_date_labels = [f"{d.strftime('%m/%d')}({['月','火','水','木','金','土','日'][d.weekday()]})" for d in date_objs]
