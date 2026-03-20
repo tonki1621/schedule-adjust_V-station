@@ -41,7 +41,7 @@ def save_response_hybrid(payload):
         event_id = payload["event_id"]
         user_id = payload["user_id"]
         
-        # 💡 コメントは cell_details の中に統合して保存（DB構造に合わせるため）
+        # 💡 コメントは cell_details の中に統合して保存（DB構造の互換性維持のため）
         cell_details_dict = json.loads(payload.get("cell_details", "{}"))
         if payload.get("comment"):
             cell_details_dict["global_comment"] = payload["comment"]
@@ -65,7 +65,7 @@ def save_response_hybrid(payload):
     backup_to_gas_async("submit_binary_response", payload)
     return True
 
-# --- 3. [爆速] メインデータの取得関数（完全Firestore依存） ---
+# --- 3. [爆速] メインデータの取得関数（完全Firestore依存・フォーマット揺れ吸収） ---
 def get_app_data_from_firestore(user):
     user_id = str(user.get("user_id", ""))
     
@@ -84,7 +84,7 @@ def get_app_data_from_firestore(user):
     now = datetime.now()
     active_events = []
     
-    user_groups = [g.strip() for g in user.get("group_1","").split(",") + user.get("group_2","").split(",") + user.get("group_3","").split(",") + user.get("group_4","").split(",") if g.strip()]
+    user_groups = [g.strip() for g in str(user.get("group_1","")).split(",") + str(user.get("group_2","")).split(",") + str(user.get("group_3","")).split(",") + str(user.get("group_4","")).split(",") if g.strip()]
     
     all_events_docs = db.collection("events").stream()
     for doc in all_events_docs:
@@ -92,14 +92,20 @@ def get_app_data_from_firestore(user):
         if ev.get("status") not in ["open", "closed"]: 
             continue
         
-        # 自動締め切りの判定 (close_timeを使用)
-        if ev.get("status") == "open" and ev.get("auto_close") and ev.get("close_time"):
+        # 💡 列名の揺れを安全に吸収（移行前後のデータ共存用）
+        ev_type = ev.get("type") or ev.get("event_type", "time")
+        ev_close_time = ev.get("close_time") or ev.get("deadline", "")
+        
+        # 自動締め切りの判定
+        if ev.get("status") == "open" and ev.get("auto_close") and ev_close_time:
             try:
-                dl_dt = pd.to_datetime(ev["close_time"]).tz_localize(None)
-                if now > dl_dt:
-                    ev["status"] = "closed"
-                    db.collection("events").document(ev["event_id"]).update({"status": "closed"})
-                    backup_to_gas_async("update_event_status", {"event_id": ev["event_id"], "status": "closed"})
+                dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
+                if pd.notna(dl_dt):
+                    dl_dt = dl_dt.tz_localize(None)
+                    if now > dl_dt:
+                        ev["status"] = "closed"
+                        db.collection("events").document(ev["event_id"]).update({"status": "closed"})
+                        backup_to_gas_async("update_event_status", {"event_id": ev["event_id"], "status": "closed"})
             except: 
                 pass
 
@@ -138,11 +144,14 @@ def fetch_responses_for_event(event_id, user_map):
         cell_details_str = data.get("cell_details", "{}")
         try:
             cell_details_dict = json.loads(cell_details_str)
-            comment = cell_details_dict.get("global_comment", "")
+            comment = cell_details_dict.get("global_comment", data.get("comment", ""))
         except:
-            comment = ""
+            comment = data.get("comment", "")
         
         for r in data.get("responses", []):
+            # 💡 列名の揺れを安全に吸収
+            b_data = r.get("binary_data") or r.get("binary", "")
+            
             flat_responses.append({
                 "user_id": uid,
                 "user_name": uinfo.get("name", "不明"),
@@ -151,12 +160,11 @@ def fetch_responses_for_event(event_id, user_map):
                 "group_3": uinfo.get("group_3", ""),
                 "group_4": uinfo.get("group_4", ""),
                 "date": r.get("date"),
-                "binary_data": r.get("binary_data"),  # DB定義に合わせる
+                "binary_data": b_data,
                 "comment": comment,
                 "cell_details": cell_details_str
             })
     return flat_responses
-
 
 # ==========================================
 # Streamlit 初期設定 & コンポーネント
@@ -164,7 +172,6 @@ def fetch_responses_for_event(event_id, user_map):
 st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide")
 APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
-# UX改善 CSS
 st.markdown("""
     <style>
         .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
@@ -186,7 +193,7 @@ st.markdown("""
 
 GAS_URL = "https://script.google.com/macros/s/AKfycby7hAc1_dhSQ_tJzSiJeSc2Ez7pgaeVTrVL5fOIZPNNZ-_YLke236yGgCgj3yijhQHh/exec"
 
-# Editor HTML declarations (省略せずにそのまま使用)
+# --- HTML/JS Components (省略せずにそのまま使用) ---
 os.makedirs("rt_editor", exist_ok=True)
 with open("rt_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;margin:0;padding:0;background:transparent;}.editor-container{border:1px solid #ccc;border-radius:6px;overflow:hidden;background:#fff;}.toolbar{background:#f8f9fb;padding:6px;border-bottom:1px solid #ccc;display:flex;gap:5px;flex-wrap:wrap;align-items:center;}.toolbar button{background:#fff;border:1px solid #ccc;border-radius:4px;padding:4px 10px;font-size:13px;cursor:pointer;color:#333;transition:0.2s;}.toolbar button:hover{background:#e9ecef;}textarea{width:100%;height:120px;border:none;padding:10px;font-size:14px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;line-height:1.5;}</style></head><body><div class="editor-container"><div class="toolbar"><button onclick="insertTag('<b>', '</b>')" title="太字"><b>B</b> 太字</button><button onclick="insertTag('<i>', '</i>')" title="斜体"><i>I</i> 斜体</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertRed()" title="赤文字"><span style="color:#FF4B4B; font-weight:bold;">A</span> 赤</button><button onclick="insertBlue()" title="青文字"><span style="color:#2196F3; font-weight:bold;">A</span> 青</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertLink()" title="リンク">🔗 リンク追加</button></div><textarea id="editor" placeholder="📝 イベントの説明や注意事項を入力..."></textarea></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } const editor = document.getElementById('editor'); let timer; function sendValue() { setComponentValue(editor.value); } function insertTag(startTag, endTag) { const start = editor.selectionStart; const end = editor.selectionEnd; const val = editor.value; const selected = val.substring(start, end); editor.value = val.substring(0, start) + startTag + selected + endTag + val.substring(end); editor.focus(); editor.selectionStart = start + startTag.length; editor.selectionEnd = end + startTag.length; sendValue(); } function insertRed() { insertTag("<span style='color:#FF4B4B; font-weight:bold;'>", "</span>"); } function insertBlue() { insertTag("<span style='color:#2196F3; font-weight:bold;'>", "</span>"); } function insertLink() { const url = prompt('リンク先のURLを入力', 'https://'); if (url) { const text = prompt('表示するテキストを入力', 'こちらをクリック'); if (text) { const linkTag = `<a href='${url}' target='_blank'>${text}</a>`; const start = editor.selectionStart; const val = editor.value; editor.value = val.substring(0, start) + linkTag + val.substring(editor.selectionEnd); sendValue(); } } } editor.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(sendValue, 500); }); editor.addEventListener('blur', sendValue); window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 15}); } }); init();</script></body></html>""")
@@ -236,14 +243,15 @@ def get_border_top(t_str, event_type="time"):
     else: return "1px solid #f0f0f0"
 
 def format_deadline_jp(date_str):
-    if not date_str or str(date_str).strip() == "" or date_str == "None": 
+    if pd.isna(date_str) or not date_str or str(date_str).strip() == "" or str(date_str) == "None": 
         return "期限なし"
     try:
         clean_str = str(date_str).split(' (')[0] 
-        dt = pd.to_datetime(clean_str)
+        dt = pd.to_datetime(clean_str, errors='coerce')
+        if pd.isna(dt): return "期限なし"
         wday = ["月", "火", "水", "木", "金", "土", "日"][dt.weekday()]
         return f"{dt.month}/{dt.day}({wday}) {dt.strftime('%H:%M')}"
-    except Exception as e:
+    except:
         return str(date_str)
 
 campus_legend_html = """
@@ -440,9 +448,9 @@ def main():
         st.title("👤 プロフィール設定")
         st.write("所属情報の更新を行います。（未所属にする場合は選択を解除してください）")
         
-        def_g1 = [x for x in user.get('group_1', '').split(', ') if x]
-        def_g2 = [x for x in user.get('group_2', '').split(', ') if x]
-        def_g3 = [x for x in user.get('group_3', '').split(', ') if x]
+        def_g1 = [x for x in str(user.get('group_1', '')).split(', ') if x]
+        def_g2 = [x for x in str(user.get('group_2', '')).split(', ') if x]
+        def_g3 = [x for x in str(user.get('group_3', '')).split(', ') if x]
 
         safe_def_g1 = [x for x in def_g1 if x in MASTER_G1]
         safe_def_g2 = [x for x in def_g2 if x in MASTER_G2]
@@ -708,9 +716,9 @@ def main():
             if not is_all_members:
                 all_u = [d.to_dict() for d in db.collection("users").stream()]
                 
-                all_g1 = sort_groups(list(set([g.strip() for u in all_u for g in u.get('group_1', '').split(',') if g.strip()])), MASTER_G1)
-                all_g2 = sort_groups(list(set([g.strip() for u in all_u for g in u.get('group_2', '').split(',') if g.strip()])), MASTER_G2)
-                all_g3 = sort_groups(list(set([g.strip() for u in all_u for g in u.get('group_3', '').split(',') if g.strip()])), MASTER_G3)
+                all_g1 = sort_groups(list(set([g.strip() for u in all_u for g in str(u.get('group_1', '')).split(',') if g.strip()])), MASTER_G1)
+                all_g2 = sort_groups(list(set([g.strip() for u in all_u for g in str(u.get('group_2', '')).split(',') if g.strip()])), MASTER_G2)
+                all_g3 = sort_groups(list(set([g.strip() for u in all_u for g in str(u.get('group_3', '')).split(',') if g.strip()])), MASTER_G3)
                 
                 st.markdown("<span style='font-size:13px; color:#555;'>※ここで指定したグループや個人のみにイベントが表示されます。</span>", unsafe_allow_html=True)
                 col_t1, col_t2 = st.columns(2)
@@ -758,6 +766,7 @@ def main():
                     mention_text = " ".join(mentions)
 
                 deadline_str = f"{deadline_date.strftime('%Y-%m-%d')} {deadline_time.strftime('%H:%M')}"
+                
                 # 💡 スプレッドシート側の列名に完全一致させた Payload
                 payload = {
                     "title": ev_title, 
@@ -828,11 +837,18 @@ def main():
             all_events = [d.to_dict() for d in db.collection("events").stream()]
             
             if all_events:
+                # 💡 列名の揺れ吸収
+                for ev in all_events:
+                    ev['type_safe'] = ev.get('type') or ev.get('event_type', 'time')
+                    ev['start_idx_safe'] = ev.get('start_time_idx') or ev.get('start_idx', 0)
+                    ev['end_idx_safe'] = ev.get('end_time_idx') or ev.get('end_idx', 0)
+                    ev['deadline_safe'] = ev.get('close_time') or ev.get('deadline', '')
+                    
                 df_ev = pd.DataFrame(all_events)
-                df_ev['種類'] = df_ev['type'].replace({"time": "🕒 時間", "timetable": "🏫 時間割", "options": "📅 予定候補"})
-                df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row.get('start_time_idx', 0))}〜{idx_to_time(row.get('end_time_idx', 0))}" if row.get('type')=='time' else ("月〜金" if row.get('type')=='timetable' else "複数候補"), axis=1)
+                df_ev['種類'] = df_ev['type_safe'].replace({"time": "🕒 時間", "timetable": "🏫 時間割", "options": "📅 予定候補"})
+                df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row.get('start_idx_safe', 0))}〜{idx_to_time(row.get('end_idx_safe', 0))}" if row.get('type_safe')=='time' else ("月〜金" if row.get('type_safe')=='timetable' else "複数候補"), axis=1)
                 
-                df_ev['期限'] = df_ev['close_time'].apply(format_deadline_jp)
+                df_ev['期限'] = df_ev['deadline_safe'].apply(format_deadline_jp)
                 df_ev['公開範囲'] = df_ev['target_scope'].apply(format_target_scope)
                 df_ev['秘密'] = df_ev['is_private'].apply(lambda x: "🤫" if x else "-")
                 df_ev['招待URL'] = df_ev['event_id'].apply(lambda x: f"{APP_BASE_URL}?event={x}")
@@ -951,6 +967,7 @@ def main():
                             
                             updates = {"role": new_u_role}
                             db.collection("users").document(str(tgt_user['user_id'])).update(updates)
+                            
                             st.rerun()
 
                 if user.get("role") == "top_admin":
@@ -1026,15 +1043,18 @@ def main():
         st.sidebar.markdown(f"<div style='color:#FF4B4B; font-weight:bold; padding-bottom: 5px;'>📢 未回答の予定 ({len(unanswered_events)}件)</div>", unsafe_allow_html=True)
         for u_ev in unanswered_events:
             is_urgent = False
-            if u_ev.get('close_time'):
+            ev_close_time = u_ev.get('close_time') or u_ev.get('deadline', '')
+            if ev_close_time:
                 try:
-                    dl_dt = pd.to_datetime(u_ev['close_time']).tz_localize(None)
-                    if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
-                        is_urgent = True
+                    dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
+                    if pd.notna(dl_dt):
+                        dl_dt = dl_dt.tz_localize(None)
+                        if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
+                            is_urgent = True
                 except: pass
             
             icon = "🔥" if is_urgent else "🔴"
-            dl_text = format_deadline_jp(u_ev.get('close_time'))
+            dl_text = format_deadline_jp(ev_close_time)
             
             if st.sidebar.button(f"{icon} {u_ev.get('title', '')} (〜{dl_text})", key=f"side_btn_{u_ev.get('event_id')}", use_container_width=True):
                 st.session_state.target_ev_id = u_ev.get('event_id')
@@ -1055,7 +1075,8 @@ def main():
             st.session_state.target_ev_id = events[0].get('event_id')
 
     def format_ev_name(x):
-        dl_str = format_deadline_jp(x.get('close_time'))
+        ev_close_time = x.get('close_time') or x.get('deadline', '')
+        dl_str = format_deadline_jp(ev_close_time)
         if x.get('status') == 'closed': 
             icon = "🔒"
         elif x.get('is_answered'): 
@@ -1063,10 +1084,12 @@ def main():
         else:
             is_urgent = False
             try:
-                if x.get('close_time'):
-                    dl_dt = pd.to_datetime(x['close_time']).tz_localize(None)
-                    if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
-                        is_urgent = True
+                if ev_close_time:
+                    dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
+                    if pd.notna(dl_dt):
+                        dl_dt = dl_dt.tz_localize(None)
+                        if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
+                            is_urgent = True
             except: pass
             icon = "🔥" if is_urgent else "🔴"
             
@@ -1086,10 +1109,11 @@ def main():
         if user.get("role") not in ["admin", "top_admin"]:
             can_view_details = False
 
+    ev_close_time = event.get('close_time') or event.get('deadline', '')
     if is_closed: 
         st.markdown("<div class='closed-alert' style='background:#ffebee; color:#c62828; padding:10px; border-radius:6px; font-weight:bold; margin-bottom:10px;'>🔒 このイベントは締め切られました。</div>", unsafe_allow_html=True)
-    elif event.get('close_time'): 
-        st.markdown(f"<div style='color: #E91E63; font-weight: bold; margin-bottom: 10px;'>⏳ 回答期限: {format_deadline_jp(event['close_time'])}</div>", unsafe_allow_html=True)
+    elif ev_close_time: 
+        st.markdown(f"<div style='color: #E91E63; font-weight: bold; margin-bottom: 10px;'>⏳ 回答期限: {format_deadline_jp(ev_close_time)}</div>", unsafe_allow_html=True)
         
     if event.get('description'): 
         st.markdown(f"<div class='event-desc'><b>📝 管理者からのメッセージ:</b><br><br>{event['description'].replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
@@ -1100,21 +1124,23 @@ def main():
     st.markdown("##### 🔗 このイベントの招待URL")
     st.code(f"{APP_BASE_URL}?event={event.get('event_id')}", language="text")
 
-    event_type = event.get('type', 'time')
+    event_type = event.get('type') or event.get('event_type', 'time')
 
     # ＝＝＝＝＝ 🕒 時間帯 / 🏫 時間割 モード ＝＝＝＝＝
     if event_type in ['time', 'timetable']:
         if event_type == 'time':
-            s_idx, e_idx = int(event.get('start_time_idx', 0)), int(event.get('end_time_idx', 0))
+            s_idx = int(event.get('start_time_idx') or event.get('start_idx', 0))
+            e_idx = int(event.get('end_time_idx') or event.get('end_idx', 0))
             date_objs = []
-            # フォーマットの揺れ（時刻付きやスラッシュ区切りなど）を自動吸収
+            
             try:
-                curr = pd.to_datetime(event.get('start_date')).date()
-                end_d = pd.to_datetime(event.get('end_date')).date()
+                curr = pd.to_datetime(event.get('start_date', ''), errors='coerce').date()
+                end_d = pd.to_datetime(event.get('end_date', ''), errors='coerce').date()
+                if pd.isna(curr) or pd.isna(end_d): raise Exception
             except:
-                # 万が一日付が空っぽ等のエラーデータだった場合の安全策
                 curr = datetime.today().date()
                 end_d = curr + timedelta(days=7)
+                
             while curr <= end_d: date_objs.append(curr); curr += timedelta(days=1)
             date_strs = [d.strftime("%Y-%m-%d") for d in date_objs]
             clean_date_labels = [f"{d.strftime('%m/%d')}({['月','火','水','木','金','土','日'][d.weekday()]})" for d in date_objs]
@@ -1179,7 +1205,7 @@ def main():
                 if str(r.get('user_id')) == str(user.get('user_id')):
                     d_id = r.get('date'); my_comment = r.get('comment', "")
                     if d_id in date_strs:
-                        b_str = str(r.get('binary_data', "")).replace("'", "").zfill(96)
+                        b_str = str(r.get('binary_data') or r.get('binary', "")).replace("'", "").zfill(96)
                         for i in range(len(time_labels)):
                             if event_type == 'time': v = int(b_str[s_idx + i]) if (s_idx + i) < len(b_str) else 0
                             else: v = int(b_str[i]) if i < len(b_str) else 0
@@ -1389,6 +1415,7 @@ def main():
                             else: bits[t_idx] = str(val)
                             
                         if has_data:
+                            # 💡 データの列名を完全一致させる
                             all_res.append({"date": d_id, "binary_data": "".join(bits)})
                             
                     if not all_res:
@@ -1522,7 +1549,9 @@ def main():
                             continue
                             
                         c_idx = disp_date_strs.index(r['date'])
-                        b = str(r.get('binary_data', "")).replace("'", "").zfill(96)
+                        
+                        # 💡 列名の揺れを安全に吸収
+                        b = str(r.get('binary_data') or r.get('binary', "")).replace("'", "").zfill(96)
                         
                         cd = {}
                         if r.get('cell_details') and str(r.get('cell_details')).strip() not in ["", "{}"]:
@@ -1626,7 +1655,8 @@ def main():
 
     # ＝＝＝＝＝ 📅 複数の予定 (候補リスト) モード ＝＝＝＝＝
     elif event_type == 'options':
-        opts = json.loads(event.get('options_name', '[]'))
+        # 💡 列名の揺れを安全に吸収
+        opts = json.loads(event.get('options_name') or event.get('event_options', '[]'))
         
         if "event_responses" not in st.session_state:
             st.session_state.event_responses = []
@@ -1634,7 +1664,10 @@ def main():
         tab_in, tab_graph = st.tabs(["📅 入力", "📊 集計"])
         with tab_in:
             my_ans_row = next((r for r in st.session_state.event_responses if str(r.get('user_id')) == str(user.get('user_id'))), None)
-            my_ans_bin = my_ans_row['binary_data'].replace("'", "").zfill(96) if my_ans_row else "0" * 96
+            
+            # 💡 列名の揺れを安全に吸収
+            b_data_val = my_ans_row.get('binary_data') or my_ans_row.get('binary', "") if my_ans_row else ""
+            my_ans_bin = b_data_val.replace("'", "").zfill(96) if b_data_val else "0" * 96
             my_comment = my_ans_row.get('comment', '') if my_ans_row else ""
             
             st.markdown("##### 📌 各候補の参加可否を選んでください")
@@ -1719,7 +1752,8 @@ def main():
                     if {"user": r.get('user_name'), "comment": r.get('comment')} not in comments_list: 
                         comments_list.append({"user": r.get('user_name'), "comment": r.get('comment')})
                 
-                b = str(r.get('binary_data', "")).replace("'", "").zfill(96)
+                # 💡 列名の揺れを安全に吸収
+                b = str(r.get('binary_data') or r.get('binary', "")).replace("'", "").zfill(96)
                 for i in range(len(opts)):
                     v = int(b[i]) if i < len(b) else 0
                     if v == 1:
