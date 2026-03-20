@@ -774,7 +774,7 @@ def main():
                     "start_date": ev_start.strftime("%Y-%m-%d") if ev_type == "time" else "", 
                     "end_date": ev_end.strftime("%Y-%m-%d") if ev_type == "time" else "", 
                     "start_time_idx": time_master.index(t_start) if ev_type == "time" else 0, 
-                    "end_time_idx": time_master.index(t_end) if ev_type == "time" else 0, 
+                    "end_time_idx": time_master.index(t_end) - 1 if ev_type == "time" else 0,
                     "status": "open",
                     "type": ev_type,
                     "options_name": json.dumps([o.strip() for o in opts_list if o.strip()]) if ev_type == "options" else "",
@@ -1146,7 +1146,7 @@ def main():
             clean_date_labels = [f"{d.strftime('%m/%d')}({['月','火','水','木','金','土','日'][d.weekday()]})" for d in date_objs]
             time_labels = [idx_to_time(i) for i in range(s_idx, e_idx + 1)]
             
-            scroll_h = "650px"
+            scroll_h = "auto"
             week_nav_display = "flex"
 
             fixed_sched = user.get("fixed_schedule", {})
@@ -1277,6 +1277,11 @@ def main():
 
             m = st.session_state.df_input[date_strs].values.tolist()
             time_opts_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(time_labels)])
+            
+            # --- 💡 終了時刻用に +15分 したラベルを生成 ---
+            end_time_labels = [idx_to_time(time_master.index(t) + 1) if time_master.index(t) < 95 else "24:00" for t in time_labels]
+            time_opts_end_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(end_time_labels)])
+            
             src_opts_html = "".join([f'<option value="{i}">{l}</option>' for i, l in enumerate(clean_date_labels)])
             b_day_opts_html = "".join([f'<label class="ms-opt"><input type="checkbox" class="b-day-chk" value="{i}" checked> {l}</label>' for i, l in enumerate(clean_date_labels)])
             c_tgt_opts_html = "".join([f'<label class="ms-opt"><input type="checkbox" class="c-tgt-chk" value="{i}"> {l}</label>' for i, l in enumerate(clean_date_labels)])
@@ -1309,7 +1314,7 @@ def main():
                 tools_html = f"""
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom: 20px;">
                     <div class="tool-card" style="display:{'none' if event_type == 'timetable' else 'block'};"><div class="tool-header">🪄 一括指定ツール</div>
-                        <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">状態: <select id="b-val" class="st-sel"><option value="1">可 (緑)</option><option value="2">未定 (黄)</option><option value="0">不可 (白)</option></select>時間: <select id="b-start" class="st-sel">{time_opts_html}</select> 〜 <select id="b-end" class="st-sel"><option value="{len(time_labels)-1}" selected>{time_labels[-1]}</option>{time_opts_html}</select></div>
+                        <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">状態: <select id="b-val" class="st-sel"><option value="1">可 (緑)</option><option value="2">未定 (黄)</option><option value="0">不可 (白)</option></select>時間: <select id="b-start" class="st-sel">{time_opts_html}</select> 〜 <select id="b-end" class="st-sel"><option value="{len(time_labels)-1}" selected>{end_time_labels[-1]}</option>{time_opts_end_html}</select></div>
                         <div style="display:flex; gap:10px; align-items:center;">対象: <div class="ms-container"><div class="ms-header" onclick="window.toggleList('b-days-list');">対象日を選択 <span>▼</span></div><div id="b-days-list" class="ms-options" style="display:none;"><label class="ms-opt" style="font-weight:bold;"><input type="checkbox" onchange="document.querySelectorAll('.b-day-chk').forEach(c => c.checked = this.checked)" checked> 全て選択 / 解除</label><hr style="margin:5px 0; border:0; border-top:1px solid #ccc;">{b_day_opts_html}</div></div><button class="st-btn" onclick="window.doBulk(this)">適用</button></div>
                     </div>
                     <div class="tool-card"><div class="tool-header">📋 日程コピー機能</div>
@@ -1332,7 +1337,7 @@ def main():
                 pointer_css = "pointer-events: none; opacity: 0.8;"
                 submit_btn_html = f"""<div style="margin-top: 20px;"><label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント</label><div style="width: 100%; padding: 10px; margin-top: 5px; background: #eee; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; min-height:40px;">{st.session_state.my_comment}</div></div>"""
 
-            scroll_css = f"height: {scroll_h};" if scroll_h != "auto" else "height: auto;"
+            scroll_css = "max-height: 650px; height: auto;"
 
             html_code = f"""
             <style>
@@ -1626,11 +1631,9 @@ def main():
                             cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
                         agg_day_cols += f'<div class="agg-day-col"><div class="agg-header">{lbl}</div>{cells_html}</div>'
 
-                    agg_scroll_h = "680px" if event_type == "time" else "auto"
-
                     agg_css = f"""
                     <style>
-                    .agg-wrapper {{ max-height: 75vh; height: {agg_scroll_h}; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; padding-bottom: 50px; }}
+                    .agg-wrapper {{ max-height: 680px; height: auto; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; padding-bottom: 50px; }}
                     .agg-time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; }}
                     .agg-header {{ position: sticky; top: 0; z-index: 11; background: #eee; font-size: 13px; font-weight: bold; text-align: center; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-sizing: border-box; line-height: 1.2; }}
                     .agg-top-left {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
