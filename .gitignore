@@ -159,6 +159,8 @@ venv.bak/
 .dmypy.json
 dmypy.json
 
+
+
 # Pyre type checker
 .pyre/
 
@@ -205,3 +207,18 @@ cython_debug/
 marimo/_static/
 marimo/_lsp/
 __marimo__/
+
+# Firebaseの秘密鍵（JSONファイル）を直接指定して除外
+*.json
+!package.json  # もしpackage.jsonがある場合はそれだけ除外しない設定
+
+# またはファイル名が固定なら直接指定が安全
+schedule-adjust-v-station-firebase-adminsdk-fbsvc-4ff4ea3c98.json
+
+# Streamlitの設定ファイル（ローカルのSecretsなど）
+.streamlit/config.toml
+.streamlit/secrets.toml
+
+# Pythonのキャッシュ
+__pycache__/
+*.pyc
