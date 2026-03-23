@@ -19,7 +19,7 @@ import threading
 def get_firestore_client():
     key_dict = dict(st.secrets["firebase"])
     
-    # ここを追加: private_keyの改行コードを正しく変換する
+    # 確実に文字列の "\\n" を本物の改行 "\n" に置換する
     if "private_key" in key_dict:
         key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
         
@@ -352,18 +352,19 @@ def main():
             login_mode = st.radio("メニュー", ["🔑 ログイン", "📝 新規アカウント作成", "🆘 PIN・パスワード復旧"], horizontal=True)
             st.markdown("---")
             
-            if login_mode == "🔑 ログイン":
-                with st.form("login_form"):
-                    st.subheader("ログイン")
-                    n = st.text_input("氏名", autocomplete="username")
-                    p = st.text_input("PIN", type="password", autocomplete="current-password")
-                    if st.form_submit_button("ログイン", use_container_width=True, type="primary"):
-                        res = call_gas("check_auth", {"name": n, "pin": p}, method="POST")
-                        if res.get("status") == "success":
-                            st.session_state.auth = res.get("data")
-                            st.rerun()
-                        else:
-                            st.error("認証失敗: 氏名またはPINが間違っています")
+            if st.form_submit_button("ログイン", use_container_width=True, type="primary"):
+                # Firestoreのusersコレクションを直接検索
+                docs = db.collection("users").where("name", "==", n).where("pin", "==", p).stream()
+                user_doc = None
+                for doc in docs:
+                    user_doc = doc.to_dict()
+                    break
+                
+                if user_doc:
+                    st.session_state.auth = user_doc
+                    st.rerun()
+                else:
+                    st.error("認証失敗: 氏名またはPINが間違っています")
             
             elif login_mode == "📝 新規アカウント作成":
                 st.subheader("新規アカウント作成")
