@@ -18,6 +18,11 @@ import threading
 @st.cache_resource
 def get_firestore_client():
     key_dict = dict(st.secrets["firebase"])
+    
+    # ここを追加: private_keyの改行コードを正しく変換する
+    if "private_key" in key_dict:
+        key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
+        
     creds = service_account.Credentials.from_service_account_info(key_dict)
     db = firestore.Client(credentials=creds, project=key_dict["project_id"])
     return db
