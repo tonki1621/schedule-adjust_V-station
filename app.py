@@ -208,24 +208,13 @@ grid_editor = components.declare_component("grid_editor", path="custom_editor")
 # ==========================================
 # ユーティリティとメイン処理
 # ==========================================
-def call_gas(action, payload=None, method="GET"):
+def call_gas(action, payload=None, method="POST"):
     try:
-        if method == "POST":
-            p = payload or {}
-            p["action"] = action
-            res = requests.post(GAS_URL, json=p)
-            return res.json()
-        else:
-            params = {"action": action}
-            if payload:
-                for k, v in payload.items():
-                    if isinstance(v, (dict, list)):
-                        params[k] = json.dumps(v)
-                    else:
-                        params[k] = v
-            params["_t"] = datetime.now().timestamp() 
-            res = requests.get(GAS_URL, params=params)
-            return res.json()
+        p = payload or {}
+        p["action"] = action
+        # 引数methodの内容に関わらず、確実にPOSTで送信する
+        res = requests.post(GAS_URL, json=p)
+        return res.json()
     except Exception as e: 
         return {"status": "error", "message": str(e)}
 
