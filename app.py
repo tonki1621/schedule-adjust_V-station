@@ -352,21 +352,27 @@ def main():
             login_mode = st.radio("メニュー", ["🔑 ログイン", "📝 新規アカウント作成", "🆘 PIN・パスワード復旧"], horizontal=True)
             st.markdown("---")
             
-            if st.form_submit_button("ログイン", use_container_width=True, type="primary"):
-                # Firestoreのusersコレクションを直接検索
-                docs = db.collection("users").where("name", "==", n).where("pin", "==", p).stream()
-                user_doc = None
-                for doc in docs:
-                    user_doc = doc.to_dict()
-                    break
-                
-                if user_doc:
-                    st.session_state.auth = user_doc
-                    st.rerun()
-                else:
-                    st.error("認証失敗: 氏名またはPINが間違っています")
+            if login_mode == "🔑 ログイン":
+                with st.form("login_form"):
+                    st.subheader("ログイン")
+                    n = st.text_input("氏名", autocomplete="username")
+                    p = st.text_input("PIN", type="password", autocomplete="current-password")
+                    
+                    if st.form_submit_button("ログイン", use_container_width=True, type="primary"):
+                        # Firestoreのusersコレクションを直接検索
+                        docs = db.collection("users").where("name", "==", n).where("pin", "==", p).stream()
+                        user_doc = None
+                        for doc in docs:
+                            user_doc = doc.to_dict()
+                            break
+                        
+                        if user_doc:
+                            st.session_state.auth = user_doc
+                            st.rerun()
+                        else:
+                            st.error("認証失敗: 氏名またはPINが間違っています")
             
-            elif login_mode == "📝 新規アカウント作成":
+            elif login_mode == "📝 新規アカウント作成
                 st.subheader("新規アカウント作成")
                 st.info("💡 未所属の方でも、そのまま下部の登録ボタンを押して利用可能です。")
                 reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name", autocomplete="username")
