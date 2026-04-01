@@ -392,7 +392,7 @@ def main():
                         else:
                             st.error("認証失敗: 氏名またはPINが間違っています")
             
-            elif login_mode == "📝 新規アカウント作成 ":
+            elif login_mode == "📝 新規アカウント作成":
                 st.subheader("新規アカウント作成")
                 st.info("💡 未所属の方でも、そのまま下部の登録ボタンを押して利用可能です。")
                 reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name", autocomplete="username")
