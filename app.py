@@ -11,35 +11,27 @@ import numpy as np
 from google.oauth2 import service_account
 from google.cloud import firestore
 import threading
-# --- 追加するimport文（一番上へ） ---
 import hashlib
 import random
 import string
 
 # ==========================================
-# Firebase の初期化 ＆ 高速連携関数（既存のコードの下に追加）
+# Firebase の初期化 ＆ 高速連携関数
 # ==========================================
 
-# --- [新規] パスワードのハッシュ化関数 ---
 def hash_secret(text):
     if not text:
         return ""
     return hashlib.sha256(str(text).encode()).hexdigest()
 
-# --- [新規] ID自動生成関数 (EV- / U- などのプレフィックス対応) ---
 def generate_custom_id(prefix="EV"):
     now_str = datetime.now().strftime("%y%m%d-%H%M")
     rand_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
     return f"{prefix}-{now_str}-{rand_str}"
 
-# ==========================================
-# Firebase の初期化 ＆ 高速連携関数
-# ==========================================
 @st.cache_resource
 def get_firestore_client():
     key_dict = dict(st.secrets["firebase"])
-    
-    # 確実に文字列の "\\n" を本物の改行 "\n" に置換する
     if "private_key" in key_dict:
         key_dict["private_key"] = key_dict["private_key"].replace("\\n", "\n")
         
@@ -49,7 +41,6 @@ def get_firestore_client():
 
 db = get_firestore_client()
 
-# --- 1. 裏側でGASにバックアップを送る非同期関数 ---
 def backup_to_gas_async(action, payload=None):
     def _call():
         try:
@@ -60,13 +51,11 @@ def backup_to_gas_async(action, payload=None):
             print(f"GAS backup failed: {e}")
     threading.Thread(target=_call).start()
 
-# --- 2. 回答データのハイブリッド保存関数 ---
 def save_response_hybrid(payload):
     try:
         event_id = payload["event_id"]
         user_id = payload["user_id"]
         
-        # 💡 コメントは cell_details の中に統合して保存
         cell_details_dict = json.loads(payload.get("cell_details", "{}"))
         if payload.get("comment"):
             cell_details_dict["global_comment"] = payload["comment"]
@@ -87,10 +76,10 @@ def save_response_hybrid(payload):
         st.error(f"Firestoreへの保存に失敗しました: {e}")
         return False
 
+    # 💡 確実な同期のためpayloadで包む
     backup_to_gas_async("submit_binary_response", {"payload": payload})
     return True
 
-# --- 3. [爆速] メインデータの取得関数 ---
 def get_app_data_from_firestore(user):
     user_id = str(user.get("user_id", ""))
     
@@ -125,6 +114,7 @@ def get_app_data_from_firestore(user):
                     if now > dl_dt:
                         ev["status"] = "closed"
                         db.collection("events").document(ev["event_id"]).update({"status": "closed"})
+                        # 💡 確実な同期のためpayloadで包む
                         backup_to_gas_async("update_event_status", {"payload": {"event_id": ev["event_id"], "status": "closed"}})
             except: 
                 pass
@@ -150,7 +140,6 @@ def get_app_data_from_firestore(user):
 
     return all_users, active_events, user_map
 
-# --- 4. [爆速] イベントの回答詳細の取得関数 ---
 def fetch_responses_for_event(event_id, user_map):
     docs = db.collection("responses").where("event_id", "==", event_id).stream()
     flat_responses = []
@@ -209,7 +198,6 @@ st.markdown("""
 
 GAS_URL = "https://script.google.com/macros/s/AKfycby7hAc1_dhSQ_tJzSiJeSc2Ez7pgaeVTrVL5fOIZPNNZ-_YLke236yGgCgj3yijhQHh/exec"
 
-# --- HTML/JS Components ---
 os.makedirs("rt_editor", exist_ok=True)
 with open("rt_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;margin:0;padding:0;background:transparent;}.editor-container{border:1px solid #ccc;border-radius:6px;overflow:hidden;background:#fff;}.toolbar{background:#f8f9fb;padding:6px;border-bottom:1px solid #ccc;display:flex;gap:5px;flex-wrap:wrap;align-items:center;}.toolbar button{background:#fff;border:1px solid #ccc;border-radius:4px;padding:4px 10px;font-size:13px;cursor:pointer;color:#333;transition:0.2s;}.toolbar button:hover{background:#e9ecef;}textarea{width:100%;height:120px;border:none;padding:10px;font-size:14px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;line-height:1.5;}</style></head><body><div class="editor-container"><div class="toolbar"><button onclick="insertTag('<b>', '</b>')" title="太字"><b>B</b> 太字</button><button onclick="insertTag('<i>', '</i>')" title="斜体"><i>I</i> 斜体</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertRed()" title="赤文字"><span style="color:#FF4B4B; font-weight:bold;">A</span> 赤</button><button onclick="insertBlue()" title="青文字"><span style="color:#2196F3; font-weight:bold;">A</span> 青</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertLink()" title="リンク">🔗 リンク追加</button></div><textarea id="editor" placeholder="📝 イベントの説明や注意事項を入力..."></textarea></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } const editor = document.getElementById('editor'); let timer; function sendValue() { setComponentValue(editor.value); } function insertTag(startTag, endTag) { const start = editor.selectionStart; const end = editor.selectionEnd; const val = editor.value; const selected = val.substring(start, end); editor.value = val.substring(0, start) + startTag + selected + endTag + val.substring(end); editor.focus(); editor.selectionStart = start + startTag.length; editor.selectionEnd = end + startTag.length; sendValue(); } function insertRed() { insertTag("<span style='color:#FF4B4B; font-weight:bold;'>", "</span>"); } function insertBlue() { insertTag("<span style='color:#2196F3; font-weight:bold;'>", "</span>"); } function insertLink() { const url = prompt('リンク先のURLを入力', 'https://'); if (url) { const text = prompt('表示するテキストを入力', 'こちらをクリック'); if (text) { const linkTag = `<a href='${url}' target='_blank'>${text}</a>`; const start = editor.selectionStart; const val = editor.value; editor.value = val.substring(0, start) + linkTag + val.substring(editor.selectionEnd); sendValue(); } } } editor.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(sendValue, 500); }); editor.addEventListener('blur', sendValue); window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 15}); } }); init();</script></body></html>""")
@@ -225,14 +213,10 @@ with open("custom_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;} .pen-btn{padding:0;border-radius:50%;width:45px;height:45px;border:none;cursor:pointer;font-weight:bold;font-size:14px;transition:0.2s;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.15);margin:0 auto;text-align:center;line-height:1.1;} .pen-btn.active{border:3px solid #333 !important;transform:scale(1.1);box-shadow:0 4px 8px rgba(0,0,0,0.3);} #detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999999;justify-content:center;align-items:center;backdrop-filter:blur(2px);} .modal-content{background:#fff;width:320px;padding:20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);position:relative;} .modal-title{font-size:16px;font-weight:bold;color:#333;margin-bottom:10px;border-bottom:2px solid #4CAF50;padding-bottom:5px;} .modal-label{font-size:12px;font-weight:bold;color:#666;margin-top:15px;display:block;} .modal-select, .modal-input{width:100%;padding:8px;margin-top:5px;border:1px solid #ccc;border-radius:6px;font-size:14px;} .status-switch{display:flex;gap:8px;margin-top:5px;} .sw-btn{flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;background:#f9f9f9;color:#555;transition:0.2s;} .sw-btn.active[data-v="1"]{background:#4CAF50;color:white;border-color:#4CAF50;} .sw-btn.active[data-v="2"]{background:#FFEB3B;color:#333;border-color:#FBC02D;} .sw-btn.active[data-v="0"]{background:#fff;color:#333;border-color:#999;} .modal-btns{display:flex;gap:10px;margin-top:20px;} .modal-btn-save{flex:1;background:#4CAF50;color:white;border:none;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;} .modal-btn-save:hover{background:#45a049;} .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;} .c{position:relative;transition:filter 0.1s;} @keyframes pressAnim{0%{transform:scale(1);filter:brightness(1);} 100%{transform:scale(0.92);filter:brightness(0.8);box-shadow:inset 0 4px 8px rgba(0,0,0,0.3);}} .pressing{animation:pressAnim 0.4s forwards;z-index:100;} #palette-header{background:#eee;border-radius:8px 8px 0 0;margin:-12px -8px 8px -8px;padding:8px;font-size:12px;font-weight:bold;color:#555;text-align:center;cursor:move;user-select:none;}</style></head><body><div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);"><div id="palette-header">🤚 ドラッグ移動</div><button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff; font-size:11px;">可</button><button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333; font-size:11px;">未定</button><button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:11px;">消す</button></div><div id="detail-modal"><div class="modal-content" id="modal-content-box"><div class="modal-title" id="modal-cell-title">詳細設定</div><label class="modal-label">🚥 予定のステータス</label><div class="status-switch"><button class="sw-btn" data-v="1" onclick="setModalStatus(1)">◯ 可</button><button class="sw-btn" data-v="2" onclick="setModalStatus(2)">△ 未定</button><button class="sw-btn" data-v="0" onclick="setModalStatus(0)">× 不可</button></div><label class="modal-label">🏫 キャンパスの指定</label><select id="modal-campus" class="modal-select"><option value="">指定なし</option><option value="なかもず">なかもず</option><option value="すぎもと">すぎもと</option><option value="あべの">あべの</option><option value="りんくう">りんくう</option><option value="もりのみや">もりのみや</option><option value="その他/移動中">その他 / 移動中</option></select><label class="modal-label">📝 補足コメント (任意)</label><input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延"><div class="modal-btns"><button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button></div><div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div></div></div><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {}; window.cellDetails = {}; let defaultCampus = ""; let modalStatus = 1; const palette = document.getElementById('palette'); const pHeader = document.getElementById('palette-header'); let isDraggingPalette = false; let offsetX, offsetY; pHeader.addEventListener('mousedown', e => { isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; }); window.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; }); window.addEventListener('mouseup', () => { isDraggingPalette = false; }); pHeader.addEventListener('touchstart', e => { isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false}); window.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false}); window.addEventListener('touchend', () => { isDraggingPalette = false; }); const modalBg = document.getElementById('detail-modal'); modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); }); modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true}); window.setModalStatus = function(v) { modalStatus = v; document.querySelectorAll('.sw-btn').forEach(b => { b.classList.toggle('active', parseInt(b.dataset.v) === v); }); }; window.upd = function(el, v) { el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key]; if (v == 0) { if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { } else { delete window.cellDetails[key]; detail = null; } } else if (v == 1 || v == 2) { if (!detail && defaultCampus) { window.cellDetails[key] = {campus: defaultCampus, note: ""}; detail = window.cellDetails[key]; } if (detail && detail.campus === defaultCampus && !detail.note) { delete window.cellDetails[key]; detail = null; } } let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : ""); let note = detail ? detail.note : ""; let bgImage = 'none'; let bgColor = '#fff'; if (v == 1) bgColor = '#4CAF50'; else if (v == 2) bgColor = '#FFEB3B'; else if (v == 3) bgColor = '#e0e0e0'; if (v == 1 || v == 2 || v == 3 || (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用"))) { let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)'; let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)'; if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px)`; } else if (campus === "すぎもと" || campus === "杉本") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; } else if (campus === "あべの" || campus === "阿倍野") { bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`; } else if (campus === "りんくう") { bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`; } else if (campus === "もりのみや") { bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; } else if (campus === "その他/移動中") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`; } else if (v == 3 && !campus) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; } } el.style.background = bgColor; el.style.backgroundImage = bgImage; if (campus === "りんくう" && v !== 0) el.style.backgroundSize = '10px 10px'; else el.style.backgroundSize = 'auto'; const existingIcon = el.querySelector('.memo-icon'); const hasManualSetting = detail && (detail.note !== "" || (detail.campus && detail.campus !== defaultCampus)); if (hasManualSetting) { if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>'); } else { if (existingIcon) existingIcon.remove(); } }; window.renderWeek = function() { const start = currentWeek * 7; const end = start + 7; document.querySelectorAll('.day-col').forEach(el => { const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none'; }); const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next'); if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays); setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); }; window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); }; window.doBulk = function(btnEl) { const val = document.getElementById('b-val').value; const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value); if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; } document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, val); } } }); const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500); }; window.doCopy = function(btnEl) { const srcIdx = parseInt(document.getElementById('c-src').value); let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); } let copied = false; document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, srcData[r]); } } } }); if(!copied) { alert('コピー先を選択してください。'); return; } const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500); }; window.doTimetable = function(btnEl) { if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; } for(let c = 0; c < totalDays; c++) { let key = String(c); if (unavailColRows[key]) { unavailColRows[key].forEach(item => { const r = (typeof item === 'object') ? item.row : item; const campus = (typeof item === 'object') ? item.campus : ""; const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`); if(cell) { const cellKey = `${r}_${c}`; if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") { window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"}; window.upd(cell, 0); } else if (campus) { window.cellDetails[cellKey] = {campus: campus, note: "定期授業"}; window.upd(cell, 3); } else { window.upd(cell, 3); } } }); } } const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000); }; window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; }; document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } }); let selectedMode = 1; window.setPen = function(mode) { selectedMode = mode; [0, 1, 2].forEach(m => { const b = document.getElementById('pen-' + m); b.classList.remove('active'); }); document.getElementById('pen-' + mode).classList.add('active'); }; let editingCell = null; window.openModal = function(cell) { editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`; const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""}; setModalStatus(parseInt(cell.dataset.v) || 1); document.getElementById('modal-campus').value = detail.campus || ""; document.getElementById('modal-note').value = detail.note || ""; document.getElementById('detail-modal').style.display = 'flex'; }; window.closeModal = function() { document.getElementById('detail-modal').style.display = 'none'; if (editingCell) { editingCell.classList.remove('pressing'); editingCell = null; } }; window.saveModal = function() { if(!editingCell) return; const r = editingCell.dataset.r; const c = editingCell.dataset.c; const key = `${r}_${c}`; const campus = document.getElementById('modal-campus').value; const note = document.getElementById('modal-note').value.trim(); if(campus || note || modalStatus === 0) { window.cellDetails[key] = {campus: campus, note: note}; window.upd(editingCell, modalStatus); } else { delete window.cellDetails[key]; window.upd(editingCell, modalStatus); } closeModal(); }; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; document.getElementById("content").innerHTML = args.html_code; totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {}; window.cellDetails = args.cellDetails || {}; defaultCampus = args.defaultCampus || ""; document.getElementById('pen-1').innerHTML = defaultCampus ? `可<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可"; if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; } window.renderWeek(); if(args.isClosed) { document.getElementById('palette').style.display = 'none'; return; } else { document.getElementById('palette').style.display = 'flex'; } window.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true }); const g = document.getElementById('g'); if(!g) return; let down = false; let isErasing = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0; const handleStart = (e, x, y, shift) => { const cell = e.target.closest('.c'); if(!cell) return; down = true; isErasing = shift; isLongPress = false; startX = x; startY = y; window.upd(cell, isErasing ? 0 : selectedMode); cell.classList.add('pressing'); pressTimer = setTimeout(() => { isLongPress = true; down = false; cell.classList.remove('pressing'); openModal(cell); }, 400); }; const handleMove = (e, x, y) => { if(!down) return; if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) { clearTimeout(pressTimer); document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); } if(!isLongPress) { const cell = document.elementFromPoint(x, y)?.closest('.c'); if(cell) window.upd(cell, selectedMode); } }; const handleEnd = () => { if (down && pressTimer) clearTimeout(pressTimer); document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); down = false; }; g.onmousedown = e => handleStart(e, e.clientX, e.clientY, e.shiftKey); g.onmousemove = e => handleMove(e, e.clientX, e.clientY); window.onmouseup = handleEnd; window.onmouseleave = handleEnd; g.addEventListener('touchstart', e => { handleStart(e, e.touches[0].clientX, e.touches[0].clientY, false); if(!isLongPress) e.preventDefault(); }, {passive: false}); g.addEventListener('touchmove', e => { if(down) { handleMove(e, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); } }, {passive: false}); g.addEventListener('touchend', handleEnd); const btn = document.getElementById("submit-btn"); if(btn) { btn.onclick = () => { const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); const commentText = document.getElementById("comment-box").value; setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; document.getElementById('palette').style.display = 'none'; }; } document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); }); } }); init(); </script></body></html>""")
 grid_editor = components.declare_component("grid_editor", path="custom_editor")
 
-# ==========================================
-# ユーティリティとメイン処理
-# ==========================================
 def call_gas(action, payload=None, method="POST"):
     try:
         p = payload or {}
         p["action"] = action
-        # 引数methodの内容に関わらず、確実にPOSTで送信する
         res = requests.post(GAS_URL, json=p)
         return res.json()
     except Exception as e: 
@@ -446,6 +430,601 @@ def main():
                             st.success("✅ 更新成功！新しいPINでログインできます。")
                         else:
                             st.error("氏名または合言葉が間違っています。")
+        return
+
+    # ==========================================
+    # ログイン後のメイン画面構築
+    # ==========================================
+    user = st.session_state.auth
+    
+    default_menu_index = 0
+    if "jump_to_event" in st.session_state:
+        st.session_state.target_ev_id = st.session_state.jump_to_event
+        default_menu_index = 0
+        del st.session_state.jump_to_event
+    
+    menu_opts = ["📅 日程調整 回答", "👤 プロフィール設定", "⏰ 時間割設定"]
+    if user.get("role") in ["user", "admin", "top_admin"]: menu_opts.append("➕ イベント新規作成")
+    if user.get("role") in ["admin", "top_admin"]: menu_opts.append("⚙️ 管理者専用")
+    
+    view_mode = st.sidebar.radio("🔧 メニュー", menu_opts, index=default_menu_index)
+
+    # ----------------------------------------------------
+    # 👤 プロフィール設定画面
+    # ----------------------------------------------------
+    if view_mode == "👤 プロフィール設定":
+        st.title("👤 プロフィール設定")
+        st.write("所属情報の更新を行います。（未所属にする場合は選択を解除してください）")
+        
+        def_g1 = [x for x in str(user.get('group_1', '')).split(', ') if x]
+        def_g2 = [x for x in str(user.get('group_2', '')).split(', ') if x]
+        def_g3 = [x for x in str(user.get('group_3', '')).split(', ') if x]
+
+        safe_def_g1 = [x for x in def_g1 if x in MASTER_G1]
+        safe_def_g2 = [x for x in def_g2 if x in MASTER_G2]
+        safe_def_g3 = [x for x in def_g3 if x in MASTER_G3]
+
+        upd_g1 = st.multiselect("🏫 現在通っているキャンパス", MASTER_G1, default=safe_def_g1, key="upd_g1")
+        upd_g2 = st.multiselect("🎓 入学年度", MASTER_G2, default=safe_def_g2, key="upd_g2")
+        upd_g3 = st.multiselect("🤝 オプション", MASTER_G3, default=safe_def_g3, key="upd_g3")
+
+        st.markdown("---")
+        st.markdown("##### 📅 外部カレンダー連携 (任意)")
+        st.write("GoogleカレンダーやiPhoneの「非公開URL（iCal形式 / .ics）」を設定しておくと、日程調整の際に自分の予定を自動でグレーアウトできます。")
+        upd_cal_url = st.text_input("カレンダーの非公開URL", value=user.get('calendar_url', ''), placeholder="https://calendar.google.com/calendar/ical/.../basic.ics")
+
+        if st.button("💾 更新", type="primary"):
+            payload = {"user_id": user['user_id'], "group_1": ", ".join(upd_g1), "group_2": ", ".join(upd_g2), "group_3": ", ".join(upd_g3), "calendar_url": upd_cal_url}
+            
+            db.collection("users").document(str(user["user_id"])).update(payload)
+            
+            gas_payload = payload.copy()
+            if gas_payload.get("calendar_url"): 
+                gas_payload["calendar_url"] = "LINKED"
+            
+            backup_to_gas_async("update_user_v2", {"payload": gas_payload})
+            
+            user.update(payload)
+            st.session_state.auth = user
+            st.success("✅ 保存完了")
+            time.sleep(1)
+            st.rerun()
+        return
+
+    # ----------------------------------------------------
+    # ⏰ 時間割設定画面
+    # ----------------------------------------------------
+    if view_mode == "⏰ 時間割設定":
+        st.title("⏰ 時間割設定")
+        st.info("※ここで設定した授業・バイトの予定は、各イベントの日程調整画面で「時間割パワー反映」ボタンを押すことで、不可(×)や授業等(グレー)として一括で自動入力できます。")
+        
+        st.markdown("""
+        <style>
+            .mobile-rotate-guide { display: none; }
+            @media (max-width: 650px) and (orientation: portrait) {
+                .mobile-rotate-guide {
+                    display: flex; align-items: center; justify-content: center;
+                    background: linear-gradient(135deg, #e8f5e9, #c8e6c9); color: #2e7d32;
+                    padding: 12px 15px; border-radius: 8px; margin-bottom: 20px;
+                    font-size: 13px; font-weight: bold; border-left: 5px solid #4CAF50;
+                    box-shadow: 0 4px 6px rgba(0,0,0,0.05); animation: fadeIn 0.5s ease-in-out;
+                }
+                .mobile-rotate-guide::before { content: "📱🔄"; font-size: 20px; margin-right: 10px; }
+            }
+            @media (max-width: 650px) {
+                [data-testid="stForm"] > div > div > [data-testid="stVerticalBlock"] {
+                    overflow-x: auto !important; padding-bottom: 15px !important;
+                }
+                [data-testid="stHorizontalBlock"] {
+                    display: flex !important; flex-direction: row !important; flex-wrap: nowrap !important;
+                    min-width: 480px !important; gap: 2px !important;
+                }
+                [data-testid="column"] { min-width: 0 !important; flex: 1 1 0px !important; padding: 0 !important; }
+                [data-testid="column"]:first-child { flex: 0 0 55px !important; }
+                .tt-day-header { font-size: 13px !important; padding: 4px 0 !important; }
+                .tt-time-cell { font-size: 11px !important; padding: 4px 2px !important; border-left: 2px solid #4CAF50 !important; }
+                .tt-time-sub { font-size: 9px !important; display: block; line-height: 1.1; }
+                .status-on, .status-off, .af-status-on { font-size: 10px !important; padding: 2px 0 !important; }
+                [data-testid="stSelectbox"] { min-width: 0 !important; }
+            }
+        </style>
+        <div class="mobile-rotate-guide">スマホを横向きにすると、時間割が綺麗に表示されます！</div>
+        """, unsafe_allow_html=True)
+        
+        fixed_sched = user.get("fixed_schedule", {})
+        try: fixed_locs = json.loads(user.get("group_4", "{}"))
+        except: fixed_locs = {}
+
+        ui_state = {str(i): {} for i in range(5)}
+        days_jp = ["月", "火", "水", "木", "金"]
+        col_ratios = [1.1, 1, 1, 1, 1, 1]
+        
+        tt_options = ["- (空き)"] + MASTER_G1 + ["その他/移動中", "💼 バイト/サークル等"]
+
+        cols = st.columns(col_ratios)
+        cols[0].markdown("<div style='padding:8px;'></div>", unsafe_allow_html=True)
+        for i, d in enumerate(days_jp): cols[i+1].markdown(f"<div class='tt-day-header'>{d}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 5px;'></div>", unsafe_allow_html=True)
+
+        periods = [
+            ("1限", "09:00〜", 36, 42, "p1"), ("2限", "10:45〜", 43, 49, "p2"),
+            ("3限", "13:15〜", 53, 59, "p3"), ("4限", "15:00〜", 60, 66, "p4"), ("5限", "16:45〜", 67, 73, "p5")
+        ]
+        
+        for p_name, p_time, s_idx, e_idx, p_key in periods:
+            cols = st.columns(col_ratios)
+            cols[0].markdown(f"<div class='tt-time-cell'>{p_name}<br><span class='tt-time-sub'>{p_time}</span></div>", unsafe_allow_html=True)
+            for i in range(5):
+                day_bin = fixed_sched.get(str(i), "0"*96)
+                is_occupied = (day_bin[s_idx:e_idx] == "1" * (e_idx - s_idx))
+                saved_loc = fixed_locs.get(str(i), {}).get(p_key, "")
+                
+                if not is_occupied: current_val = "- (空き)"
+                elif saved_loc in tt_options: current_val = saved_loc
+                elif "バイト" in saved_loc or "私用" in saved_loc: current_val = "💼 バイト/サークル等"
+                else: current_val = tt_options[1]
+                
+                selected_opt = cols[i+1].selectbox("予定", tt_options, index=tt_options.index(current_val), key=f"tt_{p_key}_{i}", label_visibility="collapsed")
+                
+                if selected_opt == "- (空き)":
+                    ui_state[str(i)][p_key] = False
+                    cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
+                elif selected_opt == "💼 バイト/サークル等":
+                    ui_state[str(i)][p_key] = True
+                    ui_state[str(i)][f"{p_key}_loc"] = "💼 バイト/サークル等"
+                    cols[i+1].markdown(f"<div class='status-off' style='background:#f5f5f5; color:#333; font-size:10px; padding:2px 0; border:none;'>💼 バイト等</div>", unsafe_allow_html=True)
+                else:
+                    ui_state[str(i)][p_key] = True
+                    ui_state[str(i)][f"{p_key}_loc"] = selected_opt
+                    cols[i+1].markdown(f"<div class='status-on' style='font-size:10px; padding:2px 0;'>✔︎ {selected_opt}</div>", unsafe_allow_html=True)
+            st.markdown("<hr style='margin: 4px 0; border: none; border-bottom: 1px dashed #ddd;'>", unsafe_allow_html=True)
+            
+        cols = st.columns(col_ratios)
+        cols[0].markdown(f"<div class='tt-time-cell' style='border-left-color:#FF9800;'>放課後<br><span class='tt-time-sub'>18:30〜</span></div>", unsafe_allow_html=True)
+        for i in range(5):
+            day_bin = fixed_sched.get(str(i), "0"*96); af_bin = day_bin[74:]
+            is_occupied = "1" in af_bin
+            saved_loc = fixed_locs.get(str(i), {}).get("af", "")
+            
+            if not is_occupied: current_val = "- (空き)"
+            elif saved_loc in tt_options: current_val = saved_loc
+            elif "バイト" in saved_loc or "私用" in saved_loc: current_val = "💼 バイト/サークル等"
+            else: current_val = tt_options[1]
+            
+            selected_opt = cols[i+1].selectbox("予定", tt_options, index=tt_options.index(current_val), key=f"tt_af_{i}", label_visibility="collapsed")
+            
+            if selected_opt == "- (空き)":
+                ui_state[str(i)]["af"] = False
+                cols[i+1].markdown("<div class='status-off'>-</div>", unsafe_allow_html=True)
+            elif selected_opt == "💼 バイト/サークル等":
+                ui_state[str(i)]["af"] = True
+                ui_state[str(i)]["af_loc"] = "💼 バイト/サークル等"
+                cols[i+1].markdown(f"<div class='status-off' style='background:#f5f5f5; color:#333; font-size:10px; padding:2px 0; border:none;'>💼 バイト等</div>", unsafe_allow_html=True)
+            else:
+                ui_state[str(i)]["af"] = True
+                ui_state[str(i)]["af_loc"] = selected_opt
+                cols[i+1].markdown(f"<div class='af-status-on' style='font-size:10px; padding:2px 0;'>🌙 {selected_opt}</div>", unsafe_allow_html=True)
+        st.markdown("<div style='height: 5px;'></div>", unsafe_allow_html=True)
+        
+        cols = st.columns(col_ratios)
+        cols[0].markdown(f"<div class='tt-end-time' style='text-align:center; font-size:10px; color:#666; padding-top:10px;'>終了時刻</div>", unsafe_allow_html=True)
+        for i in range(5):
+            if ui_state[str(i)]["af"]:
+                day_bin = fixed_sched.get(str(i), "0"*96); af_bin = day_bin[74:]; af_end_val = "21:00"
+                if "1" in af_bin:
+                    last_idx = 74 + af_bin.rfind("1")
+                    if last_idx + 1 < len(time_master): af_end_val = time_master[last_idx + 1]
+                    else: af_end_val = "23:45"
+                af_opts = [idx_to_time(idx) for idx in range(76, 96)]
+                af_idx = af_opts.index(af_end_val) if af_end_val in af_opts else 8
+                ui_state[str(i)]["af_end"] = cols[i+1].selectbox("終了時間", af_opts, index=af_idx, key=f"afe_{i}", label_visibility="collapsed")
+            else:
+                cols[i+1].markdown("<div style='text-align:center; color:#ccc; padding-top:10px; font-size:12px;'>-</div>", unsafe_allow_html=True)
+                ui_state[str(i)]["af_end"] = "21:00"
+
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        if st.button("💾 時間割を保存する", use_container_width=True, type="primary"):
+            new_fixed_sched = {}
+            new_fixed_locs = {}
+            for i in range(5):
+                wd_str = str(i); new_bin = ["0"] * 96; day_locs = {}
+                
+                if ui_state[wd_str]["p1"]: 
+                    new_bin[36:42] = ["1"] * 6; day_locs["p1"] = ui_state[wd_str]["p1_loc"]
+                if ui_state[wd_str]["p2"]: 
+                    new_bin[43:49] = ["1"] * 6; day_locs["p2"] = ui_state[wd_str]["p2_loc"]
+                if ui_state[wd_str]["p3"]: 
+                    new_bin[53:59] = ["1"] * 6; day_locs["p3"] = ui_state[wd_str]["p3_loc"]
+                if ui_state[wd_str]["p4"]: 
+                    new_bin[60:66] = ["1"] * 6; day_locs["p4"] = ui_state[wd_str]["p4_loc"]
+                if ui_state[wd_str]["p5"]: 
+                    new_bin[67:73] = ["1"] * 6; day_locs["p5"] = ui_state[wd_str]["p5_loc"]
+                if ui_state[wd_str]["af"]:
+                    end_idx = time_master.index(ui_state[wd_str]["af_end"])
+                    new_bin[74:end_idx] = ["1"] * (end_idx - 74)
+                    day_locs["af"] = ui_state[wd_str]["af_loc"]
+                    
+                new_fixed_sched[wd_str] = "".join(new_bin)
+                new_fixed_locs[wd_str] = day_locs
+                
+            payload = {"user_id": user['user_id'], "fixed_schedule": new_fixed_sched, "group_4": json.dumps(new_fixed_locs)}
+            res = call_gas("update_user", {"payload": payload}, method="POST")
+            if res.get("status") == "success":
+                updated_u = res.get("data")
+                db.collection("users").document(str(updated_u["user_id"])).update(updated_u)
+                st.session_state.auth = updated_u
+                st.rerun()
+            else:
+                st.error("更新に失敗しました。")
+        return
+
+    # ----------------------------------------------------
+    # ➕ イベント新規作成画面
+    # ----------------------------------------------------
+    if view_mode == "➕ イベント新規作成":
+        st.title("➕ イベント新規作成")
+        st.write("新しい日程調整イベントを作成します。")
+        
+        ev_type_label = st.radio("📝 日程調整のタイプを選択", ["🕒 時間帯 (15分刻み)", "🏫 時間割 (月〜金)", "📅 複数の予定 (候補から選択)"], horizontal=True)
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        ev_title = st.text_input("イベント名")
+        st.markdown("<br>", unsafe_allow_html=True)
+        
+        with st.container(border=True):
+            st.markdown("##### ⏳ 回答期限の設定")
+            col_d1, col_d2 = st.columns([1, 1])
+            with col_d1: deadline_date = st.date_input("回答期限 (日付)", value=datetime.today() + timedelta(days=7))
+            with col_d2: deadline_time = st.time_input("回答期限 (時刻)", value=datetime.strptime("23:59", "%H:%M").time())
+            auto_close = st.checkbox("✅ 期限が過ぎたら自動で締め切る (回答不可にする)", value=True)
+            
+        ev_start, ev_end = None, None
+        t_start, t_end = None, None
+        opts_list = []
+        
+        if ev_type_label == "🕒 時間帯 (15分刻み)":
+            ev_type = "time"
+            with st.container(border=True):
+                st.markdown("##### 📅 1. カレンダーに表示する【期間】")
+                col1, col_m1, col2 = st.columns([10, 1, 10])
+                with col1: ev_start = st.date_input("開始日", label_visibility="collapsed")
+                with col_m1: st.markdown("<div style='text-align:center; font-weight:bold; font-size:18px;'>〜</div>", unsafe_allow_html=True)
+                with col2: ev_end = st.date_input("終了日", label_visibility="collapsed")
+                
+            with st.container(border=True):
+                st.markdown("##### ⏰ 2. 1日あたりの対象【時間帯】")
+                col3, col_m2, col4 = st.columns([10, 1, 10])
+                with col3: t_start = st.selectbox("開始時刻", time_master, index=36, label_visibility="collapsed")
+                with col_m2: st.markdown("<div style='text-align:center; font-weight:bold; font-size:18px;'>〜</div>", unsafe_allow_html=True)
+                with col4: t_end = st.selectbox("終了時刻", time_master, index=72, label_visibility="collapsed")
+                
+        elif ev_type_label == "🏫 時間割 (月〜金)":
+            ev_type = "timetable"
+            st.info("💡 月曜〜金曜の「1限〜5限・放課後」の枠のみを使って、全員の空きコマを一括で集計するモードです。")
+            
+        else:
+            ev_type = "options"
+            st.info("💡 任意の予定（候補日やイベント案など）をリスト化し、どれに参加できるかアンケートを取るモードです。")
+            if "opt_count" not in st.session_state: st.session_state.opt_count = 3
+            with st.container(border=True):
+                st.markdown("##### 📅 候補リストを作成")
+                for i in range(st.session_state.opt_count):
+                    val = st.text_input(f"候補 {i+1}", key=f"new_opt_{i}", placeholder="例: 4/1 19:00〜 新歓")
+                    opts_list.append(val)
+                if st.button("➕ 候補を追加する", use_container_width=True):
+                    st.session_state.opt_count += 1
+                    st.rerun()
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("##### 👥 参加メンバーの指定")
+            is_all_members = st.checkbox("✅ 全員に公開する（デフォルト）", value=True, key="create_all_members")
+            target_scope_json = ""
+            
+            if not is_all_members:
+                all_u = [d.to_dict() for d in db.collection("users").stream()]
+                
+                all_g1 = sort_groups(list(set([g.strip() for u in all_u for g in str(u.get('group_1', '')).split(',') if g.strip()])), MASTER_G1)
+                all_g2 = sort_groups(list(set([g.strip() for u in all_u for g in str(u.get('group_2', '')).split(',') if g.strip()])), MASTER_G2)
+                all_g3 = sort_groups(list(set([g.strip() for u in all_u for g in str(u.get('group_3', '')).split(',') if g.strip()])), MASTER_G3)
+                
+                st.markdown("<span style='font-size:13px; color:#555;'>※ここで指定したグループや個人のみにイベントが表示されます。</span>", unsafe_allow_html=True)
+                col_t1, col_t2 = st.columns(2)
+                with col_t1:
+                    t_g1 = st.multiselect("🏫 キャンパス", all_g1, key="tgt_g1")
+                    t_g3 = st.multiselect("🤝 オプション", all_g3, key="tgt_g3")
+                with col_t2:
+                    t_g2 = st.multiselect("🎓 入学年度", all_g2, key="tgt_g2")
+                    t_users = st.multiselect("👤 特定の個人", sorted(all_u, key=lambda x: x.get('name', '')), format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})", key="tgt_users")
+                
+                target_scope_json = json.dumps({
+                    "groups": t_g1 + t_g2 + t_g3,
+                    "users": [u['user_id'] for u in t_users]
+                })
+                
+                # 💡【追加】メンションのプレビューと警告UI
+                mentions_preview = []
+                for g in t_g1: mentions_preview.append(f"@{g}")
+                for g in t_g2: mentions_preview.append(f"@{g.replace('年度', '年度入学生')}")
+                for g in t_g3: mentions_preview.append(f"@{g}")
+                mentions_preview = list(dict.fromkeys(mentions_preview))
+                
+                if mentions_preview:
+                    st.info(f"📣 **Discord通知プレビュー:**\n `{' '.join(mentions_preview)}` に通知が飛びます")
+                    if len(mentions_preview) >= 4:
+                        st.warning("⚠️ **通知範囲が広すぎませんか？**\n多数のグループを選択しています。本当に必要な人だけか確認してください。")
+
+        st.markdown("<br>", unsafe_allow_html=True)
+        with st.container(border=True):
+            st.markdown("##### 🔒 プライバシー・通知設定")
+            is_private = st.checkbox("🤫 プライベート調整にする（回答者の名前を他の参加者に隠す）", key="create_private")
+            skip_discord = st.checkbox("🔕 Discordに通知を送らない（ひっそり作成してURLで直接招待する）", value=False, key="skip_discord")
+
+        st.markdown("##### 📝 イベントの説明・備考")
+        ev_desc_raw = rt_editor(key="desc_editor")
+        ev_desc = ev_desc_raw if ev_desc_raw else ""
+        
+        if st.button("🚀 イベントを作成", use_container_width=True, type="primary"):
+            if not ev_title: st.warning("イベント名を入力してください。")
+            elif ev_type == "time" and ev_start > ev_end: st.error("終了日は開始日以降に設定してください。")
+            elif ev_type == "time" and time_master.index(t_start) >= time_master.index(t_end): st.error("終了時刻は開始時刻より後に設定してください。")
+            elif ev_type == "options" and not any(o.strip() for o in opts_list): st.error("最低1つの候補を入力してください。")
+            elif not is_all_members and target_scope_json == '{"groups": [], "users": []}': st.error("対象メンバーを指定するか、「全員に公開する」にチェックを入れてください。")
+            else:
+                if is_all_members:
+                    mention_text = "@everyone"
+                else:
+                    mention_text = " ".join(mentions_preview) if not is_all_members else "@everyone"
+
+                deadline_str = f"{deadline_date.strftime('%Y-%m-%d')} {deadline_time.strftime('%H:%M')}"
+                
+                # 💡 Python側でイベントIDを即時発行
+                created_event_id = generate_custom_id("EV")
+                
+                payload = {
+                    "event_id": created_event_id,
+                    "title": ev_title, 
+                    "description": ev_desc, 
+                    "start_date": ev_start.strftime("%Y-%m-%d") if ev_type == "time" else "", 
+                    "end_date": ev_end.strftime("%Y-%m-%d") if ev_type == "time" else "", 
+                    "start_time_idx": time_master.index(t_start) if ev_type == "time" else 0, 
+                    "end_time_idx": time_master.index(t_end) if ev_type == "time" else 0, 
+                    "status": "open",
+                    "type": ev_type,
+                    "options_name": json.dumps([o.strip() for o in opts_list if o.strip()]) if ev_type == "options" else "",
+                    "close_time": deadline_str,
+                    "auto_close": auto_close,
+                    "target_scope": target_scope_json,
+                    "is_private": is_private,
+                    "skip_discord": skip_discord,
+                    "mention_text": mention_text
+                }
+                
+                # 1. Firestoreに保存
+                db.collection("events").document(created_event_id).set(payload)
+                
+                # 2. 修正：辞書で包んでGASへ送る
+                backup_to_gas_async("create_event_v2", {"payload": payload})
+                
+                st.success(f"「{ev_title}」を作成しました！")
+                
+                share_url = f"{APP_BASE_URL}?event={created_event_id}"
+                st.info("👇 以下の招待リンクをコピーして、参加者に送ってください（右上のアイコンでコピーできます）")
+                st.code(share_url, language="text")
+                
+                if "opt_count" in st.session_state: del st.session_state.opt_count
+        return
+
+    # ----------------------------------------------------
+    # ⚙️ 管理者専用画面
+    # ----------------------------------------------------
+    if view_mode == "⚙️ 管理者専用":
+        st.title("⚙️ 管理者ダッシュボード")
+        tab_manage, tab_users = st.tabs(["📝 イベント・アーカイブ管理", "👥 ユーザー管理"])
+
+        with tab_manage:
+            all_users_admin = [d.to_dict() for d in db.collection("users").stream()]
+            user_map = {str(u.get('user_id')): u.get('name') for u in all_users_admin}
+
+            def format_target_scope(scope_str):
+                if not scope_str or not scope_str.startswith('{'): return "全員"
+                try:
+                    scope = json.loads(scope_str)
+                    groups = scope.get("groups", []); users = scope.get("users", [])
+                    user_names = [user_map.get(str(uid), str(uid)) for uid in users]
+                    res = []
+                    if groups: res.append(f"📁 {', '.join(groups)}")
+                    if user_names: res.append(f"👤 {', '.join(user_names)}")
+                    return " / ".join(res) if res else "全員"
+                except: return "限定"
+
+            all_events = [d.to_dict() for d in db.collection("events").stream()]
+            
+            if all_events:
+                for ev in all_events:
+                    ev['type_safe'] = ev.get('type') or ev.get('event_type', 'time')
+                    ev['start_idx_safe'] = ev.get('start_time_idx') or ev.get('start_idx', 0)
+                    ev['end_idx_safe'] = ev.get('end_time_idx') or ev.get('end_idx', 0)
+                    ev['deadline_safe'] = ev.get('close_time') or ev.get('deadline', '')
+                    
+                df_ev = pd.DataFrame(all_events)
+                df_ev['種類'] = df_ev['type_safe'].replace({"time": "🕒 時間", "timetable": "🏫 時間割", "options": "📅 予定候補"})
+                
+                # 💡 「詳細」の表示を直感的に（終了時刻はそのままで「〜18:00」になる）
+                df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row.get('start_idx_safe', 0))}〜{idx_to_time(row.get('end_idx_safe', 0))}" if row.get('type_safe')=='time' else ("月〜金" if row.get('type_safe')=='timetable' else "複数候補"), axis=1)
+                
+                df_ev['期限'] = df_ev['deadline_safe'].apply(format_deadline_jp)
+                df_ev['公開範囲'] = df_ev['target_scope'].apply(format_target_scope)
+                df_ev['秘密'] = df_ev['is_private'].apply(lambda x: "🤫" if x else "-")
+                df_ev['招待URL'] = df_ev['event_id'].apply(lambda x: f"{APP_BASE_URL}?event={x}")
+                
+                df_display = df_ev[['event_id', 'title', '種類', '詳細', '期限', '公開範囲', '秘密', '招待URL', 'status']]
+                
+                active_events = [ev for ev in all_events if ev.get('status') in ['open', 'closed']]
+                st.subheader("🟢 現在のイベント")
+                html_table_ev = df_display[df_display['status'].isin(['open', 'closed'])].to_html(index=False, border=0, classes="custom-tbl")
+                st.markdown("<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; word-break: break-all; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_ev}</div>', unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.subheader("⚙️ ステータス手動変更")
+                if active_events:
+                    with st.form("update_status_form"):
+                        target_ev = st.selectbox("対象イベント", active_events, format_func=lambda x: f"{x['title']} ({x['status']})")
+                        new_status = st.selectbox("ステータス", ["open", "closed", "archived"], index=1)
+                        if st.form_submit_button("更新する"):
+                            call_gas("update_event_status", {"payload": {"event_id": target_ev['event_id'], "status": new_status}}, method="POST")
+                            db.collection("events").document(target_ev['event_id']).update({"status": new_status})
+                            st.rerun()
+                            
+                st.markdown("---")
+                st.subheader("👀 未回答者の抽出")
+                if active_events:
+                    check_ev = st.selectbox("確認するイベントを選択", active_events, format_func=lambda x: f"{x['title']} ({x['status']})", key="chk_unanswered")
+                    if st.button("未回答者を抽出する", type="primary"):
+                        with st.spinner("データを照合中..."):
+                            ans_docs = db.collection("responses").where("event_id", "==", check_ev['event_id']).stream()
+                            answered_uids = [str(d.to_dict().get("user_id")) for d in ans_docs]
+
+                            target_users = []
+                            scope_str = check_ev.get('target_scope', '')
+                            is_all = True
+                            t_groups, t_uids = [], []
+                            if scope_str and scope_str.startswith('{'):
+                                try:
+                                    scope = json.loads(scope_str)
+                                    t_groups = scope.get("groups", [])
+                                    t_uids = [str(x) for x in scope.get("users", [])]
+                                    if t_groups or t_uids: is_all = False
+                                except: pass
+
+                            for u in all_users_admin:
+                                uid = str(u.get('user_id'))
+                                if uid in answered_uids: continue
+
+                                if is_all:
+                                    target_users.append(u.get('name', ''))
+                                else:
+                                    if uid in t_uids:
+                                        target_users.append(u.get('name', ''))
+                                        continue
+                                    u_g = []
+                                    for g_key in ['group_1', 'group_2', 'group_3']:
+                                        u_g.extend([x.strip() for x in str(u.get(g_key, '')).split(',') if x.strip()])
+                                    
+                                    if set(t_groups).intersection(set(u_g)):
+                                        target_users.append(u.get('name', ''))
+
+                            if target_users:
+                                st.warning(f"⚠️ 対象者のうち、未回答の人が {len(target_users)} 名います。")
+                                target_users = sorted(target_users)
+                                st.code("\n".join(target_users), language="text")
+                            else:
+                                st.success("🎉 対象者は全員回答済みです！")
+
+                st.markdown("---")
+                st.subheader("📦 アーカイブ済み")
+                html_table_arch = df_display[df_display['status'] == 'archived'].to_html(index=False, border=0, classes="custom-tbl")
+                st.markdown(f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_arch}</div>', unsafe_allow_html=True)
+            else: st.info("イベントがありません。")
+
+        with tab_users:
+            st.subheader("👥 ユーザー一覧と権限管理")
+            
+            all_users = [d.to_dict() for d in db.collection("users").stream()]
+            
+            if st.button("🔄 ユーザー一覧を最新に更新"):
+                st.rerun()
+
+            if all_users:
+                df_u = pd.DataFrame(all_users)
+                df_u = df_u.rename(columns={"user_id": "ユーザーID", "name": "氏名", "role": "権限", "group_1": "キャンパス", "group_2": "入学年度", "group_3": "オプション"})
+                df_u["権限"] = df_u["権限"].replace({"top_admin": "👑 最高管理者", "admin": "🛠️ 管理者", "user": "📝 ユーザー", "guest": "👤 ゲスト"})
+                display_cols = ["ユーザーID", "氏名", "権限", "キャンパス", "入学年度", "オプション"]
+                display_cols = [c for c in display_cols if c in df_u.columns]
+                
+                html_table = df_u[display_cols].to_html(index=False, border=0, classes="custom-tbl")
+                table_html = "<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; color: #333; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; color: #333; word-break: break-all; } .custom-tbl tr:hover { background-color: #f8f9fa; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 20px;">{html_table}</div>'
+                st.markdown(table_html, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.subheader("🚨 ユーザー情報の更新 (PINリセット等)")
+                tgt_user = st.selectbox("対象ユーザー", all_users, format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})")
+                
+                with st.form("admin_user_update"):
+                    new_u_pin = st.text_input("新しいPIN (リセットする場合)", type="password", autocomplete="new-password")
+                    if user.get("role") == "top_admin":
+                        role_opts = ["guest", "user", "admin"]
+                        if tgt_user.get('role') == 'top_admin':
+                            st.info("※最高管理者の権限はここで変更できません。下の譲渡メニューを使用してください。")
+                            new_u_role = "top_admin"
+                        else:
+                            current_role = tgt_user.get('role') if tgt_user.get('role') in role_opts else "guest"
+                            new_u_role = st.selectbox("権限の変更", role_opts, index=role_opts.index(current_role))
+                    else:
+                        st.info("※権限（Role）の変更は top_admin のみ可能です。")
+                        new_u_role = tgt_user.get('role')
+
+                    if st.form_submit_button("更新実行", type="primary"):
+                        if tgt_user.get('role') == 'top_admin' and new_u_role != 'top_admin':
+                            st.error("最高管理者の権限は変更できません。")
+                        else:
+                            updates = {"role": new_u_role}
+                            gas_payload = {"user_id": tgt_user['user_id'], "role": new_u_role, "new_pin": ""}
+                            
+                            # 新しいPINが入力されている場合はハッシュ化して更新
+                            if new_u_pin:
+                                updates["pin"] = hash_secret(new_u_pin)
+                                gas_payload["new_pin"] = "ENCRYPTED_PIN"
+
+                            # Firestoreを更新
+                            db.collection("users").document(str(tgt_user['user_id'])).update(updates)
+                            # GASへバックアップ送信
+                            backup_to_gas_async("admin_update_user", {"payload": gas_payload})
+                            
+                            st.success("ユーザー情報を更新しました！")
+                            time.sleep(1.5)
+                            st.rerun()
+
+                if user.get("role") == "top_admin":
+                    st.markdown("---")
+                    st.subheader("👑 最高管理者 (top_admin) の譲渡")
+                    st.warning("⚠️ この操作を実行すると、あなたは `admin` に降格し、元に戻すことはできません。")
+                    
+                    candidates = [u for u in all_users if u.get('user_id') != user.get('user_id')]
+                    new_top = st.selectbox("譲渡先ユーザー", candidates, format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})")
+                    
+                    st.markdown("<span style='font-size:13px; color:#555;'>PINリセットなどのSOSを受け取るための、新しい管理者の<b>DiscordユーザーID（18桁前後の数字）</b>を入力してください。<br>※Discordの設定から「開発者モード」をオンにし、プロフィールを右クリックしてIDをコピーできます。</span>", unsafe_allow_html=True)
+                    new_discord_id = st.text_input("DiscordユーザーID (例: 123456789012345678)")
+                    
+                    if st.button("🔔 テスト通知を送信"):
+                        if new_discord_id:
+                            clean_id = new_discord_id.strip().replace("@", "").replace("<", "").replace(">", "")
+                            mention_str = f"<@{clean_id}>"
+
+                            res = call_gas("test_discord_mention", {"payload": {"discord_id": mention_str}}, method="POST")
+                            if res.get("status") == "success":
+                                st.success(f"Discordにテスト通知を送信しました！通知が来ているか確認してください。")
+                            else:
+                                st.error("テスト通知の送信に失敗しました。")
+                        else:
+                            st.warning("DiscordユーザーIDを入力してください。")
+                    
+                    confirm_transfer = st.checkbox("✅ Discordでテスト通知が届いたことを確認しました")
+                    
+                    if confirm_transfer:
+                        if st.button("🚀 top_adminを譲渡する", type="primary"):
+                            clean_id = new_discord_id.strip().replace("@", "").replace("<", "").replace(">", "")
+                            mention_str = f"<@{clean_id}>"
+                                
+                            call_gas("transfer_top_admin", {"payload": {"caller_id": user['user_id'], "target_id": new_top['user_id'], "discord_id": mention_str}}, method="POST")
+                            
+                            db.collection("users").document(str(user['user_id'])).update({"role": "admin"})
+                            updates_top = {"role": "top_admin"}
+                            if mention_str: updates_top["discord_id"] = mention_str
+                            db.collection("users").document(str(new_top['user_id'])).update(updates_top)
+                            
+                            st.session_state.auth = None
+                            st.rerun()
         return
 
     # ----------------------------------------------------
