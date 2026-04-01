@@ -348,16 +348,14 @@ def main():
         return sorted(lst, key=lambda x: master.index(x) if x in master else 999)
     
     # ==========================================
-    # 🔑 未ログイン画面
+    # 🔑 未ログイン画面（ログイン・新規登録・復旧）
     # ==========================================
     if not st.session_state.auth:
         _, col_login, _ = st.columns([1, 2, 1])
         with col_login:
             st.title("V-Sync by もっきゅー")
             
-            if "jump_to_event" in st.session_state:
-                st.info("👋 イベントへの招待が届いています。ログインまたは新規登録をして回答してください。")
-                
+            # 💡 ラジオボタンの項目名を統一（末尾のスペースを削除）
             login_mode = st.radio("メニュー", ["🔑 ログイン", "📝 新規アカウント作成", "🆘 PIN・パスワード復旧"], horizontal=True)
             st.markdown("---")
             
@@ -369,145 +367,109 @@ def main():
                     
                     if st.form_submit_button("ログイン", use_container_width=True, type="primary"):
                         hashed_p = hash_secret(p)
-                        # nameだけで検索し、Python側でPINを検証する
                         docs = db.collection("users").where("name", "==", n).stream()
                         user_doc = None
-                        
                         for doc in docs:
                             u_data = doc.to_dict()
-                            # ① すでにハッシュ化されている場合の正常ログイン
-                            if u_data.get("pin") == hashed_p:
+                            # ハッシュ値または平文でのログイン成功判定
+                            if u_data.get("pin") == hashed_p or u_data.get("pin") == p:
+                                if u_data.get("pin") == p: # 平文ならハッシュ化して更新
+                                    u_data["pin"] = hashed_p
+                                    db.collection("users").document(str(u_data["user_id"])).update({"pin": hashed_p})
                                 user_doc = u_data
                                 break
-                            # ② 平文のまま保存されている場合の救済・移行処理
-                            elif u_data.get("pin") == p:
-                                u_data["pin"] = hashed_p # ハッシュ値に書き換え
-                                db.collection("users").document(str(u_data["user_id"])).update({"pin": hashed_p})
-                                user_doc = u_data
-                                break
-                        
                         if user_doc:
                             st.session_state.auth = user_doc
                             st.rerun()
                         else:
                             st.error("認証失敗: 氏名またはPINが間違っています")
-            
-            elif login_mode == "📝 新規アカウント作成": # 💡末尾のスペースを削除
+
+            elif login_mode == "📝 新規アカウント作成":
                 st.subheader("新規アカウント作成")
-                reg_n = st.text_input("氏名", key="reg_name")
+                reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name")
                 reg_p = st.text_input("PIN", type="password", key="reg_pin")
-                reg_s = st.text_input("秘密の合言葉", key="reg_secret")
+                reg_s = st.text_input("🔑 秘密の合言葉", key="reg_secret")
                 g1 = st.multiselect("🏫 キャンパス", MASTER_G1, key="reg_g1")
                 g2 = st.multiselect("🎓 入学年度", MASTER_G2, key="reg_g2")
                 g3 = st.multiselect("🤝 オプション", MASTER_G3, key="reg_g3")
-
+                
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
                     clean_name = reg_n.replace(" ", "").replace("　", "")
-                    
-                    # 💡 ① 入力がすべて揃っているかチェック（ifはここ1つだけ）
+                    # ① 全項目入力チェック
                     if clean_name and reg_p and reg_s:
-                        # --- ここからID発行ロジック（ifの中に入れます） ---
+                        # 💡 IDをU001形式の連番にするロジック（成功ルート内へ移動）
                         all_users_list = [doc.to_dict() for doc in db.collection("users").stream()]
                         new_num = len(all_users_list) + 1
-                        new_user_id = f"U{new_num:03}" # U001, U002...形式
+                        new_user_id = f"U{new_num:03}"
 
                         new_u = {
-                            "user_id": new_user_id,
-                            "name": clean_name,
-                            "pin": hash_secret(reg_p),
-                            "secret_word": hash_secret(reg_s),
-                            "group_1": ", ".join(g1),
-                            "group_2": ", ".join(g2),
-                            "group_3": ", ".join(g3),
-                            "group_4": "",
-                            "role": "user" # 💡 これで「新規作成」が表示されるようになります
+                            "user_id": new_user_id, "name": clean_name,
+                            "pin": hash_secret(reg_p), "secret_word": hash_secret(reg_s),
+                            "group_1": ", ".join(g1), "group_2": ", ".join(g2),
+                            "group_3": ", ".join(g3), "group_4": "",
+                            "role": "user" # 💡 これで新規作成メニューが表示されます
                         }
                         
-                        # Firestoreに保存
+                        # Firestoreへ保存
                         db.collection("users").document(new_user_id).set(new_u)
-                        
-                        # GASへの同期（payloadで包む形式）
+                        # GASへ同期
                         gas_payload = new_u.copy()
                         gas_payload["pin"] = "ENCRYPTED_PIN"
                         gas_payload["secret_word"] = "SET_BY_USER"
                         backup_to_gas_async("register_user_v2", {"payload": gas_payload})
                         
-                        # ログイン状態にしてリロード
                         st.session_state.auth = new_u
                         st.rerun()
-                        # --- ここまでが「成功時」の処理 ---
-
                     else:
-                        # 💡 ② 入力が足りない場合の警告（elseはここ1つだけ）
                         st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
-                    else:
-                        # 💡 IDをU001形式の連番にするロジック
-                        all_users_list = [d.to_dict() for d in db.collection("users").stream()]
-                        new_num = len(all_users_list) + 1
-                        new_user_id = f"U{new_num:03}" # U001, U002...
 
-                        hashed_pin = hash_secret(reg_p)
-                        hashed_secret = hash_secret(reg_s)
-                        
-                        new_u = {
-                            "user_id": new_user_id, "name": clean_name, "pin": hashed_pin, 
-                            "secret_word": hashed_secret, "group_1": ", ".join(g1), 
-                            "group_2": ", ".join(g2), "group_3": ", ".join(g3), "group_4": "",
-                            "role": "user"
-                        }
-                        
-                        # 1. Firestoreに保存
-                        db.collection("users").document(new_user_id).set(new_u)
-                        
-                        # 2. GAS用にマスキング
-                        gas_payload = new_u.copy()
-                        gas_payload["pin"] = "ENCRYPTED_PIN"
-                        gas_payload["secret_word"] = "SET_BY_USER"
-                        
-                        # 💡 同期失敗の修正：payloadを辞書で包んで送る
-                        backup_to_gas_async("register_user_v2", {"payload": gas_payload})
-                        
-                        st.session_state.auth = new_u
-                        st.rerun()
-            
             elif login_mode == "🆘 PIN・パスワード復旧":
-                st.subheader("PINの再設定")
-                with st.expander("🔑 秘密の合言葉を使って自分で復旧する", expanded=True):
-                    with st.form("recovery_auth_form"):
-                        st.markdown("<small>登録時に設定した合言葉がわかる方はこちら</small>", unsafe_allow_html=True)
-                        rec_n = st.text_input("氏名", autocomplete="username")
-                        rec_s = st.text_input("秘密の合言葉", type="password")
-                        new_p = st.text_input("設定したい新しいPIN", type="password", autocomplete="new-password")
+                with st.form("recovery_auth_form"):
+                    rec_n = st.text_input("氏名")
+                    rec_s = st.text_input("秘密の合言葉", type="password")
+                    new_p = st.text_input("設定したい新しいPIN", type="password")
+                    if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
+                        clean_n = rec_n.replace(" ","").replace("　","")
+                        docs = db.collection("users").where("name", "==", clean_n).stream()
+                        target_user = None
+                        for doc in docs: target_user = doc.to_dict(); break
                         
-                        if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
-                            clean_n = rec_n.replace(" ","").replace("　","")
-                            # Python側でユーザーを検索
-                            docs = db.collection("users").where("name", "==", clean_n).stream()
-                            target_user = None
-                            for doc in docs:
-                                target_user = doc.to_dict()
-                                break
-                            
-                            # ハッシュ化された合言葉同士で照合
-                            if target_user and target_user.get("secret_word") == hash_secret(rec_s):
-                                db.collection("users").document(str(target_user["user_id"])).update({
-                                    "pin": hash_secret(new_p)
-                                })
-                                # GASにはマスキングして通知
-                                backup_to_gas_async("recover_account_v2", {"name": clean_n, "new_pin": "ENCRYPTED_PIN"})
-                                st.success("✅ 更新成功！新しいPINでログインできます。")
-                            else:
-                                st.error("氏名または合言葉が間違っています。")
-                
-                with st.expander("🆘 合言葉も忘れたので、管理者に依頼する"):
-                    st.write("管理者のDiscordへ通知を送り、PINのリセットを依頼します。")
-                    req_name = st.text_input("あなたのお名前", key="req_pin_name")
-                    if st.button("🚀 管理者にリセット依頼を送る", use_container_width=True):
-                        if not req_name: st.warning("名前を入力してください。")
+                        if target_user and target_user.get("secret_word") == hash_secret(rec_s):
+                            db.collection("users").document(str(target_user["user_id"])).update({"pin": hash_secret(new_p)})
+                            backup_to_gas_async("recover_account_v2", {"payload": {"name": clean_n, "new_pin": "ENCRYPTED_PIN"}})
+                            st.success("✅ 更新成功！新しいPINでログインできます。")
                         else:
-                            res = call_gas("request_pin_reset", {"payload": {"name": req_name}}, method="POST")
-                            if res.get("status") == "success": st.success(f"✅ {req_name}さん、管理者に通知を送りました。")
-                            else: st.error("送信に失敗しました。管理者へ直接連絡してください。")
+                            st.error("氏名または合言葉が間違っています。")
+        return
+
+    # ==========================================
+    # ログイン後のメイン画面構築
+    # ==========================================
+    user = st.session_state.auth
+    menu_opts = ["📅 日程調整 回答", "👤 プロフィール設定", "⏰ 時間割設定"]
+    if user.get("role") in ["user", "admin", "top_admin"]: menu_opts.append("➕ イベント新規作成")
+    if user.get("role") in ["admin", "top_admin"]: menu_opts.append("⚙️ 管理者専用")
+    
+    view_mode = st.sidebar.radio("🔧 メニュー", menu_opts)
+
+    if view_mode == "👤 プロフィール設定":
+        st.title("👤 プロフィール設定")
+        upd_g1 = st.multiselect("🏫 キャンパス", MASTER_G1, default=[x for x in str(user.get('group_1','')).split(', ') if x in MASTER_G1])
+        upd_g2 = st.multiselect("🎓 入学年度", MASTER_G2, default=[x for x in str(user.get('group_2','')).split(', ') if x in MASTER_G2])
+        upd_g3 = st.multiselect("🤝 オプション", MASTER_G3, default=[x for x in str(user.get('group_3','')).split(', ') if x in MASTER_G3])
+        upd_cal_url = st.text_input("カレンダーの非公開URL", value=user.get('calendar_url', ''))
+        
+        if st.button("💾 更新", type="primary"):
+            payload = {"user_id": user['user_id'], "group_1": ", ".join(upd_g1), "group_2": ", ".join(upd_g2), "group_3": ", ".join(upd_g3), "calendar_url": upd_cal_url}
+            db.collection("users").document(str(user["user_id"])).update(payload)
+            gas_payload = payload.copy()
+            if gas_payload.get("calendar_url"): gas_payload["calendar_url"] = "LINKED"
+            backup_to_gas_async("update_user_v2", {"payload": gas_payload})
+            user.update(payload)
+            st.session_state.auth = user
+            st.success("✅ 保存完了")
+            time.sleep(1)
+            st.rerun()
         return
 
     # ==========================================
