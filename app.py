@@ -434,8 +434,6 @@ def main():
                         
                         st.session_state.auth = new_u
                         st.rerun()
-                        else:
-                            st.error(f"エラー: {res.get('message')}")
             
             elif login_mode == "🆘 PIN・パスワード復旧":
                 st.subheader("PINの再設定")
