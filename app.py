@@ -403,30 +403,37 @@ def main():
 
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
                     clean_name = reg_n.replace(" ", "").replace("　", "")
+                    
+                    # 💡 条件：氏名、PIN、合言葉がすべて入力されている場合
                     if clean_name and reg_p and reg_s:
-                        # 💡 IDをU001形式の連番にするロジック
+                        # 1. ユーザーIDをU001形式の連番にする
                         all_users_list = [doc.to_dict() for doc in db.collection("users").stream()]
                         new_num = len(all_users_list) + 1
                         new_user_id = f"U{new_num:03}"
 
+                        hashed_pin = hash_secret(reg_p)
+                        hashed_secret = hash_secret(reg_s)
+                        
                         new_u = {
-                            "user_id": new_user_id, "name": clean_name, 
-                            "pin": hash_secret(reg_p), "secret_word": hash_secret(reg_s), 
-                            "group_1": ", ".join(g1), "group_2": ", ".join(g2), 
-                            "group_3": ", ".join(g3), "group_4": "", 
-                            "role": "user" # 💡ここでroleを付与することで「新規作成」が表示されます
+                            "user_id": new_user_id, "name": clean_name, "pin": hashed_pin, 
+                            "secret_word": hashed_secret, "group_1": ", ".join(g1), 
+                            "group_2": ", ".join(g2), "group_3": ", ".join(g3), "group_4": "",
+                            "role": "user" # これで「新規作成」メニューが表示されるようになります
                         }
-                        # Firestoreに保存
+                        
+                        # 2. Firestoreに保存
                         db.collection("users").document(new_user_id).set(new_u)
                         
-                        # GAS同期
+                        # 3. GAS同期（payloadで包む）
                         gas_payload = new_u.copy()
                         gas_payload["pin"] = "ENCRYPTED_PIN"
                         gas_payload["secret_word"] = "SET_BY_USER"
                         backup_to_gas_async("register_user_v2", {"payload": gas_payload})
-
+                        
                         st.session_state.auth = new_u
                         st.rerun()
+                    
+                    # 💡 それ以外（入力が足りない）場合
                     else:
                         st.warning("全項目入力してください")
                     else:
