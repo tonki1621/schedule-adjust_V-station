@@ -519,27 +519,23 @@ def main():
         st.write("GoogleカレンダーやiPhoneの「非公開URL（iCal形式 / .ics）」を設定しておくと、日程調整の際に自分の予定を自動でグレーアウトできます。")
         upd_cal_url = st.text_input("カレンダーの非公開URL", value=user.get('calendar_url', ''), placeholder="https://calendar.google.com/calendar/ical/.../basic.ics")
 
-        if st.button("💾 プロフィールを更新", use_container_width=True, type="primary"):
-            payload = {
-                "user_id": user['user_id'], "group_1": ", ".join(upd_g1), "group_2": ", ".join(upd_g2), 
-                "group_3": ", ".join(upd_g3), "group_4": user.get("group_4", ""), "calendar_url": upd_cal_url
-            }
-            # 1. Firestoreを即時更新
+        if st.button("💾 更新", type="primary"):
+            payload = {"user_id": user['user_id'], "group_1": ", ".join(upd_g1), "group_2": ", ".join(upd_g2), "group_3": ", ".join(upd_g3), "calendar_url": upd_cal_url}
+            
             db.collection("users").document(str(user["user_id"])).update(payload)
             
-            # 2. GASへはマスキングして非同期送信
             gas_payload = payload.copy()
-            if gas_payload.get("calendar_url"):
+            if gas_payload.get("calendar_url"): 
                 gas_payload["calendar_url"] = "LINKED"
-            backup_to_gas_async("update_user_v2", gas_payload)
             
-            # セッションを更新してリロード
+            # 💡 修正：辞書で包んでGASへ送る
+            backup_to_gas_async("update_user_v2", {"payload": gas_payload})
+            
             user.update(payload)
             st.session_state.auth = user
-            st.success("✅ プロフィールを保存しました！")
-            time.sleep(1.5)
+            st.success("✅ 保存完了")
+            time.sleep(1)
             st.rerun()
-        return
 
     # ----------------------------------------------------
     # ⏰ 時間割設定画面
@@ -850,11 +846,11 @@ def main():
                     "mention_text": mention_text
                 }
                 
-                # 1. Firestoreに即時保存
+                # 1. Firestoreに保存
                 db.collection("events").document(created_event_id).set(payload)
                 
-                # 2. 裏側（非同期）でスプレッドシート＆Discord通知用にGASへ送信
-                backup_to_gas_async("create_event_v2", payload)
+                # 2. 修正：辞書で包んでGASへ送る
+                backup_to_gas_async("create_event_v2", {"payload": payload})
                 
                 st.success(f"「{ev_title}」を作成しました！")
                 
