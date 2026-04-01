@@ -386,33 +386,39 @@ def main():
 
             elif login_mode == "📝 新規アカウント作成":
                 st.subheader("新規アカウント作成")
+                st.info("💡 未所属の方でも、そのまま下部の登録ボタンを押して利用可能です。")
                 reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name")
-                reg_p = st.text_input("PIN", type="password", key="reg_pin")
+                reg_p = st.text_input("PIN (自由な文字列・数字)", type="password", key="reg_pin")
                 reg_s = st.text_input("🔑 秘密の合言葉", key="reg_secret")
+                
+                st.markdown("---")
                 g1 = st.multiselect("🏫 キャンパス", MASTER_G1, key="reg_g1")
                 g2 = st.multiselect("🎓 入学年度", MASTER_G2, key="reg_g2")
                 g3 = st.multiselect("🤝 オプション", MASTER_G3, key="reg_g3")
-                
+
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
                     clean_name = reg_n.replace(" ", "").replace("　", "")
-                    # ① 全項目入力チェック
+                    
+                    # 💡 条件分岐はここから始まります
                     if clean_name and reg_p and reg_s:
-                        # 💡 IDをU001形式の連番にするロジック（成功ルート内へ移動）
                         all_users_list = [doc.to_dict() for doc in db.collection("users").stream()]
                         new_num = len(all_users_list) + 1
                         new_user_id = f"U{new_num:03}"
 
                         new_u = {
-                            "user_id": new_user_id, "name": clean_name,
-                            "pin": hash_secret(reg_p), "secret_word": hash_secret(reg_s),
-                            "group_1": ", ".join(g1), "group_2": ", ".join(g2),
-                            "group_3": ", ".join(g3), "group_4": "",
-                            "role": "user" # 💡 これで新規作成メニューが表示されます
+                            "user_id": new_user_id,
+                            "name": clean_name,
+                            "pin": hash_secret(reg_p),
+                            "secret_word": hash_secret(reg_s),
+                            "group_1": ", ".join(g1),
+                            "group_2": ", ".join(g2),
+                            "group_3": ", ".join(g3),
+                            "group_4": "",
+                            "role": "user"
                         }
                         
-                        # Firestoreへ保存
                         db.collection("users").document(new_user_id).set(new_u)
-                        # GASへ同期
+                        
                         gas_payload = new_u.copy()
                         gas_payload["pin"] = "ENCRYPTED_PIN"
                         gas_payload["secret_word"] = "SET_BY_USER"
