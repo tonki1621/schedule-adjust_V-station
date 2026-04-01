@@ -392,7 +392,7 @@ def main():
                         else:
                             st.error("認証失敗: 氏名またはPINが間違っています")
             
-            elif login_mode == "📝 新規アカウント作成": # 💡末尾のスペースを削除済み
+            elif login_mode == "📝 新規アカウント作成": # 💡末尾のスペースを削除
                 st.subheader("新規アカウント作成")
                 reg_n = st.text_input("氏名", key="reg_name")
                 reg_p = st.text_input("PIN", type="password", key="reg_pin")
@@ -404,8 +404,8 @@ def main():
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
                     clean_name = reg_n.replace(" ", "").replace("　", "")
                     if clean_name and reg_p and reg_s:
-                        # 💡 IDをU001形式の連番にする
-                        all_users_list = [d.to_dict() for d in db.collection("users").stream()]
+                        # 💡 IDをU001形式の連番にするロジック
+                        all_users_list = [doc.to_dict() for doc in db.collection("users").stream()]
                         new_num = len(all_users_list) + 1
                         new_user_id = f"U{new_num:03}"
 
@@ -413,11 +413,13 @@ def main():
                             "user_id": new_user_id, "name": clean_name, 
                             "pin": hash_secret(reg_p), "secret_word": hash_secret(reg_s), 
                             "group_1": ", ".join(g1), "group_2": ", ".join(g2), 
-                            "group_3": ", ".join(g3), "group_4": "", "role": "user"
+                            "group_3": ", ".join(g3), "group_4": "", 
+                            "role": "user" # 💡ここでroleを付与することで「新規作成」が表示されます
                         }
+                        # Firestoreに保存
                         db.collection("users").document(new_user_id).set(new_u)
                         
-                        # 💡 GAS同期：payloadで包んで送る
+                        # GAS同期
                         gas_payload = new_u.copy()
                         gas_payload["pin"] = "ENCRYPTED_PIN"
                         gas_payload["secret_word"] = "SET_BY_USER"
@@ -547,7 +549,6 @@ def main():
             if gas_payload.get("calendar_url"): 
                 gas_payload["calendar_url"] = "LINKED"
             
-            # 💡 修正：辞書で包んでGASへ送る
             backup_to_gas_async("update_user_v2", {"payload": gas_payload})
             
             user.update(payload)
@@ -555,6 +556,7 @@ def main():
             st.success("✅ 保存完了")
             time.sleep(1)
             st.rerun()
+            # 💡 ここにあった else: と st.error(...) は削除しました
 
     # ----------------------------------------------------
     # ⏰ 時間割設定画面
