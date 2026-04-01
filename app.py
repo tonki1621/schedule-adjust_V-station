@@ -11,6 +11,26 @@ import numpy as np
 from google.oauth2 import service_account
 from google.cloud import firestore
 import threading
+# --- 追加するimport文（一番上へ） ---
+import hashlib
+import random
+import string
+
+# ==========================================
+# Firebase の初期化 ＆ 高速連携関数（既存のコードの下に追加）
+# ==========================================
+
+# --- [新規] パスワードのハッシュ化関数 ---
+def hash_secret(text):
+    if not text:
+        return ""
+    return hashlib.sha256(str(text).encode()).hexdigest()
+
+# --- [新規] ID自動生成関数 (EV- / U- などのプレフィックス対応) ---
+def generate_custom_id(prefix="EV"):
+    now_str = datetime.now().strftime("%y%m%d-%H%M")
+    rand_str = ''.join(random.choices(string.ascii_uppercase + string.digits, k=4))
+    return f"{prefix}-{now_str}-{rand_str}"
 
 # ==========================================
 # Firebase の初期化 ＆ 高速連携関数
@@ -348,12 +368,23 @@ def main():
                     p = st.text_input("PIN", type="password", autocomplete="current-password")
                     
                     if st.form_submit_button("ログイン", use_container_width=True, type="primary"):
-                        # Firestoreのusersコレクションを直接検索
-                        docs = db.collection("users").where("name", "==", n).where("pin", "==", p).stream()
+                        hashed_p = hash_secret(p)
+                        # nameだけで検索し、Python側でPINを検証する
+                        docs = db.collection("users").where("name", "==", n).stream()
                         user_doc = None
+                        
                         for doc in docs:
-                            user_doc = doc.to_dict()
-                            break
+                            u_data = doc.to_dict()
+                            # ① すでにハッシュ化されている場合の正常ログイン
+                            if u_data.get("pin") == hashed_p:
+                                user_doc = u_data
+                                break
+                            # ② 平文のまま保存されている場合の救済・移行処理
+                            elif u_data.get("pin") == p:
+                                u_data["pin"] = hashed_p # ハッシュ値に書き換え
+                                db.collection("users").document(str(u_data["user_id"])).update({"pin": hashed_p})
+                                user_doc = u_data
+                                break
                         
                         if user_doc:
                             st.session_state.auth = user_doc
@@ -378,13 +409,31 @@ def main():
                     if not clean_name or not reg_p or not reg_s: 
                         st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
                     else:
-                        payload = {"name": clean_name, "pin": reg_p, "secret_word": reg_s, "group_1": ", ".join(g1), "group_2": ", ".join(g2), "group_3": ", ".join(g3), "group_4": ""}
-                        res = call_gas("register_user", {"payload": payload}, method="POST")
-                        if res.get("status") == "success":
-                            new_u = res.get("data")
-                            db.collection("users").document(str(new_u["user_id"])).set(new_u)
-                            st.session_state.auth = new_u
-                            st.rerun()
+                        new_user_id = generate_custom_id("U") # Pythonで即時ID発行
+                        hashed_pin = hash_secret(reg_p)
+                        hashed_secret = hash_secret(reg_s)
+                        
+                        # Firestoreに保存する本物データ
+                        new_u = {
+                            "user_id": new_user_id, "name": clean_name, "pin": hashed_pin, 
+                            "secret_word": hashed_secret, "group_1": ", ".join(g1), 
+                            "group_2": ", ".join(g2), "group_3": ", ".join(g3), "group_4": "",
+                            "role": "user" # デフォルト権限
+                        }
+                        
+                        # 1. Firestoreに即時保存
+                        db.collection("users").document(new_user_id).set(new_u)
+                        
+                        # 2. スプレッドシート（GAS）用の安全なマスキングデータ
+                        gas_payload = new_u.copy()
+                        gas_payload["pin"] = "ENCRYPTED_PIN"
+                        gas_payload["secret_word"] = "SET_BY_USER"
+                        
+                        # 裏側（非同期）でスプレッドシートにバックアップ
+                        backup_to_gas_async("register_user_v2", gas_payload)
+                        
+                        st.session_state.auth = new_u
+                        st.rerun()
                         else:
                             st.error(f"エラー: {res.get('message')}")
             
@@ -458,17 +507,23 @@ def main():
         if st.button("💾 プロフィールを更新", use_container_width=True, type="primary"):
             payload = {
                 "user_id": user['user_id'], "group_1": ", ".join(upd_g1), "group_2": ", ".join(upd_g2), 
-                "group_3": ", ".join(upd_g3), "group_4": "", "calendar_url": upd_cal_url
+                "group_3": ", ".join(upd_g3), "group_4": user.get("group_4", ""), "calendar_url": upd_cal_url
             }
-            res = call_gas("update_user", {"payload": payload}, method="POST")
+            # 1. Firestoreを即時更新
+            db.collection("users").document(str(user["user_id"])).update(payload)
             
-            if res.get("status") == "success":
-                updated_u = res.get("data")
-                db.collection("users").document(str(updated_u["user_id"])).update(updated_u)
-                st.session_state.auth = updated_u
-                st.success("✅ プロフィールを保存しました！")
-                time.sleep(1.5)
-                st.rerun()
+            # 2. GASへはマスキングして非同期送信
+            gas_payload = payload.copy()
+            if gas_payload.get("calendar_url"):
+                gas_payload["calendar_url"] = "LINKED"
+            backup_to_gas_async("update_user_v2", gas_payload)
+            
+            # セッションを更新してリロード
+            user.update(payload)
+            st.session_state.auth = user
+            st.success("✅ プロフィールを保存しました！")
+            time.sleep(1.5)
+            st.rerun()
             else: 
                 st.error(f"更新に失敗しました: {res.get('message')}")
         return
@@ -723,6 +778,18 @@ def main():
                     "groups": t_g1 + t_g2 + t_g3,
                     "users": [u['user_id'] for u in t_users]
                 })
+                
+                # 💡【追加】メンションのプレビューと警告UI
+                mentions_preview = []
+                for g in t_g1: mentions_preview.append(f"@{g}")
+                for g in t_g2: mentions_preview.append(f"@{g.replace('年度', '年度入学生')}")
+                for g in t_g3: mentions_preview.append(f"@{g}")
+                mentions_preview = list(dict.fromkeys(mentions_preview))
+                
+                if mentions_preview:
+                    st.info(f"📣 **Discord通知プレビュー:**\n `{' '.join(mentions_preview)}` に通知が飛びます")
+                    if len(mentions_preview) >= 4:
+                        st.warning("⚠️ **通知範囲が広すぎませんか？**\n多数のグループを選択しています。本当に必要な人だけか確認してください。")
 
         st.markdown("<br>", unsafe_allow_html=True)
         with st.container(border=True):
@@ -744,21 +811,15 @@ def main():
                 if is_all_members:
                     mention_text = "@everyone"
                 else:
-                    mentions = []
-                    for g in t_g1:
-                        mentions.append(f"@{g}")
-                    for g in t_g2:
-                        mentions.append(f"@{g.replace('年度', '年度入学生')}")
-                    for g in t_g3:
-                        mentions.append(f"@{g}")
-                    
-                    mentions = list(dict.fromkeys(mentions))
-                    mention_text = " ".join(mentions)
+                    mention_text = " ".join(mentions_preview) if not is_all_members else "@everyone"
 
                 deadline_str = f"{deadline_date.strftime('%Y-%m-%d')} {deadline_time.strftime('%H:%M')}"
                 
-                # 💡 「18時」なら「18時のマスを含めない」ように「-1」はせず、そのまま保存します！
+                # 💡 Python側でイベントIDを即時発行
+                created_event_id = generate_custom_id("EV")
+                
                 payload = {
+                    "event_id": created_event_id,
                     "title": ev_title, 
                     "description": ev_desc, 
                     "start_date": ev_start.strftime("%Y-%m-%d") if ev_type == "time" else "", 
@@ -776,27 +837,18 @@ def main():
                     "mention_text": mention_text
                 }
                 
-                res = call_gas("create_event", {"payload": payload}, method="POST")
-                st.success(f"「{ev_title}」を作成しました！")
-            
-                created_event_id = None
-                if isinstance(res, dict):
-                    data_content = res.get("data")
-                    if isinstance(data_content, dict):
-                        created_event_id = data_content.get("event_id")
-                    else:
-                        created_event_id = res.get("event_id")
+                # 1. Firestoreに即時保存
+                db.collection("events").document(created_event_id).set(payload)
                 
-                if created_event_id:
-                    payload["event_id"] = created_event_id
-                    db.collection("events").document(created_event_id).set(payload)
-                    
-                    share_url = f"{APP_BASE_URL}?event={created_event_id}"
-                    st.info("👇 以下の招待リンクをコピーして、参加者に送ってください（右上のアイコンでコピーできます）")
-                    st.code(share_url, language="text")
-                else:
-                    st.warning("※イベントは作成されましたが、連携用のURLを発行できませんでした。GAS側の返り値をご確認ください。")
-                    
+                # 2. 裏側（非同期）でスプレッドシート＆Discord通知用にGASへ送信
+                backup_to_gas_async("create_event_v2", payload)
+                
+                st.success(f"「{ev_title}」を作成しました！")
+                
+                share_url = f"{APP_BASE_URL}?event={created_event_id}"
+                st.info("👇 以下の招待リンクをコピーして、参加者に送ってください（右上のアイコンでコピーできます）")
+                st.code(share_url, language="text")
+                
                 if "opt_count" in st.session_state: del st.session_state.opt_count
         return
 
