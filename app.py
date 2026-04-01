@@ -392,22 +392,41 @@ def main():
                         else:
                             st.error("認証失敗: 氏名またはPINが間違っています")
             
-            elif login_mode == "📝 新規アカウント作成":
+            elif login_mode == "📝 新規アカウント作成": # 💡末尾のスペースを削除済み
                 st.subheader("新規アカウント作成")
-                st.info("💡 未所属の方でも、そのまま下部の登録ボタンを押して利用可能です。")
-                reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name", autocomplete="username")
-                reg_p = st.text_input("PIN (自由な文字列・数字)", type="password", key="reg_pin", autocomplete="new-password")
-                reg_s = st.text_input("🔑 秘密の合言葉 (PINを忘れた時に使います)", key="reg_secret")
-                
-                st.markdown("---")
+                reg_n = st.text_input("氏名", key="reg_name")
+                reg_p = st.text_input("PIN", type="password", key="reg_pin")
+                reg_s = st.text_input("秘密の合言葉", key="reg_secret")
                 g1 = st.multiselect("🏫 キャンパス", MASTER_G1, key="reg_g1")
                 g2 = st.multiselect("🎓 入学年度", MASTER_G2, key="reg_g2")
                 g3 = st.multiselect("🤝 オプション", MASTER_G3, key="reg_g3")
-                
+
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
                     clean_name = reg_n.replace(" ", "").replace("　", "")
-                    if not clean_name or not reg_p or not reg_s: 
-                        st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
+                    if clean_name and reg_p and reg_s:
+                        # 💡 IDをU001形式の連番にする
+                        all_users_list = [d.to_dict() for d in db.collection("users").stream()]
+                        new_num = len(all_users_list) + 1
+                        new_user_id = f"U{new_num:03}"
+
+                        new_u = {
+                            "user_id": new_user_id, "name": clean_name, 
+                            "pin": hash_secret(reg_p), "secret_word": hash_secret(reg_s), 
+                            "group_1": ", ".join(g1), "group_2": ", ".join(g2), 
+                            "group_3": ", ".join(g3), "group_4": "", "role": "user"
+                        }
+                        db.collection("users").document(new_user_id).set(new_u)
+                        
+                        # 💡 GAS同期：payloadで包んで送る
+                        gas_payload = new_u.copy()
+                        gas_payload["pin"] = "ENCRYPTED_PIN"
+                        gas_payload["secret_word"] = "SET_BY_USER"
+                        backup_to_gas_async("register_user_v2", {"payload": gas_payload})
+
+                        st.session_state.auth = new_u
+                        st.rerun()
+                    else:
+                        st.warning("全項目入力してください")
                     else:
                         # 💡 IDをU001形式の連番にするロジック
                         all_users_list = [d.to_dict() for d in db.collection("users").stream()]
