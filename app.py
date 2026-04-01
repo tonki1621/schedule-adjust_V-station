@@ -87,7 +87,7 @@ def save_response_hybrid(payload):
         st.error(f"Firestoreへの保存に失敗しました: {e}")
         return False
 
-    backup_to_gas_async("submit_binary_response", payload)
+    backup_to_gas_async("submit_binary_response", {"payload": payload})
     return True
 
 # --- 3. [爆速] メインデータの取得関数 ---
@@ -125,7 +125,7 @@ def get_app_data_from_firestore(user):
                     if now > dl_dt:
                         ev["status"] = "closed"
                         db.collection("events").document(ev["event_id"]).update({"status": "closed"})
-                        backup_to_gas_async("update_event_status", {"event_id": ev["event_id"], "status": "closed"})
+                        backup_to_gas_async("update_event_status", {"payload": {"event_id": ev["event_id"], "status": "closed"}})
             except: 
                 pass
 
