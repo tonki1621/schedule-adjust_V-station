@@ -409,28 +409,31 @@ def main():
                     if not clean_name or not reg_p or not reg_s: 
                         st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
                     else:
-                        new_user_id = generate_custom_id("U") # Pythonで即時ID発行
+                        # 💡 IDをU001形式の連番にするロジック
+                        all_users_list = [d.to_dict() for d in db.collection("users").stream()]
+                        new_num = len(all_users_list) + 1
+                        new_user_id = f"U{new_num:03}" # U001, U002...
+
                         hashed_pin = hash_secret(reg_p)
                         hashed_secret = hash_secret(reg_s)
                         
-                        # Firestoreに保存する本物データ
                         new_u = {
                             "user_id": new_user_id, "name": clean_name, "pin": hashed_pin, 
                             "secret_word": hashed_secret, "group_1": ", ".join(g1), 
                             "group_2": ", ".join(g2), "group_3": ", ".join(g3), "group_4": "",
-                            "role": "user" # デフォルト権限
+                            "role": "user"
                         }
                         
-                        # 1. Firestoreに即時保存
+                        # 1. Firestoreに保存
                         db.collection("users").document(new_user_id).set(new_u)
                         
-                        # 2. スプレッドシート（GAS）用の安全なマスキングデータ
+                        # 2. GAS用にマスキング
                         gas_payload = new_u.copy()
                         gas_payload["pin"] = "ENCRYPTED_PIN"
                         gas_payload["secret_word"] = "SET_BY_USER"
                         
-                        # 裏側（非同期）でスプレッドシートにバックアップ
-                        backup_to_gas_async("register_user_v2", gas_payload)
+                        # 💡 同期失敗の修正：payloadを辞書で包んで送る
+                        backup_to_gas_async("register_user_v2", {"payload": gas_payload})
                         
                         st.session_state.auth = new_u
                         st.rerun()
