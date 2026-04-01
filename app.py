@@ -404,38 +404,42 @@ def main():
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
                     clean_name = reg_n.replace(" ", "").replace("　", "")
                     
-                    # 💡 条件：氏名、PIN、合言葉がすべて入力されている場合
+                    # 💡 ① 入力がすべて揃っているかチェック（ifはここ1つだけ）
                     if clean_name and reg_p and reg_s:
-                        # 1. ユーザーIDをU001形式の連番にする
+                        # --- ここからID発行ロジック（ifの中に入れます） ---
                         all_users_list = [doc.to_dict() for doc in db.collection("users").stream()]
                         new_num = len(all_users_list) + 1
-                        new_user_id = f"U{new_num:03}"
+                        new_user_id = f"U{new_num:03}" # U001, U002...形式
 
-                        hashed_pin = hash_secret(reg_p)
-                        hashed_secret = hash_secret(reg_s)
-                        
                         new_u = {
-                            "user_id": new_user_id, "name": clean_name, "pin": hashed_pin, 
-                            "secret_word": hashed_secret, "group_1": ", ".join(g1), 
-                            "group_2": ", ".join(g2), "group_3": ", ".join(g3), "group_4": "",
-                            "role": "user" # これで「新規作成」メニューが表示されるようになります
+                            "user_id": new_user_id,
+                            "name": clean_name,
+                            "pin": hash_secret(reg_p),
+                            "secret_word": hash_secret(reg_s),
+                            "group_1": ", ".join(g1),
+                            "group_2": ", ".join(g2),
+                            "group_3": ", ".join(g3),
+                            "group_4": "",
+                            "role": "user" # 💡 これで「新規作成」が表示されるようになります
                         }
                         
-                        # 2. Firestoreに保存
+                        # Firestoreに保存
                         db.collection("users").document(new_user_id).set(new_u)
                         
-                        # 3. GAS同期（payloadで包む）
+                        # GASへの同期（payloadで包む形式）
                         gas_payload = new_u.copy()
                         gas_payload["pin"] = "ENCRYPTED_PIN"
                         gas_payload["secret_word"] = "SET_BY_USER"
                         backup_to_gas_async("register_user_v2", {"payload": gas_payload})
                         
+                        # ログイン状態にしてリロード
                         st.session_state.auth = new_u
                         st.rerun()
-                    
-                    # 💡 それ以外（入力が足りない）場合
+                        # --- ここまでが「成功時」の処理 ---
+
                     else:
-                        st.warning("全項目入力してください")
+                        # 💡 ② 入力が足りない場合の警告（elseはここ1つだけ）
+                        st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
                     else:
                         # 💡 IDをU001形式の連番にするロジック
                         all_users_list = [d.to_dict() for d in db.collection("users").stream()]
