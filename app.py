@@ -445,9 +445,23 @@ def main():
                         rec_n = st.text_input("氏名", autocomplete="username")
                         rec_s = st.text_input("秘密の合言葉", type="password")
                         new_p = st.text_input("設定したい新しいPIN", type="password", autocomplete="new-password")
+                        
                         if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
-                            res = call_gas("recover_account", {"payload": {"name": rec_n.replace(" ","").replace("　",""), "secret_word": rec_s, "new_pin": new_p}}, method="POST")
-                            if res.get("status") == "success":
+                            clean_n = rec_n.replace(" ","").replace("　","")
+                            # Python側でユーザーを検索
+                            docs = db.collection("users").where("name", "==", clean_n).stream()
+                            target_user = None
+                            for doc in docs:
+                                target_user = doc.to_dict()
+                                break
+                            
+                            # ハッシュ化された合言葉同士で照合
+                            if target_user and target_user.get("secret_word") == hash_secret(rec_s):
+                                db.collection("users").document(str(target_user["user_id"])).update({
+                                    "pin": hash_secret(new_p)
+                                })
+                                # GASにはマスキングして通知
+                                backup_to_gas_async("recover_account_v2", {"name": clean_n, "new_pin": "ENCRYPTED_PIN"})
                                 st.success("✅ 更新成功！新しいPINでログインできます。")
                             else:
                                 st.error("氏名または合言葉が間違っています。")
@@ -524,8 +538,6 @@ def main():
             st.success("✅ プロフィールを保存しました！")
             time.sleep(1.5)
             st.rerun()
-            else: 
-                st.error(f"更新に失敗しました: {res.get('message')}")
         return
 
     # ----------------------------------------------------
@@ -1005,11 +1017,21 @@ def main():
                         if tgt_user.get('role') == 'top_admin' and new_u_role != 'top_admin':
                             st.error("最高管理者の権限は変更できません。")
                         else:
-                            call_gas("admin_update_user", {"payload": {"user_id": tgt_user['user_id'], "new_pin": new_u_pin, "role": new_u_role}}, method="POST")
-                            
                             updates = {"role": new_u_role}
-                            db.collection("users").document(str(tgt_user['user_id'])).update(updates)
+                            gas_payload = {"user_id": tgt_user['user_id'], "role": new_u_role, "new_pin": ""}
                             
+                            # 新しいPINが入力されている場合はハッシュ化して更新
+                            if new_u_pin:
+                                updates["pin"] = hash_secret(new_u_pin)
+                                gas_payload["new_pin"] = "ENCRYPTED_PIN"
+
+                            # Firestoreを更新
+                            db.collection("users").document(str(tgt_user['user_id'])).update(updates)
+                            # GASへバックアップ送信
+                            backup_to_gas_async("admin_update_user", gas_payload)
+                            
+                            st.success("ユーザー情報を更新しました！")
+                            time.sleep(1.5)
                             st.rerun()
 
                 if user.get("role") == "top_admin":
