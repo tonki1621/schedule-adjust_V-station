@@ -452,36 +452,6 @@ def main():
     # ログイン後のメイン画面構築
     # ==========================================
     user = st.session_state.auth
-    menu_opts = ["📅 日程調整 回答", "👤 プロフィール設定", "⏰ 時間割設定"]
-    if user.get("role") in ["user", "admin", "top_admin"]: menu_opts.append("➕ イベント新規作成")
-    if user.get("role") in ["admin", "top_admin"]: menu_opts.append("⚙️ 管理者専用")
-    
-    view_mode = st.sidebar.radio("🔧 メニュー", menu_opts)
-
-    if view_mode == "👤 プロフィール設定":
-        st.title("👤 プロフィール設定")
-        upd_g1 = st.multiselect("🏫 キャンパス", MASTER_G1, default=[x for x in str(user.get('group_1','')).split(', ') if x in MASTER_G1])
-        upd_g2 = st.multiselect("🎓 入学年度", MASTER_G2, default=[x for x in str(user.get('group_2','')).split(', ') if x in MASTER_G2])
-        upd_g3 = st.multiselect("🤝 オプション", MASTER_G3, default=[x for x in str(user.get('group_3','')).split(', ') if x in MASTER_G3])
-        upd_cal_url = st.text_input("カレンダーの非公開URL", value=user.get('calendar_url', ''))
-        
-        if st.button("💾 更新", type="primary"):
-            payload = {"user_id": user['user_id'], "group_1": ", ".join(upd_g1), "group_2": ", ".join(upd_g2), "group_3": ", ".join(upd_g3), "calendar_url": upd_cal_url}
-            db.collection("users").document(str(user["user_id"])).update(payload)
-            gas_payload = payload.copy()
-            if gas_payload.get("calendar_url"): gas_payload["calendar_url"] = "LINKED"
-            backup_to_gas_async("update_user_v2", {"payload": gas_payload})
-            user.update(payload)
-            st.session_state.auth = user
-            st.success("✅ 保存完了")
-            time.sleep(1)
-            st.rerun()
-        return
-
-    # ==========================================
-    # ログイン後のメイン画面構築
-    # ==========================================
-    user = st.session_state.auth
     
     default_menu_index = 0
     if "jump_to_event" in st.session_state:
