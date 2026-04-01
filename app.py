@@ -534,11 +534,11 @@ def main():
             
             # セッションを更新してリロード
             user.update(payload)
-            st.session_state.auth = user
-            st.success("✅ プロフィールを保存しました！")
-            time.sleep(1.5)
-            st.rerun()
-        return
+            st.session_state.auth = user
+            st.success("✅ プロフィールを保存しました！")
+            time.sleep(1.5)
+            st.rerun()
+        return
 
     # ----------------------------------------------------
     # ⏰ 時間割設定画面
