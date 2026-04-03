@@ -179,6 +179,19 @@ APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
 st.markdown("""
     <style>
+        st.markdown("""
+    <style>
+        /* スマホ時に画面を広く使えるよう余白を最適化 */
+        @media (max-width: 650px) {
+            .main .block-container,
+            div[data-testid="stAppViewBlockContainer"] {
+                padding-left: 1rem !important; 
+                padding-right: 1rem !important;
+                padding-top: 1rem !important;
+            }
+            iframe { max-width: 100vw !important; width: 100% !important; }
+        }
+        
         .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
         [data-testid="stStatusWidget"] { visibility: visible !important; display: flex !important; position: fixed !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: rgba(255, 255, 255, 0.95) !important; color: #333 !important; padding: 20px 40px !important; border-radius: 12px !important; z-index: 999999 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important; border: 2px solid #4CAF50 !important; text-align: center !important; justify-content: center !important; }
         [data-testid="stStatusWidget"]::after { content: "⏳ 通信中 \\A 処理しています..."; white-space: pre-wrap; font-size: 20px !important; font-weight: bold !important; line-height: 1.5 !important; }
@@ -208,11 +221,282 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#FFEB3B;color:#333;border-color:#FBC02D;box-shadow:0 6px 12px rgba(255,235,59,0.4);transform:translateY(-3px);}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-os.makedirs("custom_editor", exist_ok=True)
-with open("custom_editor/index.html", "w", encoding="utf-8") as f:
-    f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;} .pen-btn{padding:0;border-radius:50%;width:45px;height:45px;border:none;cursor:pointer;font-weight:bold;font-size:14px;transition:0.2s;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 4px rgba(0,0,0,0.15);margin:0 auto;text-align:center;line-height:1.1;} .pen-btn.active{border:3px solid #333 !important;transform:scale(1.1);box-shadow:0 4px 8px rgba(0,0,0,0.3);} #detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999999;justify-content:center;align-items:center;backdrop-filter:blur(2px);} .modal-content{background:#fff;width:320px;padding:20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);position:relative;} .modal-title{font-size:16px;font-weight:bold;color:#333;margin-bottom:10px;border-bottom:2px solid #4CAF50;padding-bottom:5px;} .modal-label{font-size:12px;font-weight:bold;color:#666;margin-top:15px;display:block;} .modal-select, .modal-input{width:100%;padding:8px;margin-top:5px;border:1px solid #ccc;border-radius:6px;font-size:14px;} .status-switch{display:flex;gap:8px;margin-top:5px;} .sw-btn{flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;background:#f9f9f9;color:#555;transition:0.2s;} .sw-btn.active[data-v="1"]{background:#4CAF50;color:white;border-color:#4CAF50;} .sw-btn.active[data-v="2"]{background:#FFEB3B;color:#333;border-color:#FBC02D;} .sw-btn.active[data-v="0"]{background:#fff;color:#333;border-color:#999;} .modal-btns{display:flex;gap:10px;margin-top:20px;} .modal-btn-save{flex:1;background:#4CAF50;color:white;border:none;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;} .modal-btn-save:hover{background:#45a049;} .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;} .c{position:relative;transition:filter 0.1s;} @keyframes pressAnim{0%{transform:scale(1);filter:brightness(1);} 100%{transform:scale(0.92);filter:brightness(0.8);box-shadow:inset 0 4px 8px rgba(0,0,0,0.3);}} .pressing{animation:pressAnim 0.4s forwards;z-index:100;} #palette-header{background:#eee;border-radius:8px 8px 0 0;margin:-12px -8px 8px -8px;padding:8px;font-size:12px;font-weight:bold;color:#555;text-align:center;cursor:move;user-select:none;}</style></head><body><div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.15); padding:12px 8px; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);"><div id="palette-header">🤚 ドラッグ移動</div><button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff; font-size:11px;">可</button><button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333; font-size:11px;">未定</button><button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:11px;">消す</button></div><div id="detail-modal"><div class="modal-content" id="modal-content-box"><div class="modal-title" id="modal-cell-title">詳細設定</div><label class="modal-label">🚥 予定のステータス</label><div class="status-switch"><button class="sw-btn" data-v="1" onclick="setModalStatus(1)">◯ 可</button><button class="sw-btn" data-v="2" onclick="setModalStatus(2)">△ 未定</button><button class="sw-btn" data-v="0" onclick="setModalStatus(0)">× 不可</button></div><label class="modal-label">🏫 キャンパスの指定</label><select id="modal-campus" class="modal-select"><option value="">指定なし</option><option value="なかもず">なかもず</option><option value="すぎもと">すぎもと</option><option value="あべの">あべの</option><option value="りんくう">りんくう</option><option value="もりのみや">もりのみや</option><option value="その他/移動中">その他 / 移動中</option></select><label class="modal-label">📝 補足コメント (任意)</label><input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延"><div class="modal-btns"><button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button></div><div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div></div></div><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {}; window.cellDetails = {}; let defaultCampus = ""; let modalStatus = 1; const palette = document.getElementById('palette'); const pHeader = document.getElementById('palette-header'); let isDraggingPalette = false; let offsetX, offsetY; pHeader.addEventListener('mousedown', e => { isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; }); window.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; }); window.addEventListener('mouseup', () => { isDraggingPalette = false; }); pHeader.addEventListener('touchstart', e => { isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false}); window.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false}); window.addEventListener('touchend', () => { isDraggingPalette = false; }); const modalBg = document.getElementById('detail-modal'); modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); }); modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true}); window.setModalStatus = function(v) { modalStatus = v; document.querySelectorAll('.sw-btn').forEach(b => { b.classList.toggle('active', parseInt(b.dataset.v) === v); }); }; window.upd = function(el, v) { el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key]; if (v == 0) { if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { } else { delete window.cellDetails[key]; detail = null; } } else if (v == 1 || v == 2) { if (!detail && defaultCampus) { window.cellDetails[key] = {campus: defaultCampus, note: ""}; detail = window.cellDetails[key]; } if (detail && detail.campus === defaultCampus && !detail.note) { delete window.cellDetails[key]; detail = null; } } let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : ""); let note = detail ? detail.note : ""; let bgImage = 'none'; let bgColor = '#fff'; if (v == 1) bgColor = '#4CAF50'; else if (v == 2) bgColor = '#FFEB3B'; else if (v == 3) bgColor = '#e0e0e0'; if (v == 1 || v == 2 || v == 3 || (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用"))) { let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)'; let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)'; if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px)`; } else if (campus === "すぎもと" || campus === "杉本") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; } else if (campus === "あべの" || campus === "阿倍野") { bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`; } else if (campus === "りんくう") { bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`; } else if (campus === "もりのみや") { bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; } else if (campus === "その他/移動中") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`; } else if (v == 3 && !campus) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; } } el.style.background = bgColor; el.style.backgroundImage = bgImage; if (campus === "りんくう" && v !== 0) el.style.backgroundSize = '10px 10px'; else el.style.backgroundSize = 'auto'; const existingIcon = el.querySelector('.memo-icon'); const hasManualSetting = detail && (detail.note !== "" || (detail.campus && detail.campus !== defaultCampus)); if (hasManualSetting) { if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>'); } else { if (existingIcon) existingIcon.remove(); } }; window.renderWeek = function() { const start = currentWeek * 7; const end = start + 7; document.querySelectorAll('.day-col').forEach(el => { const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none'; }); const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next'); if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays); setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); }; window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); }; window.doBulk = function(btnEl) { const val = document.getElementById('b-val').value; const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value); if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; } document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, val); } } }); const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500); }; window.doCopy = function(btnEl) { const srcIdx = parseInt(document.getElementById('c-src').value); let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); } let copied = false; document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, srcData[r]); } } } }); if(!copied) { alert('コピー先を選択してください。'); return; } const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500); }; window.doTimetable = function(btnEl) { if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; } for(let c = 0; c < totalDays; c++) { let key = String(c); if (unavailColRows[key]) { unavailColRows[key].forEach(item => { const r = (typeof item === 'object') ? item.row : item; const campus = (typeof item === 'object') ? item.campus : ""; const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`); if(cell) { const cellKey = `${r}_${c}`; if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") { window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"}; window.upd(cell, 0); } else if (campus) { window.cellDetails[cellKey] = {campus: campus, note: "定期授業"}; window.upd(cell, 3); } else { window.upd(cell, 3); } } }); } } const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000); }; window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; }; document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } }); let selectedMode = 1; window.setPen = function(mode) { selectedMode = mode; [0, 1, 2].forEach(m => { const b = document.getElementById('pen-' + m); b.classList.remove('active'); }); document.getElementById('pen-' + mode).classList.add('active'); }; let editingCell = null; window.openModal = function(cell) { editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`; const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""}; setModalStatus(parseInt(cell.dataset.v) || 1); document.getElementById('modal-campus').value = detail.campus || ""; document.getElementById('modal-note').value = detail.note || ""; document.getElementById('detail-modal').style.display = 'flex'; }; window.closeModal = function() { document.getElementById('detail-modal').style.display = 'none'; if (editingCell) { editingCell.classList.remove('pressing'); editingCell = null; } }; window.saveModal = function() { if(!editingCell) return; const r = editingCell.dataset.r; const c = editingCell.dataset.c; const key = `${r}_${c}`; const campus = document.getElementById('modal-campus').value; const note = document.getElementById('modal-note').value.trim(); if(campus || note || modalStatus === 0) { window.cellDetails[key] = {campus: campus, note: note}; window.upd(editingCell, modalStatus); } else { delete window.cellDetails[key]; window.upd(editingCell, modalStatus); } closeModal(); }; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; document.getElementById("content").innerHTML = args.html_code; totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {}; window.cellDetails = args.cellDetails || {}; defaultCampus = args.defaultCampus || ""; document.getElementById('pen-1').innerHTML = defaultCampus ? `可<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可"; if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; } window.renderWeek(); if(args.isClosed) { document.getElementById('palette').style.display = 'none'; return; } else { document.getElementById('palette').style.display = 'flex'; } window.addEventListener('contextmenu', function(e) { e.preventDefault(); e.stopPropagation(); return false; }, { capture: true }); const g = document.getElementById('g'); if(!g) return; let down = false; let isErasing = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0; const handleStart = (e, x, y, shift) => { const cell = e.target.closest('.c'); if(!cell) return; down = true; isErasing = shift; isLongPress = false; startX = x; startY = y; window.upd(cell, isErasing ? 0 : selectedMode); cell.classList.add('pressing'); pressTimer = setTimeout(() => { isLongPress = true; down = false; cell.classList.remove('pressing'); openModal(cell); }, 400); }; const handleMove = (e, x, y) => { if(!down) return; if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) { clearTimeout(pressTimer); document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); } if(!isLongPress) { const cell = document.elementFromPoint(x, y)?.closest('.c'); if(cell) window.upd(cell, selectedMode); } }; const handleEnd = () => { if (down && pressTimer) clearTimeout(pressTimer); document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); down = false; }; g.onmousedown = e => handleStart(e, e.clientX, e.clientY, e.shiftKey); g.onmousemove = e => handleMove(e, e.clientX, e.clientY); window.onmouseup = handleEnd; window.onmouseleave = handleEnd; g.addEventListener('touchstart', e => { handleStart(e, e.touches[0].clientX, e.touches[0].clientY, false); if(!isLongPress) e.preventDefault(); }, {passive: false}); g.addEventListener('touchmove', e => { if(down) { handleMove(e, e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); } }, {passive: false}); g.addEventListener('touchend', handleEnd); const btn = document.getElementById("submit-btn"); if(btn) { btn.onclick = () => { const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); const commentText = document.getElementById("comment-box").value; setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; document.getElementById('palette').style.display = 'none'; }; } document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); }); } }); init(); </script></body></html>""")
-grid_editor = components.declare_component("grid_editor", path="custom_editor")
+if not os.path.exists("custom_editor_v4"):
+    os.makedirs("custom_editor_v4", exist_ok=True)
+    with open("custom_editor_v4/index.html", "w", encoding="utf-8") as f:
+        f.write("""
+        <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+        body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
+        .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
+        .pen-btn:hover { opacity: 0.8; }
+        .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+        
+        #detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999999;justify-content:center;align-items:center;backdrop-filter:blur(2px);}
+        .modal-content{background:#fff;width:320px;padding:20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);position:relative;}
+        .modal-title{font-size:16px;font-weight:bold;color:#333;margin-bottom:10px;border-bottom:2px solid #4CAF50;padding-bottom:5px;}
+        .modal-label{font-size:12px;font-weight:bold;color:#666;margin-top:15px;display:block;}
+        .modal-select, .modal-input{width:100%;padding:8px;margin-top:5px;border:1px solid #ccc;border-radius:6px;font-size:14px;}
+        .status-switch{display:flex;gap:8px;margin-top:5px;}
+        .sw-btn{flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;background:#f9f9f9;color:#555;transition:0.2s;}
+        .sw-btn.active[data-v="1"]{background:#4CAF50;color:white;border-color:#4CAF50;}
+        .sw-btn.active[data-v="2"]{background:#FFEB3B;color:#333;border-color:#FBC02D;}
+        .sw-btn.active[data-v="0"]{background:#fff;color:#333;border-color:#999;}
+        .modal-btns{display:flex;gap:10px;margin-top:20px;}
+        .modal-btn-save{flex:1;background:#4CAF50;color:white;border:none;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;}
+        .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;}
+        .c{position:relative;transition:filter 0.1s;}
+        @keyframes pressAnim{0%{transform:scale(1);filter:brightness(1);} 100%{transform:scale(0.92);filter:brightness(0.8);box-shadow:inset 0 4px 8px rgba(0,0,0,0.3);}}
+        .pressing{animation:pressAnim 0.4s forwards;z-index:100;}
+        </style></head><body>
+        
+        <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
+            <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
+            <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
+            <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333;">未定</button>
+            <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
+            <hr style="margin:0; border-top:1px solid #ddd;">
+            <button class="pen-btn" onclick="window.setPen(-1)" id="pen--1" style="background:#9C27B0; color:#fff; border:2px solid #7B1FA2; font-size:10px; margin-top:0px;">📜<br>ｽｸﾛｰﾙ</button>
+        </div>
 
+        <div id="detail-modal">
+            <div class="modal-content" id="modal-content-box">
+                <div class="modal-title" id="modal-cell-title">詳細設定</div>
+                <label class="modal-label">🚥 予定のステータス</label>
+                <div class="status-switch">
+                    <button class="sw-btn" data-v="1" onclick="setModalStatus(1)">◯ 可</button>
+                    <button class="sw-btn" data-v="2" onclick="setModalStatus(2)">△ 未定</button>
+                    <button class="sw-btn" data-v="0" onclick="setModalStatus(0)">× 不可</button>
+                </div>
+                <label class="modal-label">🏫 キャンパスの指定</label>
+                <select id="modal-campus" class="modal-select">
+                    <option value="">指定なし</option>
+                    <option value="なかもず">なかもず</option>
+                    <option value="すぎもと">すぎもと</option>
+                    <option value="あべの">あべの</option>
+                    <option value="りんくう">りんくう</option>
+                    <option value="もりのみや">もりのみや</option>
+                    <option value="その他/移動中">その他 / 移動中</option>
+                </select>
+                <label class="modal-label">📝 補足コメント (任意)</label>
+                <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
+                <div class="modal-btns">
+                    <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
+                </div>
+                <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
+            </div>
+        </div>
+
+        <div id="content"></div><script>
+        function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
+        function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
+        function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
+        
+        let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
+        window.cellDetails = {}; let defaultCampus = "";
+        let modalStatus = 1; let selectedMode = 1; let editingCell = null;
+
+        const modalBg = document.getElementById('detail-modal');
+        modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
+        modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
+
+        window.setModalStatus = function(v) {
+            modalStatus = v;
+            document.querySelectorAll('.sw-btn').forEach(b => { b.classList.toggle('active', parseInt(b.dataset.v) === v); });
+        };
+
+        window.openModal = function(cell) {
+            editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`;
+            const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""};
+            setModalStatus(parseInt(cell.dataset.v) || 1);
+            document.getElementById('modal-campus').value = detail.campus || "";
+            document.getElementById('modal-note').value = detail.note || "";
+            document.getElementById('detail-modal').style.display = 'flex';
+        };
+
+        window.closeModal = function() {
+            document.getElementById('detail-modal').style.display = 'none';
+            if (editingCell) { editingCell.classList.remove('pressing'); editingCell = null; }
+        };
+
+        window.saveModal = function() {
+            if(!editingCell) return;
+            const r = editingCell.dataset.r; const c = editingCell.dataset.c; const key = `${r}_${c}`;
+            const campus = document.getElementById('modal-campus').value; const note = document.getElementById('modal-note').value.trim();
+            if(campus || note || modalStatus === 0) { window.cellDetails[key] = {campus: campus, note: note}; window.upd(editingCell, modalStatus); }
+            else { delete window.cellDetails[key]; window.upd(editingCell, modalStatus); }
+            closeModal();
+        };
+
+        window.upd = function(el, v) { 
+            el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key];
+            if (v == 0) {
+                if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
+                else { delete window.cellDetails[key]; detail = null; }
+            } else if (v == 1 || v == 2) {
+                if (!detail && defaultCampus) { window.cellDetails[key] = {campus: defaultCampus, note: ""}; detail = window.cellDetails[key]; }
+                if (detail && detail.campus === defaultCampus && !detail.note) { delete window.cellDetails[key]; detail = null; }
+            }
+
+            let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : "");
+            let note = detail ? detail.note : "";
+            let bgImage = 'none'; let bgColor = '#fff';
+
+            if (v == 1) bgColor = '#4CAF50';
+            else if (v == 2) bgColor = '#FFEB3B';
+            else if (v == 3) bgColor = '#e0e0e0';
+
+            if (v == 1 || v == 2 || v == 3 || (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用"))) {
+                let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
+                let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)';
+                if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px)`; }
+                else if (campus === "すぎもと" || campus === "杉本") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; }
+                else if (campus === "あべの" || campus === "阿倍野") { bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`; }
+                else if (campus === "りんくう") { bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`; }
+                else if (campus === "もりのみや") { bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; }
+                else if (campus === "その他/移動中") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`; }
+                else if (v == 3 && !campus) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; }
+            }
+            el.style.background = bgColor; el.style.backgroundImage = bgImage;
+            if (campus === "りんくう" && v !== 0) el.style.backgroundSize = '10px 10px'; else el.style.backgroundSize = 'auto';
+
+            const existingIcon = el.querySelector('.memo-icon');
+            const hasManualSetting = detail && (detail.note !== "" || (detail.campus && detail.campus !== defaultCampus));
+            if (hasManualSetting) { if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>'); }
+            else { if (existingIcon) existingIcon.remove(); }
+        };
+        
+        window.renderWeek = function() {
+            const start = currentWeek * 7; const end = start + 7;
+            document.querySelectorAll('.day-col').forEach(el => {
+                const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none';
+            });
+            const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
+            if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
+            setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
+        };
+        window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
+        
+        window.doBulk = function(btnEl) {
+            const val = document.getElementById('b-val').value;
+            const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value);
+            if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; }
+            document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, val); } } });
+            const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
+        };
+        window.doCopy = function(btnEl) {
+            const srcIdx = parseInt(document.getElementById('c-src').value);
+            let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); }
+            let copied = false;
+            document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, srcData[r]); } } } });
+            if(!copied) { alert('コピー先を選択してください。'); return; }
+            const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
+        };
+        
+        window.doTimetable = function(btnEl) {
+            if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; }
+            for(let c = 0; c < totalDays; c++) {
+                let key = String(c);
+                if (unavailColRows[key]) {
+                    unavailColRows[key].forEach(item => {
+                        const r = (typeof item === 'object') ? item.row : item; const campus = (typeof item === 'object') ? item.campus : ""; const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+                        if(cell) {
+                            const cellKey = `${r}_${c}`;
+                            if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") { window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"}; window.upd(cell, 0); }
+                            else if (campus) { window.cellDetails[cellKey] = {campus: campus, note: "定期授業"}; window.upd(cell, 3); }
+                            else { window.upd(cell, 3); }
+                        }
+                    });
+                }
+            }
+            const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000);
+        };
+        
+        window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
+        document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
+
+        window.setPen = function(mode) {
+            selectedMode = mode;
+            [-1, 0, 1, 2].forEach(m => { const b = document.getElementById('pen-' + m); if(b) b.classList.remove('active'); });
+            document.getElementById('pen-' + mode).classList.add('active');
+            const g = document.getElementById('g');
+            if (g) { if (mode === -1) { g.style.touchAction = 'pan-x pan-y'; } else { g.style.touchAction = 'none'; } }
+        };
+
+        const palette = document.getElementById('palette'); let isDraggingPalette = false; let offsetX, offsetY;
+        palette.addEventListener('mousedown', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; });
+        document.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
+        document.addEventListener('mouseup', () => { isDraggingPalette = false; });
+        palette.addEventListener('touchstart', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false});
+        document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
+        document.addEventListener('touchend', () => { isDraggingPalette = false; });
+
+        window.addEventListener("message", function(event) {
+            if (event.data.type === "streamlit:render") {
+                const args = event.data.args; 
+                document.getElementById("content").innerHTML = args.html_code;
+                totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
+                window.cellDetails = args.cellDetails || {}; defaultCampus = args.defaultCampus || "";
+                document.getElementById('pen-1').innerHTML = defaultCampus ? `可<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可";
+                
+                if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
+                window.renderWeek();
+                
+                if(args.isClosed) { palette.style.display = 'none'; return; } 
+                else { palette.style.display = 'flex'; }
+                
+                setTimeout(() => { window.setPen(selectedMode); }, 50);
+                
+                const g = document.getElementById('g'); if(!g) return;
+                let down = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0; let touchMode = null;
+
+                const handleStart = (e, x, y) => {
+                    if (selectedMode === -1) return;
+                    const cell = e.target.closest('.c'); if(!cell) return;
+                    down = true; isLongPress = false; touchMode = null; startX = x; startY = y;
+                    
+                    pressTimer = setTimeout(() => {
+                        if (touchMode !== 'scroll' && down) {
+                            isLongPress = true; down = false; document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); openModal(cell);
+                        }
+                    }, 400);
+                };
+
+                const handleMove = (e, x, y) => {
+                    if (selectedMode === -1 || !down) return;
+                    if (e.cancelable) e.preventDefault(); 
+                    const cell = document.elementFromPoint(x, y)?.closest('.c');
+                    if(cell) window.upd(cell, selectedMode);
+                };
+
+                const handleEnd = () => {
+                    if (pressTimer) clearTimeout(pressTimer);
+                    document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing'));
+                    if (down && touchMode === null && !isLongPress && selectedMode !== -1) {
+                        const cell = document.elementFromPoint(startX, startY)?.closest('.c'); if(cell) window.upd(cell, selectedMode);
+                    }
+                    down = false; touchMode = null;
+                };
+
+                g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); if(selectedMode !== -1) window.upd(e.target.closest('.c'), selectedMode); };
+                g.onmousemove = e => { if (selectedMode === -1 || !down) return; const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest('.c'); if(cell) window.upd(cell, selectedMode); }
+                window.onmouseup = handleEnd; window.onmouseleave = handleEnd; 
+
+                g.addEventListener('touchstart', e => { if (e.touches.length > 1) return; handleStart(e, e.touches[0].clientX, e.touches[0].clientY); }, {passive: true});
+                g.addEventListener('touchmove', e => { if (selectedMode === -1) return; if (e.touches.length >= 2) return; if(down) { if (e.cancelable) e.preventDefault(); handleMove(e, e.touches[0].clientX, e.touches[0].clientY); } }, {passive: false});
+                g.addEventListener('touchend', handleEnd); g.addEventListener('touchcancel', handleEnd);
+                
+                const btn = document.getElementById("submit-btn");
+                if(btn) { btn.onclick = () => { 
+                    const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); 
+                    const commentText = document.getElementById("comment-box").value; 
+                    setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
+                    btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
+                }; }
+                document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
+            }
+        }); init(); </script></body></html>
+        """)
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v4")
 def call_gas(action, payload=None, method="POST"):
     try:
         p = payload or {}
@@ -414,22 +698,35 @@ def main():
                         st.warning("氏名、PIN、秘密の合言葉はすべて必須です。")
 
             elif login_mode == "🆘 PIN・パスワード復旧":
-                with st.form("recovery_auth_form"):
-                    rec_n = st.text_input("氏名")
-                    rec_s = st.text_input("秘密の合言葉", type="password")
-                    new_p = st.text_input("設定したい新しいPIN", type="password")
-                    if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
-                        clean_n = rec_n.replace(" ","").replace("　","")
-                        docs = db.collection("users").where("name", "==", clean_n).stream()
-                        target_user = None
-                        for doc in docs: target_user = doc.to_dict(); break
-                        
-                        if target_user and target_user.get("secret_word") == hash_secret(rec_s):
-                            db.collection("users").document(str(target_user["user_id"])).update({"pin": hash_secret(new_p)})
-                            backup_to_gas_async("recover_account_v2", {"payload": {"name": clean_n, "new_pin": "ENCRYPTED_PIN"}})
-                            st.success("✅ 更新成功！新しいPINでログインできます。")
+                st.subheader("PINの再設定")
+                with st.expander("🔑 秘密の合言葉を使って自分で復旧する", expanded=True):
+                    with st.form("recovery_auth_form"):
+                        st.markdown("<small>登録時に設定した合言葉がわかる方はこちら</small>", unsafe_allow_html=True)
+                        rec_n = st.text_input("氏名")
+                        rec_s = st.text_input("秘密の合言葉", type="password")
+                        new_p = st.text_input("設定したい新しいPIN", type="password")
+                        if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
+                            clean_n = rec_n.replace(" ","").replace("　","")
+                            docs = db.collection("users").where("name", "==", clean_n).stream()
+                            target_user = None
+                            for doc in docs: target_user = doc.to_dict(); break
+                            
+                            if target_user and target_user.get("secret_word") == hash_secret(rec_s):
+                                db.collection("users").document(str(target_user["user_id"])).update({"pin": hash_secret(new_p)})
+                                backup_to_gas_async("recover_account_v2", {"payload": {"name": clean_n, "new_pin": "ENCRYPTED_PIN"}})
+                                st.success("✅ 更新成功！新しいPINでログインできます。")
+                            else:
+                                st.error("氏名または合言葉が間違っています。")
+                
+                with st.expander("🆘 合言葉も忘れたので、管理者に依頼する"):
+                    st.write("管理者のチャットツール等へ通知を送り、PINのリセットを依頼します。")
+                    req_name = st.text_input("あなたのお名前", key="req_pin_name")
+                    if st.button("🚀 管理者にリセット依頼を送る", use_container_width=True):
+                        if not req_name: 
+                            st.warning("名前を入力してください。")
                         else:
-                            st.error("氏名または合言葉が間違っています。")
+                            backup_to_gas_async("request_pin_reset", {"payload": {"name": req_name}})
+                            st.success(f"✅ {req_name}さん、管理者に通知を送りました。")
         return
 
     # ==========================================
@@ -489,6 +786,23 @@ def main():
             st.success("✅ 保存完了")
             time.sleep(1)
             st.rerun()
+
+        st.markdown("---")
+        st.markdown("##### ⚠️ アカウントの削除（退会）")
+        with st.expander("退会手続きを開く"):
+            st.warning("退会すると、これまでの回答データや時間割がすべて削除され、元に戻すことはできません。")
+            if st.button("💥 本当に退会する", type="primary"):
+                uid = str(user["user_id"])
+                # 1. ユーザー削除
+                db.collection("users").document(uid).delete()
+                # 2. 回答データの削除
+                res_docs = db.collection("responses").where("user_id", "==", uid).stream()
+                for d in res_docs:
+                    db.collection("responses").document(d.id).delete()
+                
+                backup_to_gas_async("delete_user", {"payload": {"user_id": uid}})
+                st.session_state.auth = None
+                st.rerun()
         return
 
     # ----------------------------------------------------
@@ -951,8 +1265,13 @@ def main():
                 tgt_user = st.selectbox("対象ユーザー", all_users, format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})")
                 
                 with st.form("admin_user_update"):
-                    new_u_pin = st.text_input("新しいPIN (リセットする場合)", type="password", autocomplete="new-password")
+                    new_u_pin = st.text_input("新しいPIN (リセットする場合のみ入力)", type="password", autocomplete="new-password")
+                    
                     if user.get("role") == "top_admin":
+                        st.info("👑 最高管理者メニュー: ユーザーIDと氏名の変更が可能です。")
+                        new_u_id = st.text_input("ユーザーID", value=tgt_user.get('user_id'))
+                        new_u_name = st.text_input("氏名", value=tgt_user.get('name'))
+                        
                         role_opts = ["guest", "user", "admin"]
                         if tgt_user.get('role') == 'top_admin':
                             st.info("※最高管理者の権限はここで変更できません。下の譲渡メニューを使用してください。")
@@ -961,29 +1280,76 @@ def main():
                             current_role = tgt_user.get('role') if tgt_user.get('role') in role_opts else "guest"
                             new_u_role = st.selectbox("権限の変更", role_opts, index=role_opts.index(current_role))
                     else:
-                        st.info("※権限（Role）の変更は top_admin のみ可能です。")
+                        st.info("※権限（Role）やユーザーID・氏名の変更は top_admin のみ可能です。")
+                        new_u_id = tgt_user.get('user_id')
+                        new_u_name = tgt_user.get('name')
                         new_u_role = tgt_user.get('role')
+                        
+                    del_check = st.checkbox("💥 このユーザーを完全に削除する (復旧不可)")
 
-                    if st.form_submit_button("更新実行", type="primary"):
-                        if tgt_user.get('role') == 'top_admin' and new_u_role != 'top_admin':
-                            st.error("最高管理者の権限は変更できません。")
+                    if st.form_submit_button("更新/削除 実行", type="primary"):
+                        if del_check:
+                            if tgt_user.get('role') == 'top_admin':
+                                st.error("最高管理者は削除できません。先に譲渡してください。")
+                            else:
+                                uid = str(tgt_user['user_id'])
+                                db.collection("users").document(uid).delete()
+                                res_docs = db.collection("responses").where("user_id", "==", uid).stream()
+                                for d in res_docs:
+                                    db.collection("responses").document(d.id).delete()
+                                
+                                backup_to_gas_async("delete_user", {"payload": {"user_id": uid}})
+                                st.success(f"ユーザー {uid} を削除しました")
+                                time.sleep(1.5)
+                                st.rerun()
                         else:
-                            updates = {"role": new_u_role}
-                            gas_payload = {"user_id": tgt_user['user_id'], "role": new_u_role, "new_pin": ""}
-                            
-                            # 新しいPINが入力されている場合はハッシュ化して更新
-                            if new_u_pin:
-                                updates["pin"] = hash_secret(new_u_pin)
-                                gas_payload["new_pin"] = "ENCRYPTED_PIN"
-
-                            # Firestoreを更新
-                            db.collection("users").document(str(tgt_user['user_id'])).update(updates)
-                            # GASへバックアップ送信
-                            backup_to_gas_async("admin_update_user", {"payload": gas_payload})
-                            
-                            st.success("ユーザー情報を更新しました！")
-                            time.sleep(1.5)
-                            st.rerun()
+                            if tgt_user.get('role') == 'top_admin' and new_u_role != 'top_admin':
+                                st.error("最高管理者の権限は変更できません。")
+                            else:
+                                old_uid = str(tgt_user['user_id'])
+                                new_uid = new_u_id.strip() if new_u_id else old_uid
+                                new_name = new_u_name.strip() if new_u_name else tgt_user.get('name')
+                                
+                                updates = {"role": new_u_role, "name": new_name}
+                                gas_payload = {"user_id": old_uid, "role": new_u_role, "name": new_name, "new_pin": ""}
+                                
+                                if new_uid != old_uid:
+                                    updates["user_id"] = new_uid
+                                    gas_payload["new_user_id"] = new_uid
+                                    
+                                if new_u_pin:
+                                    updates["pin"] = hash_secret(new_u_pin)
+                                    gas_payload["new_pin"] = "ENCRYPTED_PIN"
+                                    
+                                try:
+                                    if new_uid != old_uid:
+                                        existing = db.collection("users").document(new_uid).get()
+                                        if existing.exists:
+                                            st.error(f"エラー: ユーザーID '{new_uid}' は既に存在します。")
+                                            st.stop()
+                                            
+                                        new_user_data = {**tgt_user, **updates}
+                                        db.collection("users").document(new_uid).set(new_user_data)
+                                        db.collection("users").document(old_uid).delete()
+                                        
+                                        # 回答データの移行
+                                        res_docs = db.collection("responses").where("user_id", "==", old_uid).stream()
+                                        for r_doc in res_docs:
+                                            r_data = r_doc.to_dict()
+                                            r_event_id = r_data.get("event_id")
+                                            r_data["user_id"] = new_uid
+                                            db.collection("responses").document(f"{r_event_id}_{new_uid}").set(r_data)
+                                            db.collection("responses").document(r_doc.id).delete()
+                                    else:
+                                        db.collection("users").document(old_uid).update(updates)
+                                        
+                                    backup_to_gas_async("admin_update_user", {"payload": gas_payload})
+                                    st.success("ユーザー情報を更新しました！")
+                                    time.sleep(1.5)
+                                    st.rerun()
+                                    
+                                except Exception as e:
+                                    st.error(f"更新中にエラーが発生しました: {e}")
 
                 if user.get("role") == "top_admin":
                     st.markdown("---")
