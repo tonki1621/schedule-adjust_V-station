@@ -1228,6 +1228,73 @@ def main():
                             call_gas("update_event_status", {"payload": {"event_id": target_ev['event_id'], "status": new_status}}, method="POST")
                             db.collection("events").document(target_ev['event_id']).update({"status": new_status})
                             st.rerun()
+
+                # ---------- ここから追加：イベントの編集 ----------
+                st.markdown("---")
+                st.subheader("✏️ イベント情報の編集 (タイトル・説明・期限)")
+                if all_events:
+                    edit_ev = st.selectbox("編集するイベントを選択", all_events, format_func=lambda x: f"{x['title']} ({x.get('status', '')})", key="edit_ev_sel")
+                    
+                    with st.form("edit_event_form"):
+                        new_title = st.text_input("タイトル", value=edit_ev.get('title', ''))
+                        new_desc = st.text_area("説明文・備考", value=edit_ev.get('description', ''), height=150)
+                        
+                        existing_dl = edit_ev.get('close_time') or edit_ev.get('deadline', '')
+                        try:
+                            dt_obj = pd.to_datetime(existing_dl)
+                            def_date = dt_obj.date()
+                            def_time = dt_obj.time()
+                        except:
+                            def_date = datetime.today().date() + timedelta(days=7)
+                            def_time = datetime.strptime("23:59", "%H:%M").time()
+                        
+                        c1, c2 = st.columns(2)
+                        with c1: new_d_date = st.date_input("新しい回答期限 (日付)", value=def_date)
+                        with c2: new_d_time = st.time_input("新しい回答期限 (時刻)", value=def_time)
+                        
+                        if st.form_submit_button("💾 変更を保存", type="primary"):
+                            new_dl_str = f"{new_d_date.strftime('%Y-%m-%d')} {new_d_time.strftime('%H:%M')}"
+                            updates = {
+                                "title": new_title,
+                                "description": new_desc,
+                                "close_time": new_dl_str,
+                                "deadline": new_dl_str
+                            }
+                            db.collection("events").document(edit_ev['event_id']).update(updates)
+                            backup_to_gas_async("update_event_details", {"payload": {"event_id": edit_ev['event_id'], **updates}})
+                            st.success("✅ イベント情報を更新しました！")
+                            time.sleep(1)
+                            st.rerun()
+
+                # ---------- ここから追加：イベントの完全削除 ----------
+                st.markdown("---")
+                st.subheader("🗑️ イベントの完全削除")
+                st.warning("⚠️ 一度削除すると、回答データも含めて完全に消去され、元に戻せません。")
+                if all_events:
+                    del_ev = st.selectbox("削除するイベントを選択", all_events, format_func=lambda x: f"{x['title']} (ID: {x['event_id']})", key="del_ev_sel")
+                    
+                    res_count = len(list(db.collection("responses").where("event_id", "==", del_ev['event_id']).stream()))
+                    if res_count > 0:
+                        st.error(f"🚨 このイベントにはすでに {res_count} 件の回答があります！削除するとこれらもすべて消去されます。")
+                    else:
+                        st.info("このイベントにはまだ回答がありません。")
+                        
+                    del_confirm = st.text_input(f"確認のため、イベントIDの下4桁「{del_ev['event_id'][-4:]}」を入力してください", key="del_confirm_input")
+                    
+                    if st.button("💥 完全に削除する", type="primary"):
+                        if del_confirm == del_ev['event_id'][-4:]:
+                            with st.spinner("削除中..."):
+                                res_docs = db.collection("responses").where("event_id", "==", del_ev['event_id']).stream()
+                                for d in res_docs:
+                                    db.collection("responses").document(d.id).delete()
+                                db.collection("events").document(del_ev['event_id']).delete()
+                                backup_to_gas_async("delete_event", {"payload": {"event_id": del_ev['event_id']}})
+                                
+                            st.success(f"🗑️ 「{del_ev['title']}」を完全に削除しました。")
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.error("確認番号が一致しません。")
                             
                 st.markdown("---")
                 st.subheader("👀 未回答者の抽出")
