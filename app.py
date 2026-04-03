@@ -211,7 +211,7 @@ GAS_URL = "https://script.google.com/macros/s/AKfycby7hAc1_dhSQ_tJzSiJeSc2Ez7pga
 
 os.makedirs("rt_editor", exist_ok=True)
 with open("rt_editor/index.html", "w", encoding="utf-8") as f:
-    f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;margin:0;padding:0;background:transparent;}.editor-container{border:1px solid #ccc;border-radius:6px;overflow:hidden;background:#fff;}.toolbar{background:#f8f9fb;padding:6px;border-bottom:1px solid #ccc;display:flex;gap:5px;flex-wrap:wrap;align-items:center;}.toolbar button{background:#fff;border:1px solid #ccc;border-radius:4px;padding:4px 10px;font-size:13px;cursor:pointer;color:#333;transition:0.2s;}.toolbar button:hover{background:#e9ecef;}textarea{width:100%;height:120px;border:none;padding:10px;font-size:14px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;line-height:1.5;}</style></head><body><div class="editor-container"><div class="toolbar"><button onclick="insertTag('<b>', '</b>')" title="太字"><b>B</b> 太字</button><button onclick="insertTag('<i>', '</i>')" title="斜体"><i>I</i> 斜体</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertRed()" title="赤文字"><span style="color:#FF4B4B; font-weight:bold;">A</span> 赤</button><button onclick="insertBlue()" title="青文字"><span style="color:#2196F3; font-weight:bold;">A</span> 青</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertLink()" title="リンク">🔗 リンク追加</button></div><textarea id="editor" placeholder="📝 イベントの説明や注意事項を入力..."></textarea></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } const editor = document.getElementById('editor'); let timer; function sendValue() { setComponentValue(editor.value); } function insertTag(startTag, endTag) { const start = editor.selectionStart; const end = editor.selectionEnd; const val = editor.value; const selected = val.substring(start, end); editor.value = val.substring(0, start) + startTag + selected + endTag + val.substring(end); editor.focus(); editor.selectionStart = start + startTag.length; editor.selectionEnd = end + startTag.length; sendValue(); } function insertRed() { insertTag("<span style='color:#FF4B4B; font-weight:bold;'>", "</span>"); } function insertBlue() { insertTag("<span style='color:#2196F3; font-weight:bold;'>", "</span>"); } function insertLink() { const url = prompt('リンク先のURLを入力', 'https://'); if (url) { const text = prompt('表示するテキストを入力', 'こちらをクリック'); if (text) { const linkTag = `<a href='${url}' target='_blank'>${text}</a>`; const start = editor.selectionStart; const val = editor.value; editor.value = val.substring(0, start) + linkTag + val.substring(editor.selectionEnd); sendValue(); } } } editor.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(sendValue, 500); }); editor.addEventListener('blur', sendValue); window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 15}); } }); init();</script></body></html>""")
+    f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{font-family:sans-serif;margin:0;padding:0;background:transparent;}.editor-container{border:1px solid #ccc;border-radius:6px;overflow:hidden;background:#fff;}.toolbar{background:#f8f9fb;padding:6px;border-bottom:1px solid #ccc;display:flex;gap:5px;flex-wrap:wrap;align-items:center;}.toolbar button{background:#fff;border:1px solid #ccc;border-radius:4px;padding:4px 10px;font-size:13px;cursor:pointer;color:#333;transition:0.2s;}.toolbar button:hover{background:#e9ecef;}textarea{width:100%;height:120px;border:none;padding:10px;font-size:14px;resize:vertical;outline:none;box-sizing:border-box;font-family:inherit;line-height:1.5;}</style></head><body><div class="editor-container"><div class="toolbar"><button onclick="insertTag('<b>', '</b>')" title="太字"><b>B</b> 太字</button><button onclick="insertTag('<i>', '</i>')" title="斜体"><i>I</i> 斜体</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertRed()" title="赤文字"><span style="color:#FF4B4B; font-weight:bold;">A</span> 赤</button><button onclick="insertBlue()" title="青文字"><span style="color:#2196F3; font-weight:bold;">A</span> 青</button><div style="width: 1px; height: 20px; background: #ccc; margin: 0 4px;"></div><button onclick="insertLink()" title="リンク">🔗 リンク追加</button></div><textarea id="editor" placeholder="📝 イベントの説明や注意事項を入力..."></textarea></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } const editor = document.getElementById('editor'); let timer; function sendValue() { setComponentValue(editor.value); } function insertTag(startTag, endTag) { const start = editor.selectionStart; const end = editor.selectionEnd; const val = editor.value; const selected = val.substring(start, end); editor.value = val.substring(0, start) + startTag + selected + endTag + val.substring(end); editor.focus(); editor.selectionStart = start + startTag.length; editor.selectionEnd = end + startTag.length; sendValue(); } function insertRed() { insertTag("<span style='color:#FF4B4B; font-weight:bold;'>", "</span>"); } function insertBlue() { insertTag("<span style='color:#2196F3; font-weight:bold;'>", "</span>"); } function insertLink() { const url = prompt('リンク先のURLを入力', 'https://'); if (url) { const text = prompt('表示するテキストを入力', 'こちらをクリック'); if (text) { const linkTag = `<a href='${url}' target='_blank'>${text}</a>`; const start = editor.selectionStart; const val = editor.value; editor.value = val.substring(0, start) + linkTag + val.substring(editor.selectionEnd); sendValue(); } } } editor.addEventListener('blur', sendValue); window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 15}); } }); init();</script></body></html>""")
 rt_editor = components.declare_component("rt_editor", path="rt_editor")
 
 os.makedirs("options_editor", exist_ok=True)
@@ -785,6 +785,46 @@ def main():
             time.sleep(1)
             st.rerun()
 
+        # ---------- セキュリティ設定 (ここから追加) ----------
+        st.markdown("---")
+        st.markdown("##### 🔐 セキュリティ設定 (PIN・合言葉の変更)")
+        with st.expander("PINや合言葉を変更する"):
+            st.write("本人確認のため、現在のPINを入力してから新しい情報を設定してください。")
+            with st.form("security_update_form"):
+                current_p = st.text_input("現在のPIN (必須)", type="password")
+                st.markdown("<br>", unsafe_allow_html=True)
+                new_p = st.text_input("新しいPIN (変更しない場合は空欄)", type="password")
+                new_s = st.text_input("新しい秘密の合言葉 (変更しない場合は空欄)")
+                
+                if st.form_submit_button("更新する", use_container_width=True, type="primary"):
+                    if not current_p:
+                        st.error("エラー: 現在のPINを入力してください。")
+                    elif hash_secret(current_p) != user.get("pin") and current_p != user.get("pin"):
+                        st.error("エラー: 現在のPINが間違っています。")
+                    elif not new_p and not new_s:
+                        st.warning("変更する新しいPINまたは合言葉を入力してください。")
+                    else:
+                        updates = {}
+                        if new_p: updates["pin"] = hash_secret(new_p)
+                        if new_s: updates["secret_word"] = hash_secret(new_s)
+                        
+                        try:
+                            db.collection("users").document(str(user["user_id"])).update(updates)
+                            
+                            gas_payload = {"user_id": user["user_id"]}
+                            if new_p: gas_payload["pin"] = "ENCRYPTED_PIN"
+                            if new_s: gas_payload["secret_word"] = "SET_BY_USER"
+                            backup_to_gas_async("update_user_v2", {"payload": gas_payload})
+                            
+                            updated_u = {**user, **updates}
+                            st.session_state.auth = updated_u
+                            st.success("✅ セキュリティ情報を更新しました！")
+                            time.sleep(1.0)
+                            st.rerun()
+                        except Exception as e:
+                            st.error(f"更新に失敗しました: {e}")
+        # ---------- セキュリティ設定 (ここまで追加) ----------
+
         st.markdown("---")
         st.markdown("##### ⚠️ アカウントの削除（退会）")
         with st.expander("退会手続きを開く"):
@@ -1078,6 +1118,7 @@ def main():
         
         if st.button("🚀 イベントを作成", use_container_width=True, type="primary"):
             if not ev_title: st.warning("イベント名を入力してください。")
+            elif ev_type == "time" and (not ev_start or not ev_end): st.error("開始日と終了日を正しく入力してください。")
             elif ev_type == "time" and ev_start > ev_end: st.error("終了日は開始日以降に設定してください。")
             elif ev_type == "time" and time_master.index(t_start) >= time_master.index(t_end): st.error("終了時刻は開始時刻より後に設定してください。")
             elif ev_type == "options" and not any(o.strip() for o in opts_list): st.error("最低1つの候補を入力してください。")
