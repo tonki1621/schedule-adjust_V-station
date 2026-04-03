@@ -178,21 +178,19 @@ st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide")
 APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
 st.markdown("""
-    <style>
-        st.markdown("""
-    <style>
-        /* スマホ時に画面を広く使えるよう余白を最適化 */
-        @media (max-width: 650px) {
-            .main .block-container,
-            div[data-testid="stAppViewBlockContainer"] {
-                padding-left: 1rem !important; 
-                padding-right: 1rem !important;
-                padding-top: 1rem !important;
-            }
-            iframe { max-width: 100vw !important; width: 100% !important; }
-        }
-        
-        .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
+    <style>
+        /* スマホ時に画面を広く使えるよう余白を最適化 */
+        @media (max-width: 650px) {
+            .main .block-container,
+            div[data-testid="stAppViewBlockContainer"] {
+                padding-left: 1rem !important; 
+                padding-right: 1rem !important;
+                padding-top: 1rem !important;
+            }
+            iframe { max-width: 100vw !important; width: 100% !important; }
+        }
+        
+        .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
         [data-testid="stStatusWidget"] { visibility: visible !important; display: flex !important; position: fixed !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: rgba(255, 255, 255, 0.95) !important; color: #333 !important; padding: 20px 40px !important; border-radius: 12px !important; z-index: 999999 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important; border: 2px solid #4CAF50 !important; text-align: center !important; justify-content: center !important; }
         [data-testid="stStatusWidget"]::after { content: "⏳ 通信中 \\A 処理しています..."; white-space: pre-wrap; font-size: 20px !important; font-weight: bold !important; line-height: 1.5 !important; }
         @media (max-width: 600px) { [data-testid="stStatusWidget"] { padding: 15px 20px !important; width: 80% !important; } [data-testid="stStatusWidget"]::after { font-size: 16px !important; } }
