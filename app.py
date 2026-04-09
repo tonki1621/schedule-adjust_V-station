@@ -110,11 +110,12 @@ def get_app_data_from_firestore(user):
             try:
                 dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
                 if pd.notna(dl_dt):
-                    dl_dt = dl_dt.tz_localize(None)
+                    # 💡 タイムゾーンパース処理の堅牢化
+                    if dl_dt.tzinfo is not None:
+                        dl_dt = dl_dt.tz_convert(None)
                     if now > dl_dt:
                         ev["status"] = "closed"
                         db.collection("events").document(ev["event_id"]).update({"status": "closed"})
-                        # 💡 確実な同期のためpayloadで包む
                         backup_to_gas_async("update_event_status", {"payload": {"event_id": ev["event_id"], "status": "closed"}})
             except: 
                 pass
@@ -178,19 +179,19 @@ st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide")
 APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
 st.markdown("""
-    <style>
-        /* スマホ時に画面を広く使えるよう余白を最適化 */
-        @media (max-width: 650px) {
-            .main .block-container,
-            div[data-testid="stAppViewBlockContainer"] {
-                padding-left: 1rem !important; 
-                padding-right: 1rem !important;
-                padding-top: 1rem !important;
-            }
-            iframe { max-width: 100vw !important; width: 100% !important; }
-        }
-        
-        .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
+    <style>
+        /* スマホ時に画面を広く使えるよう余白を最適化 */
+        @media (max-width: 650px) {
+            .main .block-container,
+            div[data-testid="stAppViewBlockContainer"] {
+                padding-left: 1rem !important; 
+                padding-right: 1rem !important;
+                padding-top: 1rem !important;
+            }
+            iframe { max-width: 100vw !important; width: 100% !important; }
+        }
+        
+        .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
         [data-testid="stStatusWidget"] { visibility: visible !important; display: flex !important; position: fixed !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: rgba(255, 255, 255, 0.95) !important; color: #333 !important; padding: 20px 40px !important; border-radius: 12px !important; z-index: 999999 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important; border: 2px solid #4CAF50 !important; text-align: center !important; justify-content: center !important; }
         [data-testid="stStatusWidget"]::after { content: "⏳ 通信中 \\A 処理しています..."; white-space: pre-wrap; font-size: 20px !important; font-weight: bold !important; line-height: 1.5 !important; }
         @media (max-width: 600px) { [data-testid="stStatusWidget"] { padding: 15px 20px !important; width: 80% !important; } [data-testid="stStatusWidget"]::after { font-size: 16px !important; } }
@@ -520,6 +521,11 @@ def format_deadline_jp(date_str):
         clean_str = str(date_str).split(' (')[0] 
         dt = pd.to_datetime(clean_str, errors='coerce')
         if pd.isna(dt): return "期限なし"
+        
+        # 💡 タイムゾーンパース処理の堅牢化
+        if dt.tzinfo is not None:
+            dt = dt.tz_convert(None)
+            
         wday = ["月", "火", "水", "木", "金", "土", "日"][dt.weekday()]
         return f"{dt.month}/{dt.day}({wday}) {dt.strftime('%H:%M')}"
     except:
@@ -621,7 +627,6 @@ def main():
         with col_login:
             st.title("V-Sync by もっきゅー")
             
-            # 💡 ラジオボタンの項目名を統一（末尾のスペースを削除）
             login_mode = st.radio("メニュー", ["🔑 ログイン", "📝 新規アカウント作成", "🆘 PIN・パスワード復旧"], horizontal=True)
             st.markdown("---")
             
@@ -637,9 +642,8 @@ def main():
                         user_doc = None
                         for doc in docs:
                             u_data = doc.to_dict()
-                            # ハッシュ値または平文でのログイン成功判定
                             if u_data.get("pin") == hashed_p or u_data.get("pin") == p:
-                                if u_data.get("pin") == p: # 平文ならハッシュ化して更新
+                                if u_data.get("pin") == p: 
                                     u_data["pin"] = hashed_p
                                     db.collection("users").document(str(u_data["user_id"])).update({"pin": hashed_p})
                                 user_doc = u_data
@@ -655,6 +659,8 @@ def main():
                 st.info("💡 未所属の方でも、そのまま下部の登録ボタンを押して利用可能です。")
                 reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name")
                 reg_p = st.text_input("PIN (自由な文字列・数字)", type="password", key="reg_pin")
+                
+                # 💡 スマホIMEバグ回避: type="password" を削除
                 reg_s = st.text_input("🔑 秘密の合言葉", key="reg_secret")
                 
                 st.markdown("---")
@@ -665,11 +671,13 @@ def main():
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
                     clean_name = reg_n.replace(" ", "").replace("　", "")
                     
-                    # 💡 条件分岐はここから始まります
                     if clean_name and reg_p and reg_s:
                         all_users_list = [doc.to_dict() for doc in db.collection("users").stream()]
                         new_num = len(all_users_list) + 1
                         new_user_id = f"U{new_num:03}"
+
+                        # 💡 初回管理者セットアップの自動化
+                        role_val = "top_admin" if len(all_users_list) == 0 else "guest"
 
                         new_u = {
                             "user_id": new_user_id,
@@ -680,7 +688,7 @@ def main():
                             "group_2": ", ".join(g2),
                             "group_3": ", ".join(g3),
                             "group_4": "",
-                            "role": "user"
+                            "role": role_val
                         }
                         
                         db.collection("users").document(new_user_id).set(new_u)
@@ -701,7 +709,10 @@ def main():
                     with st.form("recovery_auth_form"):
                         st.markdown("<small>登録時に設定した合言葉がわかる方はこちら</small>", unsafe_allow_html=True)
                         rec_n = st.text_input("氏名")
-                        rec_s = st.text_input("秘密の合言葉", type="password")
+                        
+                        # 💡 スマホIMEバグ回避: type="password" を外して通常のテキスト入力に変更
+                        rec_s = st.text_input("秘密の合言葉")
+                        
                         new_p = st.text_input("設定したい新しいPIN", type="password")
                         if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
                             clean_n = rec_n.replace(" ","").replace("　","")
@@ -785,7 +796,6 @@ def main():
             time.sleep(1)
             st.rerun()
 
-        # ---------- セキュリティ設定 (ここから追加) ----------
         st.markdown("---")
         st.markdown("##### 🔐 セキュリティ設定 (PIN・合言葉の変更)")
         with st.expander("PINや合言葉を変更する"):
@@ -823,7 +833,6 @@ def main():
                             st.rerun()
                         except Exception as e:
                             st.error(f"更新に失敗しました: {e}")
-        # ---------- セキュリティ設定 (ここまで追加) ----------
 
         st.markdown("---")
         st.markdown("##### ⚠️ アカウントの削除（退会）")
@@ -831,9 +840,7 @@ def main():
             st.warning("退会すると、これまでの回答データや時間割がすべて削除され、元に戻すことはできません。")
             if st.button("💥 本当に退会する", type="primary"):
                 uid = str(user["user_id"])
-                # 1. ユーザー削除
                 db.collection("users").document(uid).delete()
-                # 2. 回答データの削除
                 res_docs = db.collection("responses").where("user_id", "==", uid).stream()
                 for d in res_docs:
                     db.collection("responses").document(d.id).delete()
@@ -1094,7 +1101,6 @@ def main():
                     "users": [u['user_id'] for u in t_users]
                 })
                 
-                # 💡【追加】メンションのプレビューと警告UI
                 mentions_preview = []
                 for g in t_g1: mentions_preview.append(f"@{g}")
                 for g in t_g2: mentions_preview.append(f"@{g.replace('年度', '年度入学生')}")
@@ -1130,8 +1136,6 @@ def main():
                     mention_text = " ".join(mentions_preview) if not is_all_members else "@everyone"
 
                 deadline_str = f"{deadline_date.strftime('%Y-%m-%d')} {deadline_time.strftime('%H:%M')}"
-                
-                # 💡 Python側でイベントIDを即時発行
                 created_event_id = generate_custom_id("EV")
                 
                 payload = {
@@ -1153,10 +1157,7 @@ def main():
                     "mention_text": mention_text
                 }
                 
-                # 1. Firestoreに保存
                 db.collection("events").document(created_event_id).set(payload)
-                
-                # 2. 修正：辞書で包んでGASへ送る
                 backup_to_gas_async("create_event_v2", {"payload": payload})
                 
                 st.success(f"「{ev_title}」を作成しました！")
@@ -1203,7 +1204,6 @@ def main():
                 df_ev = pd.DataFrame(all_events)
                 df_ev['種類'] = df_ev['type_safe'].replace({"time": "🕒 時間", "timetable": "🏫 時間割", "options": "📅 予定候補"})
                 
-                # 💡 「詳細」の表示を直感的に（終了時刻はそのままで「〜18:00」になる）
                 df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row.get('start_idx_safe', 0))}〜{idx_to_time(row.get('end_idx_safe', 0))}" if row.get('type_safe')=='time' else ("月〜金" if row.get('type_safe')=='timetable' else "複数候補"), axis=1)
                 
                 df_ev['期限'] = df_ev['deadline_safe'].apply(format_deadline_jp)
@@ -1218,84 +1218,88 @@ def main():
                 html_table_ev = df_display[df_display['status'].isin(['open', 'closed'])].to_html(index=False, border=0, classes="custom-tbl")
                 st.markdown("<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; word-break: break-all; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_ev}</div>', unsafe_allow_html=True)
                 
+                # 💡 3. 管理者ダッシュボードのUI整理と誤操作防止（タブ化）
                 st.markdown("---")
-                st.subheader("⚙️ ステータス手動変更")
-                if active_events:
-                    with st.form("update_status_form"):
-                        target_ev = st.selectbox("対象イベント", active_events, format_func=lambda x: f"{x['title']} ({x['status']})")
-                        new_status = st.selectbox("ステータス", ["open", "closed", "archived"], index=1)
-                        if st.form_submit_button("更新する"):
-                            call_gas("update_event_status", {"payload": {"event_id": target_ev['event_id'], "status": new_status}}, method="POST")
-                            db.collection("events").document(target_ev['event_id']).update({"status": new_status})
-                            st.rerun()
-
-                # ---------- ここから追加：イベントの編集 ----------
-                st.markdown("---")
-                st.subheader("✏️ イベント情報の編集 (タイトル・説明・期限)")
-                if all_events:
-                    edit_ev = st.selectbox("編集するイベントを選択", all_events, format_func=lambda x: f"{x['title']} ({x.get('status', '')})", key="edit_ev_sel")
-                    
-                    with st.form("edit_event_form"):
-                        new_title = st.text_input("タイトル", value=edit_ev.get('title', ''))
-                        new_desc = st.text_area("説明文・備考", value=edit_ev.get('description', ''), height=150)
+                st.subheader("🛠️ イベント管理 (編集・ステータス・削除)")
+                
+                tab_edit, tab_status, tab_delete = st.tabs(["✏️ 情報編集", "⚙️ ステータス変更", "🗑️ 削除"])
+                
+                with tab_edit:
+                    st.markdown("##### ✏️ イベント情報の編集 (タイトル・説明・期限)")
+                    if all_events:
+                        edit_ev = st.selectbox("編集するイベントを選択", all_events, format_func=lambda x: f"{x['title']} ({x.get('status', '')})", key="edit_ev_sel")
                         
-                        existing_dl = edit_ev.get('close_time') or edit_ev.get('deadline', '')
-                        try:
-                            dt_obj = pd.to_datetime(existing_dl)
-                            def_date = dt_obj.date()
-                            def_time = dt_obj.time()
-                        except:
-                            def_date = datetime.today().date() + timedelta(days=7)
-                            def_time = datetime.strptime("23:59", "%H:%M").time()
-                        
-                        c1, c2 = st.columns(2)
-                        with c1: new_d_date = st.date_input("新しい回答期限 (日付)", value=def_date)
-                        with c2: new_d_time = st.time_input("新しい回答期限 (時刻)", value=def_time)
-                        
-                        if st.form_submit_button("💾 変更を保存", type="primary"):
-                            new_dl_str = f"{new_d_date.strftime('%Y-%m-%d')} {new_d_time.strftime('%H:%M')}"
-                            updates = {
-                                "title": new_title,
-                                "description": new_desc,
-                                "close_time": new_dl_str,
-                                "deadline": new_dl_str
-                            }
-                            db.collection("events").document(edit_ev['event_id']).update(updates)
-                            backup_to_gas_async("update_event_details", {"payload": {"event_id": edit_ev['event_id'], **updates}})
-                            st.success("✅ イベント情報を更新しました！")
-                            time.sleep(1)
-                            st.rerun()
-
-                # ---------- ここから追加：イベントの完全削除 ----------
-                st.markdown("---")
-                st.subheader("🗑️ イベントの完全削除")
-                st.warning("⚠️ 一度削除すると、回答データも含めて完全に消去され、元に戻せません。")
-                if all_events:
-                    del_ev = st.selectbox("削除するイベントを選択", all_events, format_func=lambda x: f"{x['title']} (ID: {x['event_id']})", key="del_ev_sel")
-                    
-                    res_count = len(list(db.collection("responses").where("event_id", "==", del_ev['event_id']).stream()))
-                    if res_count > 0:
-                        st.error(f"🚨 このイベントにはすでに {res_count} 件の回答があります！削除するとこれらもすべて消去されます。")
-                    else:
-                        st.info("このイベントにはまだ回答がありません。")
-                        
-                    del_confirm = st.text_input(f"確認のため、イベントIDの下4桁「{del_ev['event_id'][-4:]}」を入力してください", key="del_confirm_input")
-                    
-                    if st.button("💥 完全に削除する", type="primary"):
-                        if del_confirm == del_ev['event_id'][-4:]:
-                            with st.spinner("削除中..."):
-                                res_docs = db.collection("responses").where("event_id", "==", del_ev['event_id']).stream()
-                                for d in res_docs:
-                                    db.collection("responses").document(d.id).delete()
-                                db.collection("events").document(del_ev['event_id']).delete()
-                                backup_to_gas_async("delete_event", {"payload": {"event_id": del_ev['event_id']}})
-                                
-                            st.success(f"🗑️ 「{del_ev['title']}」を完全に削除しました。")
-                            time.sleep(1.5)
-                            st.rerun()
-                        else:
-                            st.error("確認番号が一致しません。")
+                        with st.form("edit_event_form"):
+                            new_title = st.text_input("タイトル", value=edit_ev.get('title', ''))
+                            new_desc = st.text_area("説明文・備考", value=edit_ev.get('description', ''), height=150)
                             
+                            existing_dl = edit_ev.get('close_time') or edit_ev.get('deadline', '')
+                            try:
+                                dt_obj = pd.to_datetime(existing_dl)
+                                def_date = dt_obj.date()
+                                def_time = dt_obj.time()
+                            except:
+                                def_date = datetime.today().date() + timedelta(days=7)
+                                def_time = datetime.strptime("23:59", "%H:%M").time()
+                            
+                            c1, c2 = st.columns(2)
+                            with c1: new_d_date = st.date_input("新しい回答期限 (日付)", value=def_date)
+                            with c2: new_d_time = st.time_input("新しい回答期限 (時刻)", value=def_time)
+                            
+                            if st.form_submit_button("💾 変更を保存", type="primary"):
+                                new_dl_str = f"{new_d_date.strftime('%Y-%m-%d')} {new_d_time.strftime('%H:%M')}"
+                                updates = {
+                                    "title": new_title,
+                                    "description": new_desc,
+                                    "close_time": new_dl_str,
+                                    "deadline": new_dl_str
+                                }
+                                db.collection("events").document(edit_ev['event_id']).update(updates)
+                                backup_to_gas_async("update_event_details", {"payload": {"event_id": edit_ev['event_id'], **updates}})
+                                st.success("✅ イベント情報を更新しました！")
+                                time.sleep(1)
+                                st.rerun()
+
+                with tab_status:
+                    st.markdown("##### ⚙️ ステータス手動変更")
+                    if active_events:
+                        with st.form("update_status_form"):
+                            target_ev = st.selectbox("対象イベント", active_events, format_func=lambda x: f"{x['title']} ({x['status']})")
+                            new_status = st.selectbox("ステータス", ["open", "closed", "archived"], index=1)
+                            if st.form_submit_button("更新する"):
+                                call_gas("update_event_status", {"payload": {"event_id": target_ev['event_id'], "status": new_status}}, method="POST")
+                                db.collection("events").document(target_ev['event_id']).update({"status": new_status})
+                                st.rerun()
+
+                with tab_delete:
+                    st.markdown("##### 🗑️ イベントの完全削除")
+                    st.warning("⚠️ 一度削除すると、回答データも含めて完全に消去され、元に戻せません。")
+                    if all_events:
+                        del_ev = st.selectbox("削除するイベントを選択", all_events, format_func=lambda x: f"{x['title']} (ID: {x['event_id']})", key="del_ev_sel")
+                        
+                        res_count = len(list(db.collection("responses").where("event_id", "==", del_ev['event_id']).stream()))
+                        if res_count > 0:
+                            st.error(f"🚨 このイベントにはすでに {res_count} 件の回答があります！削除するとこれらもすべて消去されます。")
+                        else:
+                            st.info("このイベントにはまだ回答がありません。")
+                            
+                        del_confirm = st.text_input(f"確認のため、イベントIDの下4桁「{del_ev['event_id'][-4:]}」を入力してください", key="del_confirm_input")
+                        
+                        if st.button("💥 完全に削除する", type="primary"):
+                            if del_confirm == del_ev['event_id'][-4:]:
+                                with st.spinner("削除中..."):
+                                    res_docs = db.collection("responses").where("event_id", "==", del_ev['event_id']).stream()
+                                    for d in res_docs:
+                                        db.collection("responses").document(d.id).delete()
+                                    db.collection("events").document(del_ev['event_id']).delete()
+                                    backup_to_gas_async("delete_event", {"payload": {"event_id": del_ev['event_id']}})
+                                    
+                                st.success(f"🗑️ 「{del_ev['title']}」を完全に削除しました。")
+                                time.sleep(1.5)
+                                st.rerun()
+                            else:
+                                st.error("確認番号が一致しません。")
+
                 st.markdown("---")
                 st.subheader("👀 未回答者の抽出")
                 if active_events:
@@ -1535,7 +1539,9 @@ def main():
                 try:
                     dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
                     if pd.notna(dl_dt):
-                        dl_dt = dl_dt.tz_localize(None)
+                        # 💡 タイムゾーンパース処理の堅牢化
+                        if dl_dt.tzinfo is not None:
+                            dl_dt = dl_dt.tz_convert(None)
                         if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
                             is_urgent = True
                 except: pass
@@ -1574,7 +1580,9 @@ def main():
                 if ev_close_time:
                     dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
                     if pd.notna(dl_dt):
-                        dl_dt = dl_dt.tz_localize(None)
+                        # 💡 タイムゾーンパース処理の堅牢化
+                        if dl_dt.tzinfo is not None:
+                            dl_dt = dl_dt.tz_convert(None)
                         if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
                             is_urgent = True
             except: pass
@@ -2124,7 +2132,7 @@ def main():
                             cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
                         agg_day_cols += f'<div class="agg-day-col"><div class="agg-header">{lbl}</div>{cells_html}</div>'
 
-                    # 💡 集計グラフの空白余白もなくす（高さをAutoに固定）
+                    # 💡 4. 集計グラフのツールチップのスクロール対応
                     agg_css = f"""
                     <style>
                     .agg-wrapper {{ max-height: 680px; height: auto; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; padding-bottom: 50px; }}
@@ -2134,7 +2142,14 @@ def main():
                     .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
                     .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
                     
-                    .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }}
+                    .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ 
+                        visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); 
+                        max-height: 250px; overflow-y: auto; -webkit-overflow-scrolling: touch; pointer-events: auto;
+                    }}
+                    
+                    .agg-cell .tooltip-up::-webkit-scrollbar, .agg-cell .tooltip-down::-webkit-scrollbar {{ width: 6px; }}
+                    .agg-cell .tooltip-up::-webkit-scrollbar-thumb, .agg-cell .tooltip-down::-webkit-scrollbar-thumb {{ background-color: rgba(255, 255, 255, 0.4); border-radius: 3px; }}
+                    
                     .agg-cell .tooltip-up {{ bottom: 100%; margin-bottom: 8px; }}
                     .agg-cell .tooltip-down {{ top: 100%; margin-top: 8px; }}
                     .agg-cell .tooltip-up::after {{ content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: rgba(30,30,30,0.95) transparent transparent transparent; }}
