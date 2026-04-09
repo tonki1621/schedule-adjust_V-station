@@ -76,7 +76,6 @@ def save_response_hybrid(payload):
         st.error(f"Firestoreへの保存に失敗しました: {e}")
         return False
 
-    # 💡 確実な同期のためpayloadで包む
     backup_to_gas_async("submit_binary_response", {"payload": payload})
     return True
 
@@ -110,7 +109,6 @@ def get_app_data_from_firestore(user):
             try:
                 dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
                 if pd.notna(dl_dt):
-                    # 💡 タイムゾーンパース処理の堅牢化
                     if dl_dt.tzinfo is not None:
                         dl_dt = dl_dt.tz_convert(None)
                     if now > dl_dt:
@@ -180,7 +178,6 @@ APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
 st.markdown("""
     <style>
-        /* スマホ時に画面を広く使えるよう余白を最適化 */
         @media (max-width: 650px) {
             .main .block-container,
             div[data-testid="stAppViewBlockContainer"] {
@@ -205,6 +202,17 @@ st.markdown("""
         .af-status-on { color: #fff; font-weight: bold; background: linear-gradient(135deg, #2196F3, #1976D2); padding: 4px 0; border-radius: 6px; border: none; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block; box-shadow: 0 2px 4px rgba(33,150,243,0.3); }
         .status-off { color: #9e9e9e; background: #ffffff; padding: 4px 0; border-radius: 6px; border: 1px dashed #d0d0d0; font-size: 12px; text-align: center; margin-top: -10px; margin-bottom: 5px; display: block;}
         .tt-table [data-testid="stCheckbox"] { justify-content: center; margin: 0 !important; padding: 0 !important; width: 100% !important;}
+        
+        /* 💡 ラジオボタンによるタブ風UIのデザイン */
+        div[role="radiogroup"] {
+            display: flex; justify-content: center; gap: 10px; margin-bottom: 20px;
+        }
+        div[role="radiogroup"] > label {
+            background: #f0f2f6; padding: 10px 30px; border-radius: 20px; cursor: pointer; transition: 0.3s;
+        }
+        div[role="radiogroup"] > label[data-checked="true"] {
+            background: #4CAF50; color: white !important; font-weight: bold; box-shadow: 0 4px 8px rgba(76, 175, 80, 0.3);
+        }
     </style>
 """, unsafe_allow_html=True)
 
@@ -217,7 +225,7 @@ rt_editor = components.declare_component("rt_editor", path="rt_editor")
 
 os.makedirs("options_editor", exist_ok=True)
 with open("options_editor/index.html", "w", encoding="utf-8") as f:
-    f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#FFEB3B;color:#333;border-color:#FBC02D;box-shadow:0 6px 12px rgba(255,235,59,0.4);transform:translateY(-3px);}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
+    f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#FFEB3B;color:#333;border-color:#FBC02D;box-shadow:0 6px 12px rgba(255,235,59,0.4);transform:translateY(-3px);}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div style="background: #E3F2FD; padding: 10px; border-radius: 8px; margin-bottom: 15px; font-size: 13px; color: #1565C0; font-weight: bold; text-align: center;">💡 使い方： ① 候補の可否を選ぶ ➡️ ② 下の「提出」を押す</div><div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
 if not os.path.exists("custom_editor_v4"):
@@ -251,7 +259,7 @@ if not os.path.exists("custom_editor_v4"):
         <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
             <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
             <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
-            <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#FFEB3B; color:#333;">未定</button>
+            <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:rgba(255,235,59,0.7); color:#333;">未定</button>
             <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
             <hr style="margin:0; border-top:1px solid #ddd;">
             <button class="pen-btn" onclick="window.setPen(-1)" id="pen--1" style="background:#9C27B0; color:#fff; border:2px solid #7B1FA2; font-size:10px; margin-top:0px;">📜<br>ｽｸﾛｰﾙ</button>
@@ -338,30 +346,63 @@ if not os.path.exists("custom_editor_v4"):
 
             let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : "");
             let note = detail ? detail.note : "";
-            let bgImage = 'none'; let bgColor = '#fff';
 
-            if (v == 1) bgColor = '#4CAF50';
-            else if (v == 2) bgColor = '#FFEB3B';
-            else if (v == 3) bgColor = '#e0e0e0';
+            // 💡 UI改修: パターンではなく色＋文字に変更
+            let campusMap = {
+                "なかもず": { c: "な", hex: "#FFA726", rgb: "255,167,38" },
+                "すぎもと": { c: "す", hex: "#42A5F5", rgb: "66,165,245" },
+                "杉本": { c: "す", hex: "#42A5F5", rgb: "66,165,245" },
+                "もりのみや": { c: "も", hex: "#66BB6A", rgb: "102,187,106" },
+                "あべの": { c: "あ", hex: "#EC407A", rgb: "236,64,122" },
+                "阿倍野": { c: "あ", hex: "#EC407A", rgb: "236,64,122" },
+                "りんくう": { c: "り", hex: "#AB47BC", rgb: "171,71,188" },
+                "その他/移動中": { c: "他", hex: "#9E9E9E", rgb: "158,158,158" }
+            };
 
-            if (v == 1 || v == 2 || v == 3 || (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用"))) {
-                let cColor = (v == 3) ? 'rgba(255,255,255,0.7)' : 'rgba(255,255,255,0.3)';
-                let cColorDark = (v == 3) ? 'rgba(0,0,0,0.1)' : 'rgba(0,0,0,0.15)';
-                if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px), repeating-linear-gradient(-45deg, transparent, transparent 3px, rgba(0,0,0,0.08) 3px, rgba(0,0,0,0.08) 6px)`; }
-                else if (campus === "すぎもと" || campus === "杉本") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; }
-                else if (campus === "あべの" || campus === "阿倍野") { bgImage = `repeating-linear-gradient(-45deg, ${cColorDark}, ${cColorDark} 4px, transparent 4px, transparent 8px)`; }
-                else if (campus === "りんくう") { bgImage = `radial-gradient(circle, ${cColor} 3px, transparent 4px)`; }
-                else if (campus === "もりのみや") { bgImage = `repeating-linear-gradient(90deg, ${cColor}, ${cColor} 4px, transparent 4px, transparent 8px)`; }
-                else if (campus === "その他/移動中") { bgImage = `repeating-linear-gradient(45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px), repeating-linear-gradient(-45deg, ${cColor}, ${cColor} 2px, transparent 2px, transparent 4px)`; }
-                else if (v == 3 && !campus) { bgImage = `repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(255,255,255,.8) 4px, rgba(255,255,255,.8) 8px)`; }
+            let text = "";
+            let bgColor = "#fff";
+            let textColor = "#fff";
+
+            if (v == 1 || v == 2) {
+                let cmap = campusMap[campus] || { c: "◯", hex: "#4CAF50", rgb: "76,175,80" };
+                if (v == 2 && !campus) cmap = { c: "△", hex: "#FFEB3B", rgb: "255,235,59" };
+                
+                text = cmap.c;
+                if (v == 1) {
+                    bgColor = cmap.hex;
+                    textColor = (campus && campusMap[campus]) ? "#fff" : (v==2 && !campus ? "#333" : "#fff");
+                } else { // v == 2 (未定は薄い色)
+                    bgColor = `rgba(${cmap.rgb}, 0.4)`;
+                    textColor = "#333";
+                }
+            } else if (v == 3) {
+                bgColor = "#E0E0E0"; text = "授"; textColor = "#555";
+            } else if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) {
+                bgColor = "#F5F5F5"; text = "休"; textColor = "#999";
             }
-            el.style.background = bgColor; el.style.backgroundImage = bgImage;
-            if (campus === "りんくう" && v !== 0) el.style.backgroundSize = '10px 10px'; else el.style.backgroundSize = 'auto';
 
-            const existingIcon = el.querySelector('.memo-icon');
+            el.style.background = bgColor;
+            el.style.color = textColor;
+            el.style.display = "flex";
+            el.style.alignItems = "center";
+            el.style.justifyContent = "center";
+            el.style.fontWeight = "bold";
+            el.style.fontSize = "15px";
+
+            // メモアイコンとツールチップの制御
+            let iconHtml = '';
             const hasManualSetting = detail && (detail.note !== "" || (detail.campus && detail.campus !== defaultCampus));
-            if (hasManualSetting) { if (!existingIcon) el.insertAdjacentHTML('beforeend', '<div class="memo-icon">💬</div>'); }
-            else { if (existingIcon) existingIcon.remove(); }
+            if (hasManualSetting && v != 3) { 
+                iconHtml = '<div class="memo-icon" style="position:absolute;top:1px;right:2px;font-size:10px;color:#333;">💬</div>'; 
+            }
+            
+            if (v == 3 && detail && detail.campus) {
+                el.title = "定期授業 - " + detail.campus;
+            } else {
+                el.title = "";
+            }
+
+            el.innerHTML = text + iconHtml;
         };
         
         window.renderWeek = function() {
@@ -435,7 +476,20 @@ if not os.path.exists("custom_editor_v4"):
                 document.getElementById("content").innerHTML = args.html_code;
                 totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
                 window.cellDetails = args.cellDetails || {}; defaultCampus = args.defaultCampus || "";
-                document.getElementById('pen-1').innerHTML = defaultCampus ? `可<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可";
+                
+                let defaultCmap = { c: "◯", hex: "#4CAF50" };
+                if (defaultCampus === "なかもず") defaultCmap = { c: "な", hex: "#FFA726" };
+                else if (defaultCampus === "すぎもと" || defaultCampus === "杉本") defaultCmap = { c: "す", hex: "#42A5F5" };
+                else if (defaultCampus === "もりのみや") defaultCmap = { c: "も", hex: "#66BB6A" };
+                else if (defaultCampus === "あべの" || defaultCampus === "阿倍野") defaultCmap = { c: "あ", hex: "#EC407A" };
+                else if (defaultCampus === "りんくう") defaultCmap = { c: "り", hex: "#AB47BC" };
+                else if (defaultCampus === "その他/移動中") defaultCmap = { c: "他", hex: "#9E9E9E" };
+                
+                const p1 = document.getElementById('pen-1');
+                if(p1) {
+                    p1.innerHTML = defaultCampus ? `${defaultCmap.c}<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可";
+                    p1.style.background = defaultCmap.hex;
+                }
                 
                 if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
                 window.renderWeek();
@@ -522,7 +576,6 @@ def format_deadline_jp(date_str):
         dt = pd.to_datetime(clean_str, errors='coerce')
         if pd.isna(dt): return "期限なし"
         
-        # 💡 タイムゾーンパース処理の堅牢化
         if dt.tzinfo is not None:
             dt = dt.tz_convert(None)
             
@@ -531,60 +584,41 @@ def format_deadline_jp(date_str):
     except:
         return str(date_str)
 
+# 💡 UI大改修: パターンではなく色＋文字による直感的な凡例に変更
 campus_legend_html = """
-<div style="margin: 20px 0; padding: 15px; background: #fff; border-radius: 10px; border: 2px solid #4CAF50; box-shadow: 0 4px 10px rgba(0,0,0,0.08);">
-    <strong style="display:block; margin-bottom:12px; color:#2e7d32; font-size:15px;">🎨 キャンパスごとの模様（色見本）</strong>
-    <div style="font-size: 13px; color: #555; margin-bottom: 15px; line-height: 1.5;">
-        左が<span style="color:#4CAF50; font-weight:bold;">「可(緑)」</span>または<span style="color:#FBC02D; font-weight:bold;">「未定(黄)」</span>、右が<span style="color:#888; font-weight:bold;">「授業等(灰)」</span>として登録された際の見え方です。
+<div style="margin: 15px 0; padding: 12px; background: #fff; border-radius: 8px; border: 1px solid #ccc; box-shadow: 0 2px 5px rgba(0,0,0,0.05);">
+    <strong style="display:block; margin-bottom:8px; color:#333; font-size:14px;">🎨 キャンパスの色分け</strong>
+    <div style="font-size: 12px; color: #666; margin-bottom: 12px; line-height: 1.4;">
+        キャンパスごとに色と文字が自動で表示されます。<b>「未定(△)」</b>は少し薄い色で表示されます。
     </div>
-    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 12px; font-size: 14px; color: #333;">
-        <div style="display:flex; align-items:center; gap:8px;">
-            <div style="display:flex; gap:2px;">
-                <div style="width:20px;height:20px; background:#4CAF50; border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-                <div style="width:20px;height:20px; background:#e0e0e0; border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-            </div>
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 13px; color: #333;">
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:24px;height:24px; background:#FFA726; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius:4px;">な</div>
             <b>なかもず</b>
         </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-            <div style="display:flex; gap:2px;">
-                <div style="width:20px;height:20px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 5px, transparent 5px, transparent 10px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-                <div style="width:20px;height:20px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.7), rgba(255,255,255,0.7) 5px, transparent 5px, transparent 10px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-            </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:24px;height:24px; background:#42A5F5; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius:4px;">す</div>
             <b>すぎもと</b>
         </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-            <div style="display:flex; gap:2px;">
-                <div style="width:20px;height:20px; background:#4CAF50; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.15), rgba(0,0,0,0.15) 5px, transparent 5px, transparent 10px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-                <div style="width:20px;height:20px; background:#e0e0e0; background-image:repeating-linear-gradient(-45deg, rgba(0,0,0,0.1), rgba(0,0,0,0.1) 5px, transparent 5px, transparent 10px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-            </div>
-            <b>あべの</b>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-            <div style="display:flex; gap:2px;">
-                <div style="width:20px;height:20px; background:#4CAF50; background-image:radial-gradient(circle, rgba(255,255,255,0.4) 3px, transparent 4px); background-size:10px 10px; border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-                <div style="width:20px;height:20px; background:#e0e0e0; background-image:radial-gradient(circle, rgba(255,255,255,0.8) 3px, transparent 4px); background-size:10px 10px; border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-            </div>
-            <b>りんくう</b>
-        </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-            <div style="display:flex; gap:2px;">
-                <div style="width:20px;height:20px; background:#4CAF50; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 5px, transparent 5px, transparent 10px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-                <div style="width:20px;height:20px; background:#e0e0e0; background-image:repeating-linear-gradient(90deg, rgba(255,255,255,0.7), rgba(255,255,255,0.7) 5px, transparent 5px, transparent 10px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-            </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:24px;height:24px; background:#66BB6A; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius:4px;">も</div>
             <b>もりのみや</b>
         </div>
-        <div style="display:flex; align-items:center; gap:8px;">
-            <div style="display:flex; gap:2px;">
-                <div style="width:20px;height:20px; background:#4CAF50; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 3px, transparent 3px, transparent 6px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.3), rgba(255,255,255,0.3) 3px, transparent 3px, transparent 6px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-                <div style="width:20px;height:20px; background:#e0e0e0; background-image:repeating-linear-gradient(45deg, rgba(255,255,255,0.7), rgba(255,255,255,0.7) 3px, transparent 3px, transparent 6px), repeating-linear-gradient(-45deg, rgba(255,255,255,0.7), rgba(255,255,255,0.7) 3px, transparent 3px, transparent 6px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-            </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:24px;height:24px; background:#EC407A; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius:4px;">あ</div>
+            <b>あべの</b>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:24px;height:24px; background:#AB47BC; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius:4px;">り</div>
+            <b>りんくう</b>
+        </div>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:24px;height:24px; background:#9E9E9E; color:#fff; display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius:4px;">他</div>
             <b>移動・他</b>
         </div>
-        <div style="display:flex; align-items:center; gap:8px; grid-column: 1 / -1; margin-top: 5px;">
-            <div style="display:flex; gap:2px;">
-                <div style="width:20px;height:20px; background:#fff; background-image:repeating-linear-gradient(45deg, transparent, transparent 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px), repeating-linear-gradient(-45deg, transparent, transparent 4px, rgba(0,0,0,0.08) 4px, rgba(0,0,0,0.08) 8px); border-radius:4px; border:1px solid #ccc; box-sizing:border-box;"></div>
-            </div>
-            <b>バイト/サークル等</b> <span style="font-size:12px; color:#888;">(※「不可[白]」扱いになります)</span>
+        <div style="display:flex; align-items:center; gap:6px;">
+            <div style="width:24px;height:24px; background:#E0E0E0; color:#555; display:flex; align-items:center; justify-content:center; font-weight:bold; border-radius:4px;">授</div>
+            <b>授業等 (灰色)</b>
         </div>
     </div>
 </div>
@@ -593,6 +627,9 @@ campus_legend_html = """
 def main():
     if "app_initialized" not in st.session_state:
         st.session_state.app_initialized = True
+
+    if "current_tab" not in st.session_state:
+        st.session_state.current_tab = "📅 入力"
 
     if st.session_state.get("save_success_msg"):
         st.toast(st.session_state.save_success_msg, icon="✅")
@@ -659,8 +696,6 @@ def main():
                 st.info("💡 未所属の方でも、そのまま下部の登録ボタンを押して利用可能です。")
                 reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name")
                 reg_p = st.text_input("PIN (自由な文字列・数字)", type="password", key="reg_pin")
-                
-                # 💡 スマホIMEバグ回避: type="password" を削除
                 reg_s = st.text_input("🔑 秘密の合言葉", key="reg_secret")
                 
                 st.markdown("---")
@@ -676,7 +711,6 @@ def main():
                         new_num = len(all_users_list) + 1
                         new_user_id = f"U{new_num:03}"
 
-                        # 💡 初回管理者セットアップの自動化
                         role_val = "top_admin" if len(all_users_list) == 0 else "guest"
 
                         new_u = {
@@ -709,10 +743,7 @@ def main():
                     with st.form("recovery_auth_form"):
                         st.markdown("<small>登録時に設定した合言葉がわかる方はこちら</small>", unsafe_allow_html=True)
                         rec_n = st.text_input("氏名")
-                        
-                        # 💡 スマホIMEバグ回避: type="password" を外して通常のテキスト入力に変更
                         rec_s = st.text_input("秘密の合言葉")
-                        
                         new_p = st.text_input("設定したい新しいPIN", type="password")
                         if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
                             clean_n = rec_n.replace(" ","").replace("　","")
@@ -1218,7 +1249,6 @@ def main():
                 html_table_ev = df_display[df_display['status'].isin(['open', 'closed'])].to_html(index=False, border=0, classes="custom-tbl")
                 st.markdown("<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; word-break: break-all; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_ev}</div>', unsafe_allow_html=True)
                 
-                # 💡 3. 管理者ダッシュボードのUI整理と誤操作防止（タブ化）
                 st.markdown("---")
                 st.subheader("🛠️ イベント管理 (編集・ステータス・削除)")
                 
@@ -1442,7 +1472,6 @@ def main():
                                         db.collection("users").document(new_uid).set(new_user_data)
                                         db.collection("users").document(old_uid).delete()
                                         
-                                        # 回答データの移行
                                         res_docs = db.collection("responses").where("user_id", "==", old_uid).stream()
                                         for r_doc in res_docs:
                                             r_data = r_doc.to_dict()
@@ -1514,7 +1543,6 @@ def main():
 
     current_ev_id = st.session_state.get("target_ev_id", "")
     
-    # 🚀 [爆速化の要] 読み込み通信はここで1回だけ (0.1秒)
     all_users_fs, events, user_map_fs = get_app_data_from_firestore(user)
     st.session_state.event_responses = fetch_responses_for_event(current_ev_id, user_map_fs) if current_ev_id else []
 
@@ -1525,75 +1553,71 @@ def main():
     now_dt = datetime.now()
 
     unanswered_events = []
+    answered_events = []
     for ev in events:
-        if not ev.get('is_answered') and ev.get('status') == 'open':
+        if ev.get('is_answered'):
+            answered_events.append(ev)
+        elif ev.get('status') == 'open':
             unanswered_events.append(ev)
             
+    # サイドバーのナビゲーション（プルダウン廃止による代替）
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("### 📋 イベント一覧")
+    
     if unanswered_events:
-        st.sidebar.markdown("---")
-        st.sidebar.markdown(f"<div style='color:#FF4B4B; font-weight:bold; padding-bottom: 5px;'>📢 未回答の予定 ({len(unanswered_events)}件)</div>", unsafe_allow_html=True)
+        st.sidebar.markdown(f"<div style='color:#FF4B4B; font-weight:bold; padding-bottom: 5px;'>🔴 未回答 ({len(unanswered_events)}件)</div>", unsafe_allow_html=True)
         for u_ev in unanswered_events:
-            is_urgent = False
-            ev_close_time = u_ev.get('close_time') or u_ev.get('deadline', '')
-            if ev_close_time:
-                try:
-                    dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
-                    if pd.notna(dl_dt):
-                        # 💡 タイムゾーンパース処理の堅牢化
-                        if dl_dt.tzinfo is not None:
-                            dl_dt = dl_dt.tz_convert(None)
-                        if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
-                            is_urgent = True
-                except: pass
-            
-            icon = "🔥" if is_urgent else "🔴"
-            dl_text = format_deadline_jp(ev_close_time)
-            
-            if st.sidebar.button(f"{icon} {u_ev.get('title', '')} (〜{dl_text})", key=f"side_btn_{u_ev.get('event_id')}", use_container_width=True):
+            if st.sidebar.button(f"🔴 {u_ev.get('title', '')[:10]}...", key=f"side_un_{u_ev.get('event_id')}", use_container_width=True):
                 st.session_state.target_ev_id = u_ev.get('event_id')
+                st.session_state.current_tab = "📅 入力"
+                st.rerun()
+                
+    if answered_events:
+        st.sidebar.markdown(f"<div style='color:#4CAF50; font-weight:bold; padding-top: 10px; padding-bottom: 5px;'>✅ 回答済み ({len(answered_events)}件)</div>", unsafe_allow_html=True)
+        for a_ev in answered_events:
+            if st.sidebar.button(f"✅ {a_ev.get('title', '')[:10]}...", key=f"side_ans_{a_ev.get('event_id')}", use_container_width=True):
+                st.session_state.target_ev_id = a_ev.get('event_id')
+                st.session_state.current_tab = "📊 集計"
                 st.rerun()
 
-    if unanswered_events:
-        st.warning(f"⚠️ **未回答のイベントが {len(unanswered_events)} 件あります！** サイドバーのリストから選択して早めの回答をお願いします。")
-
-    default_idx = 0
-    target_id = st.session_state.get("target_ev_id")
-    
-    if target_id:
-        for i, ev in enumerate(events):
-            if ev.get('event_id') == target_id:
-                default_idx = i
-                break
+    # 💡 1. ダッシュボード画面（イベント未選択時）
+    if not current_ev_id:
+        st.subheader("📋 イベント一覧")
+        st.write("回答したいイベントを選択してください。")
+        
+        if unanswered_events:
+            st.markdown("#### 🔴 未回答のイベント")
+            for ev in unanswered_events:
+                ev_close_time = ev.get('close_time') or ev.get('deadline', '')
+                dl_text = format_deadline_jp(ev_close_time)
+                if st.button(f"🔴 {ev['title']} (締切: {dl_text})", key=f"dash_un_{ev['event_id']}", use_container_width=True):
+                    st.session_state.target_ev_id = ev['event_id']
+                    st.session_state.current_tab = "📅 入力"
+                    st.rerun()
         else:
-            st.session_state.target_ev_id = events[0].get('event_id')
-
-    def format_ev_name(x):
-        ev_close_time = x.get('close_time') or x.get('deadline', '')
-        dl_str = format_deadline_jp(ev_close_time)
-        if x.get('status') == 'closed': 
-            icon = "🔒"
-        elif x.get('is_answered'): 
-            icon = "✅"
-        else:
-            is_urgent = False
-            try:
-                if ev_close_time:
-                    dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
-                    if pd.notna(dl_dt):
-                        # 💡 タイムゾーンパース処理の堅牢化
-                        if dl_dt.tzinfo is not None:
-                            dl_dt = dl_dt.tz_convert(None)
-                        if 0 <= (dl_dt - now_dt).total_seconds() <= 3 * 24 * 3600:
-                            is_urgent = True
-            except: pass
-            icon = "🔥" if is_urgent else "🔴"
+            st.success("🎉 現在未回答のイベントはありません！")
             
-        return f"{icon} {x.get('title', '')} [締切: {dl_str}]"
+        if answered_events:
+            st.markdown("<br>", unsafe_allow_html=True)
+            st.markdown("#### ✅ 回答済みのイベント")
+            for ev in answered_events:
+                ev_close_time = ev.get('close_time') or ev.get('deadline', '')
+                dl_text = format_deadline_jp(ev_close_time)
+                if st.button(f"✅ {ev['title']} (締切: {dl_text})", key=f"dash_ans_{ev['event_id']}", use_container_width=True):
+                    st.session_state.target_ev_id = ev['event_id']
+                    st.session_state.current_tab = "📊 集計"
+                    st.rerun()
+        return  # ダッシュボード表示時はここで終了
 
-    event = st.selectbox("🎯 対象イベント選択", events, index=default_idx, format_func=format_ev_name)
-    
-    if st.session_state.get("target_ev_id") != event.get('event_id'):
-        st.session_state.target_ev_id = event.get('event_id')
+    # 💡 イベント個別画面
+    event = next((e for e in events if e.get('event_id') == current_ev_id), None)
+    if not event:
+        st.session_state.target_ev_id = None
+        st.rerun()
+
+    if st.button("🔙 イベント一覧に戻る"):
+        st.session_state.target_ev_id = None
+        st.session_state.current_tab = "📅 入力"
         st.rerun()
 
     is_closed = event.get('status') == 'closed'
@@ -1604,20 +1628,29 @@ def main():
         if user.get("role") not in ["admin", "top_admin"]:
             can_view_details = False
 
+    st.markdown(f"## {event.get('title', '')}")
+
+    # 💡 5. 回答済みの明示
+    if event.get('is_answered'):
+        st.success("✅ あなたは回答済みです（修正も可能です）。他の人の回答は「📊 集計」から確認できます。")
+
     ev_close_time = event.get('close_time') or event.get('deadline', '')
     if is_closed: 
         st.markdown("<div class='closed-alert' style='background:#ffebee; color:#c62828; padding:10px; border-radius:6px; font-weight:bold; margin-bottom:10px;'>🔒 このイベントは締め切られました。</div>", unsafe_allow_html=True)
     elif ev_close_time: 
         st.markdown(f"<div style='color: #E91E63; font-weight: bold; margin-bottom: 10px;'>⏳ 回答期限: {format_deadline_jp(ev_close_time)}</div>", unsafe_allow_html=True)
         
+    # 💡 2. 長い説明文の折りたたみ
     if event.get('description'): 
-        st.markdown(f"<div class='event-desc'><b>📝 管理者からのメッセージ:</b><br><br>{event['description'].replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
+        with st.expander("📝 イベントの説明・管理者メッセージ", expanded=False):
+            st.markdown(event['description'].replace(chr(10), '<br>'), unsafe_allow_html=True)
         
     if is_private_event:
         st.info("🤫 **このイベントはプライベート設定されています。** 管理者以外には、誰が回答したかの名前やコメントは表示されず、全体の人数のみが表示されます。")
 
-    st.markdown("##### 🔗 このイベントの招待URL")
-    st.code(f"{APP_BASE_URL}?event={event.get('event_id')}", language="text")
+    # 💡 5. タブ切り替えハック
+    selected_tab = st.radio("画面を切り替え", ["📅 入力", "📊 集計"], horizontal=True, key="current_tab", label_visibility="collapsed")
+    st.markdown("<br>", unsafe_allow_html=True)
 
     event_type = event.get('type') or event.get('event_type', 'time')
 
@@ -1626,8 +1659,6 @@ def main():
         if event_type == 'time':
             s_idx = int(event.get('start_time_idx') or event.get('start_idx', 0))
             e_idx = int(event.get('end_time_idx') or event.get('end_idx', 0))
-            
-            # 古いイベントなどでバグがある場合の安全装置
             if e_idx <= s_idx: e_idx = s_idx + 1
             
             date_objs = []
@@ -1642,8 +1673,6 @@ def main():
             while curr <= end_d: date_objs.append(curr); curr += timedelta(days=1)
             date_strs = [d.strftime("%Y-%m-%d") for d in date_objs]
             clean_date_labels = [f"{d.strftime('%m/%d')}({['月','火','水','木','金','土','日'][d.weekday()]})" for d in date_objs]
-            
-            # 💡 「〜18:00」なら「17:45のマス」が最後になるように描画
             time_labels = [idx_to_time(i) for i in range(s_idx, e_idx)]
             
             week_nav_display = "flex"
@@ -1672,7 +1701,7 @@ def main():
                     if unavail_rows: unavail_col_rows[str(c)] = unavail_rows
                     
         else: # 🏫 timetable モード
-            s_idx, e_idx = 0, 6 # 5ではなく6要素ぶん
+            s_idx, e_idx = 0, 6
             date_strs = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
             clean_date_labels = ["月曜", "火曜", "水曜", "木曜", "金曜"]
             time_labels = ["1限", "2限", "3限", "4限", "5限", "放課後"]
@@ -1713,71 +1742,34 @@ def main():
             st.session_state.my_comment = my_comment
             st.session_state.last_build_ev_id = event.get('event_id')
 
-        if event_type == 'time':
-            st.markdown("<div style='margin-bottom: 5px; font-weight: bold; color: #333;'>🔍 カレンダーの表示サイズ（マスの縦幅）</div>", unsafe_allow_html=True)
-            col_z1, col_z2 = st.columns([1.5, 1])
-            with col_z1: zoom_mode = st.radio("表示サイズ", ["小 (全体を俯瞰)", "標準", "大 (タップしやすい)"], index=1, horizontal=True, label_visibility="collapsed")
-            with col_z2: st.markdown("<div style='font-size:11px; color:#888; margin-top:8px;'>※変更すると未保存の入力はリセットされます。</div>", unsafe_allow_html=True)
-            if zoom_mode.startswith("小"): cell_h = "20px"
-            elif zoom_mode.startswith("大"): cell_h = "50px"
-            else: cell_h = "36px"
-
-        tab_in, tab_graph = st.tabs(["📅 入力", "📊 集計"])
-        with tab_in:
+        if selected_tab == "📅 入力":
             if event_type == 'time':
-                st.markdown("##### 📅 カレンダー連携")
-                c_import1, c_import2 = st.columns([3, 1])
-                with c_import1:
-                    st.write("プロフィールに設定したカレンダーの予定を読み込んで、自動で「授業等(グレー)」として反映します。")
-                with c_import2:
-                    if st.button("🔄 カレンダーから取得", use_container_width=True):
-                        user_cal_url = user.get('calendar_url', '')
-                        if not user_cal_url or "http" not in user_cal_url:
-                            st.warning("プロフィール画面でカレンダーの非公開URLを設定してください。")
-                        else:
-                            with st.spinner("予定を取得中..."):
-                                res = call_gas("import_google_calendar", {
-                                    "payload": {
-                                        "start_date": event.get('start_date'),
-                                        "end_date": event.get('end_date'),
-                                        "ical_url": user_cal_url
-                                    }
-                                }, method="POST")
-                                
-                                if res.get("status") == "success":
-                                    busy_data = res.get("data", {}).get("busy_slots", {})
-                                    if not busy_data:
-                                        st.info("指定期間に予定は見つかりませんでした。")
-                                    else:
-                                        for d_str, slots in busy_data.items():
-                                            if d_str in st.session_state.df_input.columns:
-                                                for t_idx in slots:
-                                                    if s_idx <= t_idx < e_idx:
-                                                        time_label = time_master[t_idx]
-                                                        if time_label in st.session_state.df_input.index:
-                                                            st.session_state.df_input.loc[time_label, d_str] = 3
-                                        st.success("カレンダーの予定を反映しました！内容を確認して「提出」を押してください。")
-                                        time.sleep(1)
-                                        st.rerun()
-                                else:
-                                    st.error("取得に失敗しました。GAS側の権限承認が済んでいるか確認してください。")
-
-            st.markdown("---")
-
+                col_z1, col_z2 = st.columns([1.5, 1])
+                with col_z1: zoom_mode = st.radio("表示サイズ", ["小", "標準", "大"], index=1, horizontal=True, label_visibility="collapsed")
+                with col_z2: st.markdown("<div style='font-size:11px; color:#888; margin-top:8px;'>※変更すると未保存の入力はリセットされます。</div>", unsafe_allow_html=True)
+                if zoom_mode.startswith("小"): cell_h = "20px"
+                elif zoom_mode.startswith("大"): cell_h = "50px"
+                else: cell_h = "36px"
+            
             user_campuses = [x.strip() for x in str(user.get('group_1', '')).split(',') if x.strip()]
             default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
             campus_options = MASTER_G1 + ["その他/移動中"]
             default_index = campus_options.index(default_campus_initial) if default_campus_initial in campus_options else 0
             
             st.markdown("##### 📍 今回のデフォルト所在地")
-            selected_default_campus = st.selectbox("「可」を塗った時に自動で設定されるキャンパス", campus_options, index=default_index)
+            selected_default_campus = st.selectbox("「可」を塗った時に自動で設定されるキャンパス", campus_options, index=default_index, label_visibility="collapsed")
 
-            st.markdown(campus_legend_html, unsafe_allow_html=True)
+            # 💡 4. ミニガイド設置
+            if not is_closed:
+                st.markdown("""
+                <div style="background: #E3F2FD; padding: 12px; border-radius: 8px; margin-top: 10px; margin-bottom: 15px; font-size: 14px; color: #1565C0; font-weight: bold; text-align: center; border: 2px solid #90CAF9; box-shadow: 0 2px 4px rgba(0,0,0,0.05);">
+                    💡 使い方： ① 右上の「ペン」を選ぶ ➡️ ② カレンダーのマスをなぞる ➡️ ③ 下の「提出」を押す
+                </div>
+                """, unsafe_allow_html=True)
 
             m = st.session_state.df_input[date_strs].values.tolist()
             time_opts_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(time_labels)])
             
-            # --- 💡 終了時刻用に +15分 したラベルを生成 ---
             if event_type == 'time':
                 end_time_labels = [idx_to_time(time_master.index(t) + 1) if time_master.index(t) < 95 else "24:00" for t in time_labels]
                 time_opts_end_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(end_time_labels)])
@@ -1794,13 +1786,9 @@ def main():
                 cells_html = ""
                 for r, t_str in enumerate(time_labels):
                     val = int(m[r][c])
-                    if val == 1: bg, bg_img = "#4CAF50", "none"
-                    elif val == 2: bg, bg_img = "#FFEB3B", "none"
-                    elif val == 3: bg, bg_img = "#e0e0e0", "repeating-linear-gradient(45deg, transparent, transparent 5px, rgba(255,255,255,.7) 5px, rgba(255,255,255,.7) 10px)"
-                    else: bg, bg_img = "#fff", "none"
-                    
                     b_top = get_border_top(t_str, event_type)
-                    cells_html += f'<div class="c" data-r="{r}" data-c="{c}" data-v="{val}" style="height:{cell_h}; background:{bg}; background-image:{bg_img}; cursor:pointer; border-top:{b_top}; border-right:1px solid #eee; box-sizing:border-box;"></div>'
+                    # 初期描画時のダミー背景（JSで即座に上書きされるので白でOK）
+                    cells_html += f'<div class="c" data-r="{r}" data-c="{c}" data-v="{val}" style="height:{cell_h}; background:#fff; cursor:pointer; border-top:{b_top}; border-right:1px solid #eee; box-sizing:border-box;"></div>'
                 day_cols_html += f'<div class="day-col" data-c="{c}" style="flex:1; min-width:85px; box-sizing:border-box; display:none;"><div class="header-cell">{lbl}</div>{cells_html}</div>'
 
             time_cells_html = ""
@@ -1816,12 +1804,8 @@ def main():
                 tools_html = f"""
                 <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom: 20px;">
                     <div class="tool-card" style="display:{'none' if event_type == 'timetable' else 'block'};"><div class="tool-header">🪄 一括指定ツール</div>
-                        <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">状態: <select id="b-val" class="st-sel"><option value="1">可 (緑)</option><option value="2">未定 (黄)</option><option value="0">不可 (白)</option></select>時間: <select id="b-start" class="st-sel">{time_opts_html}</select> 〜 <select id="b-end" class="st-sel"><option value="{len(time_labels)-1}" selected>{end_time_labels[-1] if event_type == "time" else time_labels[-1]}</option>{time_opts_end_html}</select></div>
+                        <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">状態: <select id="b-val" class="st-sel"><option value="1">可 (濃)</option><option value="2">未定 (薄)</option><option value="0">不可 (白)</option></select>時間: <select id="b-start" class="st-sel">{time_opts_html}</select> 〜 <select id="b-end" class="st-sel"><option value="{len(time_labels)-1}" selected>{end_time_labels[-1] if event_type == "time" else time_labels[-1]}</option>{time_opts_end_html}</select></div>
                         <div style="display:flex; gap:10px; align-items:center;">対象: <div class="ms-container"><div class="ms-header" onclick="window.toggleList('b-days-list');">対象日を選択 <span>▼</span></div><div id="b-days-list" class="ms-options" style="display:none;"><label class="ms-opt" style="font-weight:bold;"><input type="checkbox" onchange="document.querySelectorAll('.b-day-chk').forEach(c => c.checked = this.checked)" checked> 全て選択 / 解除</label><hr style="margin:5px 0; border:0; border-top:1px solid #ccc;">{b_day_opts_html}</div></div><button class="st-btn" onclick="window.doBulk(this)">適用</button></div>
-                    </div>
-                    <div class="tool-card"><div class="tool-header">📋 日程コピー機能</div>
-                        <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">元: <select id="c-src" class="st-sel" style="flex:1;">{src_opts_html}</select></div>
-                        <div style="display:flex; gap:10px; align-items:center;">先: <div class="ms-container"><div class="ms-header" onclick="window.toggleList('c-tgt-list');">対象日を選択 <span>▼</span></div><div id="c-tgt-list" class="ms-options" style="display:none;"><label class="ms-opt" style="font-weight:bold;"><input type="checkbox" onchange="document.querySelectorAll('.c-tgt-chk').forEach(c => c.checked = this.checked)"> 全て選択 / 解除</label><hr style="margin:5px 0; border:0; border-top:1px solid #ccc;">{c_tgt_opts_html}</div></div><button class="st-btn" onclick="window.doCopy(this)" style="background:#FF9800;">コピー実行</button></div>
                     </div>
                     <div class="tool-card"><div class="tool-header">⏰ 時間割パワー反映</div>
                         <p style="font-size:12px; color:#555; margin:0 0 10px 0;">DBに保存された時間割を展開し、場所情報付きで自動反映させます。</p>
@@ -1839,7 +1823,6 @@ def main():
                 pointer_css = "pointer-events: none; opacity: 0.8;"
                 submit_btn_html = f"""<div style="margin-top: 20px;"><label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント</label><div style="width: 100%; padding: 10px; margin-top: 5px; background: #eee; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; min-height:40px;">{st.session_state.my_comment}</div></div>"""
 
-            # 💡 カレンダーの空白余白をなくす（高さをAutoに）
             scroll_css = "max-height: 650px; height: auto;"
 
             html_code = f"""
@@ -1936,11 +1919,11 @@ def main():
                         "responses": all_res
                     }
                     if save_response_hybrid(payload):
-                        st.session_state.save_success_msg = "回答を保存しました！"
+                        st.session_state.save_success_msg = "回答を保存しました！みんなの結果も確認してみてください。"
+                        st.session_state.current_tab = "📊 集計" # 💡 提出後に自動遷移
                         st.rerun()
 
-        with tab_graph:
-            st.subheader("📊 全体の集計結果")
+        elif selected_tab == "📊 集計":
             col1, col2 = st.columns([2, 1])
             with col1: policy = st.radio("「未定(△)」の計算方法", [0.5, 1.0, 0.0], format_func=lambda x: f"{x}人としてカウント", horizontal=True)
             with col2:
@@ -2041,129 +2024,136 @@ def main():
             if unique_all != unique_filtered:
                 st.info(f"🔍 フィルター適用中： 回答者 **{unique_all}人** 中、条件に合う **{unique_filtered}人** のデータを集計しています。")
 
-            if st.checkbox("集計グラフを表示", value=True):
-                st.markdown(campus_legend_html, unsafe_allow_html=True)
+            st.markdown(campus_legend_html, unsafe_allow_html=True)
+            
+            if not disp_date_strs or not disp_time_labels:
+                st.warning("⚠️ 指定された条件に合う日付または時間帯がありません。フィルター条件を広げてください。")
+            else:
+                z = np.zeros((len(disp_time_labels), len(disp_date_strs)))
+                h = [["" for _ in range(len(disp_date_strs))] for _ in range(len(disp_time_labels))]
+                comments_list = []
                 
-                if not disp_date_strs or not disp_time_labels:
-                    st.warning("⚠️ 指定された条件に合う日付または時間帯がありません。フィルター条件を広げてください。")
-                else:
-                    z = np.zeros((len(disp_time_labels), len(disp_date_strs)))
-                    h = [["" for _ in range(len(disp_date_strs))] for _ in range(len(disp_time_labels))]
-                    comments_list = []
+                for r in filtered_data:
+                    if r.get('date') not in disp_date_strs:
+                        continue
+                        
+                    c_idx = disp_date_strs.index(r['date'])
                     
-                    for r in filtered_data:
-                        if r.get('date') not in disp_date_strs:
-                            continue
-                            
-                        c_idx = disp_date_strs.index(r['date'])
+                    b = str(r.get('binary_data') or r.get('binary', "")).replace("'", "").zfill(96)
+                    
+                    cd = {}
+                    if r.get('cell_details') and str(r.get('cell_details')).strip() not in ["", "{}"]:
+                        try: cd = json.loads(r['cell_details'])
+                        except: pass
                         
-                        b = str(r.get('binary_data') or r.get('binary', "")).replace("'", "").zfill(96)
-                        
-                        cd = {}
-                        if r.get('cell_details') and str(r.get('cell_details')).strip() not in ["", "{}"]:
-                            try: cd = json.loads(r['cell_details'])
-                            except: pass
-                            
-                        u_campuses = [x.strip() for x in str(r.get('group_1', '')).split(',') if x.strip()]
-                        u_default_campus = u_campuses[0] if u_campuses else ""
+                    u_campuses = [x.strip() for x in str(r.get('group_1', '')).split(',') if x.strip()]
+                    u_default_campus = u_campuses[0] if u_campuses else ""
 
-                        if can_view_details and r.get('comment') and r.get('comment').strip() != "":
-                            if {"user": r.get('user_name'), "comment": r.get('comment')} not in comments_list: 
-                                comments_list.append({"user": r.get('user_name'), "comment": r.get('comment')})
+                    if can_view_details and r.get('comment') and r.get('comment').strip() != "":
+                        if {"user": r.get('user_name'), "comment": r.get('comment')} not in comments_list: 
+                            comments_list.append({"user": r.get('user_name'), "comment": r.get('comment')})
+                    
+                    for disp_r, t_str in enumerate(disp_time_labels):
+                        orig_r_idx = time_labels.index(t_str)
+                        orig_v = int(b[s_idx + orig_r_idx]) if event_type == 'time' else int(b[orig_r_idx])
                         
-                        for disp_r, t_str in enumerate(disp_time_labels):
-                            orig_r_idx = time_labels.index(t_str)
-                            orig_v = int(b[s_idx + orig_r_idx]) if event_type == 'time' else int(b[orig_r_idx])
-                            
-                            v = 0 if orig_v == 3 else orig_v
-                            
-                            cell_campus = u_default_campus if orig_v in [1, 2] else ""
-                            cell_note = ""
-                            
-                            cell_key = f"{orig_r_idx}_{c_idx}"
-                            if cell_key in cd:
-                                if cd[cell_key].get('campus'): cell_campus = cd[cell_key]['campus']
-                                if cd[cell_key].get('note'): cell_note = cd[cell_key]['note']
-                            
-                            if f_locs and orig_v in [1, 2, 3]:
-                                if cell_campus not in f_locs:
-                                    continue 
-                                    
-                            z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
-                            
-                            if can_view_details and orig_v in [1, 2, 3]:
-                                campus_str = f" ({cell_campus})" if cell_campus else ""
-                                note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cell_note}]</span>" if cell_note else ""
-                                name_html = f"{r.get('user_name', '')}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
+                        v = 0 if orig_v == 3 else orig_v
+                        
+                        cell_campus = u_default_campus if orig_v in [1, 2] else ""
+                        cell_note = ""
+                        
+                        cell_key = f"{orig_r_idx}_{c_idx}"
+                        if cell_key in cd:
+                            if cd[cell_key].get('campus'): cell_campus = cd[cell_key]['campus']
+                            if cd[cell_key].get('note'): cell_note = cd[cell_key]['note']
+                        
+                        if f_locs and orig_v in [1, 2, 3]:
+                            if cell_campus not in f_locs:
+                                continue 
                                 
-                                if orig_v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
-                                elif orig_v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
-                                elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>📓 {name_html}</span><br>"
+                        z[disp_r, c_idx] += (1.0 if v==1 else policy if v==2 else 0.0)
+                        
+                        if can_view_details and orig_v in [1, 2, 3]:
+                            campus_str = f" ({cell_campus})" if cell_campus else ""
+                            note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cell_note}]</span>" if cell_note else ""
+                            
+                            # 💡 凡例の記号に合わせて集計表示も最適化
+                            icon_str = "◯"
+                            if orig_v == 2: icon_str = "△"
+                            if orig_v == 3: icon_str = "📓"
+                            
+                            name_html = f"{r.get('user_name', '')}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
+                            
+                            if orig_v==1: h[disp_r][c_idx] += f"{icon_str} {name_html}<br>"
+                            elif orig_v==2: h[disp_r][c_idx] += f"{icon_str} {name_html}<br>"
+                            elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>{icon_str} {name_html}</span><br>"
+                
+                max_z = np.max(z) if np.max(z) > 0 else 1
+                
+                # 💡 集計グラフの行の高さ合わせ
+                cell_h = "36px"
+                
+                agg_time_cells = ""
+                for r, t_str in enumerate(disp_time_labels):
+                    b_top = get_border_top(t_str, event_type)
+                    lbl = t_str if t_str.endswith(":00") or t_str.endswith(":30") or event_type == 'timetable' else ""
+                    agg_time_cells += f'<div class="agg-time-cell" style="border-top:{b_top}; height:{cell_h};">{lbl}</div>'
                     
-                    max_z = np.max(z) if np.max(z) > 0 else 1
-                    
-                    agg_time_cells = ""
+                agg_time_col = f'<div class="agg-time-col"><div class="agg-top-left"></div>{agg_time_cells}</div>'
+                
+                agg_day_cols = ""
+                for c, d_str in enumerate(disp_date_strs):
+                    lbl = disp_clean_date_labels[c].replace("(", "<br>(")
+                    cells_html = ""
                     for r, t_str in enumerate(disp_time_labels):
+                        val = z[r][c]
                         b_top = get_border_top(t_str, event_type)
-                        lbl = t_str if t_str.endswith(":00") or t_str.endswith(":30") or event_type == 'timetable' else ""
-                        agg_time_cells += f'<div class="agg-time-cell" style="border-top:{b_top}; height:{cell_h};">{lbl}</div>'
+                        if val == 0: bg, txt_color, val_txt = "#ffffff", "#ccc", "-"
+                        else:
+                            ratio = val / max_z
+                            r_col = int(240 - (240 - 46) * ratio); g_col = int(248 - (248 - 125) * ratio); b_col = int(242 - (242 - 50) * ratio)
+                            bg, txt_color, val_txt = f"rgb({r_col}, {g_col}, {b_col})", ("#000" if ratio < 0.6 else "#fff"), f"{val:g}"
                         
-                    agg_time_col = f'<div class="agg-time-col"><div class="agg-top-left"></div>{agg_time_cells}</div>'
-                    
-                    agg_day_cols = ""
-                    for c, d_str in enumerate(disp_date_strs):
-                        lbl = disp_clean_date_labels[c].replace("(", "<br>(")
-                        cells_html = ""
-                        for r, t_str in enumerate(disp_time_labels):
-                            val = z[r][c]
-                            b_top = get_border_top(t_str, event_type)
-                            if val == 0: bg, txt_color, val_txt = "#ffffff", "#ccc", "-"
-                            else:
-                                ratio = val / max_z
-                                r_col = int(240 - (240 - 46) * ratio); g_col = int(248 - (248 - 125) * ratio); b_col = int(242 - (242 - 50) * ratio)
-                                bg, txt_color, val_txt = f"rgb({r_col}, {g_col}, {b_col})", ("#000" if ratio < 0.6 else "#fff"), f"{val:g}"
+                        if not can_view_details: tooltip_txt = f"この時間帯は {val_txt} 人が参加可能です"
+                        else: tooltip_txt = h[r][c] if h[r][c] else "参加可能者なし"
                             
-                            if not can_view_details: tooltip_txt = f"この時間帯は {val_txt} 人が参加可能です"
-                            else: tooltip_txt = h[r][c] if h[r][c] else "参加可能者なし"
-                                
-                            agg_font_size = "11px" if cell_h == "20px" else "15px"
-                            tt_class = "tooltip-down" if r < 3 else "tooltip-up"
-                            
-                            cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
-                        agg_day_cols += f'<div class="agg-day-col"><div class="agg-header">{lbl}</div>{cells_html}</div>'
+                        agg_font_size = "13px"
+                        tt_class = "tooltip-down" if r < 3 else "tooltip-up"
+                        
+                        cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
+                    agg_day_cols += f'<div class="agg-day-col"><div class="agg-header">{lbl}</div>{cells_html}</div>'
 
-                    # 💡 4. 集計グラフのツールチップのスクロール対応
-                    agg_css = f"""
-                    <style>
-                    .agg-wrapper {{ max-height: 680px; height: auto; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; padding-bottom: 50px; }}
-                    .agg-time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; }}
-                    .agg-header {{ position: sticky; top: 0; z-index: 11; background: #eee; font-size: 13px; font-weight: bold; text-align: center; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-sizing: border-box; line-height: 1.2; }}
-                    .agg-top-left {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
-                    .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
-                    .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
-                    
-                    .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ 
-                        visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); 
-                        max-height: 250px; overflow-y: auto; -webkit-overflow-scrolling: touch; pointer-events: auto;
-                    }}
-                    
-                    .agg-cell .tooltip-up::-webkit-scrollbar, .agg-cell .tooltip-down::-webkit-scrollbar {{ width: 6px; }}
-                    .agg-cell .tooltip-up::-webkit-scrollbar-thumb, .agg-cell .tooltip-down::-webkit-scrollbar-thumb {{ background-color: rgba(255, 255, 255, 0.4); border-radius: 3px; }}
-                    
-                    .agg-cell .tooltip-up {{ bottom: 100%; margin-bottom: 8px; }}
-                    .agg-cell .tooltip-down {{ top: 100%; margin-top: 8px; }}
-                    .agg-cell .tooltip-up::after {{ content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: rgba(30,30,30,0.95) transparent transparent transparent; }}
-                    .agg-cell .tooltip-down::after {{ content: ""; position: absolute; bottom: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: transparent transparent rgba(30,30,30,0.95) transparent; }}
-                    .agg-cell:hover .tooltip-up, .agg-cell:hover .tooltip-down {{ visibility: visible; opacity: 1; }}
-                    
-                    .agg-time-cell {{ background: #f0f2f6; font-size: 12px; font-weight: bold; color: #555; display: flex; align-items: center; justify-content: center; border-right: 1px solid #ccc; box-sizing: border-box; }}
-                    </style>
-                    """
-                    st.markdown(f"{agg_css}<div class='agg-wrapper'>{agg_time_col}{agg_day_cols}</div>", unsafe_allow_html=True)
-                    
-                    if comments_list and can_view_details:
-                        st.markdown("### 💬 参加者からのコメント")
-                        for c in comments_list: st.info(f"**{c['user']}**: {c['comment']}")
+                agg_css = f"""
+                <style>
+                .agg-wrapper {{ max-height: 680px; height: auto; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; padding-bottom: 50px; }}
+                .agg-time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; }}
+                .agg-header {{ position: sticky; top: 0; z-index: 11; background: #eee; font-size: 13px; font-weight: bold; text-align: center; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-sizing: border-box; line-height: 1.2; }}
+                .agg-top-left {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
+                .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
+                .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
+                
+                .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ 
+                    visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); 
+                    max-height: 250px; overflow-y: auto; -webkit-overflow-scrolling: touch; pointer-events: auto;
+                }}
+                
+                .agg-cell .tooltip-up::-webkit-scrollbar, .agg-cell .tooltip-down::-webkit-scrollbar {{ width: 6px; }}
+                .agg-cell .tooltip-up::-webkit-scrollbar-thumb, .agg-cell .tooltip-down::-webkit-scrollbar-thumb {{ background-color: rgba(255, 255, 255, 0.4); border-radius: 3px; }}
+                
+                .agg-cell .tooltip-up {{ bottom: 100%; margin-bottom: 8px; }}
+                .agg-cell .tooltip-down {{ top: 100%; margin-top: 8px; }}
+                .agg-cell .tooltip-up::after {{ content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: rgba(30,30,30,0.95) transparent transparent transparent; }}
+                .agg-cell .tooltip-down::after {{ content: ""; position: absolute; bottom: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: transparent transparent rgba(30,30,30,0.95) transparent; }}
+                .agg-cell:hover .tooltip-up, .agg-cell:hover .tooltip-down {{ visibility: visible; opacity: 1; }}
+                
+                .agg-time-cell {{ background: #f0f2f6; font-size: 12px; font-weight: bold; color: #555; display: flex; align-items: center; justify-content: center; border-right: 1px solid #ccc; box-sizing: border-box; }}
+                </style>
+                """
+                st.markdown(f"{agg_css}<div class='agg-wrapper'>{agg_time_col}{agg_day_cols}</div>", unsafe_allow_html=True)
+                
+                if comments_list and can_view_details:
+                    st.markdown("### 💬 参加者からのコメント")
+                    for c in comments_list: st.info(f"**{c['user']}**: {c['comment']}")
 
     # ＝＝＝＝＝ 📅 複数の予定 (候補リスト) モード ＝＝＝＝＝
     elif event_type == 'options':
@@ -2172,8 +2162,7 @@ def main():
         if "event_responses" not in st.session_state:
             st.session_state.event_responses = []
 
-        tab_in, tab_graph = st.tabs(["📅 入力", "📊 集計"])
-        with tab_in:
+        if selected_tab == "📅 入力":
             my_ans_row = next((r for r in st.session_state.event_responses if str(r.get('user_id')) == str(user.get('user_id'))), None)
             
             b_data_val = my_ans_row.get('binary_data') or my_ans_row.get('binary', "") if my_ans_row else ""
@@ -2197,11 +2186,11 @@ def main():
                     "responses": res_data
                 }
                 if save_response_hybrid(payload):
-                    st.session_state.save_success_msg = "回答を保存しました！"
+                    st.session_state.save_success_msg = "回答を保存しました！みんなの結果も確認してみてください。"
+                    st.session_state.current_tab = "📊 集計" # 💡 提出後に自動遷移
                     st.rerun()
 
-        with tab_graph:
-            st.subheader("📊 予定の集計結果")
+        elif selected_tab == "📊 集計":
             col1, col2 = st.columns([2, 1])
             with col1: policy = st.radio("「未定(△)」の計算方法", [0.5, 1.0, 0.0], format_func=lambda x: f"{x}人としてカウント", horizontal=True, key="opt_policy")
             with col2:
