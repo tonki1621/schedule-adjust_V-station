@@ -324,7 +324,6 @@ if not os.path.exists("custom_editor_v4"):
             closeModal();
         };
 
-        // 💡 追加: ユーザーがペンで塗った時「専用」の処理（ここで初めてデータを書き換える）
         window.paintCell = function(cell, mode) {
             if(!cell) return;
             const key = `${cell.dataset.r}_${cell.dataset.c}`;
@@ -333,19 +332,17 @@ if not os.path.exists("custom_editor_v4"):
             if (mode == 1 || mode == 2) {
                 let existingNote = window.cellDetails[key] ? window.cellDetails[key].note : "";
                 window.cellDetails[key] = {campus: currentDefCampus, note: existingNote};
+            } else if (mode == 0) {
+                let detail = window.cellDetails[key];
+                if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
+                else { delete window.cellDetails[key]; }
             }
             window.upd(cell, mode);
         };
 
-        // 💡 修正: レンダリング処理（既存のデータを読み込んで見た目を作るだけ）
         window.upd = function(el, v) { 
             el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key];
             
-            if (v == 0) {
-                if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
-                else { delete window.cellDetails[key]; detail = null; }
-            }
-
             let campus = detail ? detail.campus : "";
             let note = detail ? detail.note : "";
             
@@ -395,7 +392,6 @@ if not os.path.exists("custom_editor_v4"):
         };
         window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
         
-        // 💡 修正: 便利ツール内での一括指定とコピーにも paintCell を適用
         window.doBulk = function(btnEl) {
             const val = document.getElementById('b-val').value;
             const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value);
@@ -421,9 +417,9 @@ if not os.path.exists("custom_editor_v4"):
                         const r = (typeof item === 'object') ? item.row : item; const campus = (typeof item === 'object') ? item.campus : ""; const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
                         if(cell) {
                             const cellKey = `${r}_${c}`;
-                            if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") { window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"}; window.upd(cell, 0); }
-                            else if (campus) { window.cellDetails[cellKey] = {campus: campus, note: "定期授業"}; window.upd(cell, 3); }
-                            else { window.upd(cell, 3); }
+                            if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") { window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"}; window.paintCell(cell, 0); }
+                            else if (campus) { window.cellDetails[cellKey] = {campus: campus, note: "定期授業"}; window.paintCell(cell, 3); }
+                            else { window.paintCell(cell, 3); }
                         }
                     });
                 }
@@ -459,7 +455,6 @@ if not os.path.exists("custom_editor_v4"):
             document.getElementById('pen-2').style.opacity = 0.6;
             document.getElementById('pen-2').style.color = "#fff";
             
-            // 💡 修正: ペンを持ち替えたら自動的に「可」を選択状態にする
             window.setPen(1);
         };
 
@@ -493,8 +488,6 @@ if not os.path.exists("custom_editor_v4"):
                 setTimeout(() => { window.setPen(selectedMode); }, 50);
                 
                 const g = document.getElementById('g'); if(!g) return;
-                
-                // 💡 修正: ドラッグと長押しの厳密な判定と視覚的フィードバック
                 let down = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0; let touchMode = null; let pressTarget = null;
 
                 const handleStart = (e, x, y) => {
@@ -503,7 +496,7 @@ if not os.path.exists("custom_editor_v4"):
                     down = true; isLongPress = false; touchMode = null; startX = x; startY = y;
                     
                     pressTarget = cell;
-                    pressTarget.classList.add('pressing'); // へこむアニメーションを開始
+                    pressTarget.classList.add('pressing');
                     
                     pressTimer = setTimeout(() => {
                         if (down) {
@@ -518,14 +511,12 @@ if not os.path.exists("custom_editor_v4"):
                     if (selectedMode === -1 || !down) return;
                     if (e.cancelable) e.preventDefault(); 
                     
-                    // 10px以上動いたらドラッグ（塗りつぶし）と判定し、長押しを即座にキャンセル
                     if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) {
                         if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
                         if (pressTarget) { pressTarget.classList.remove('pressing'); pressTarget = null; }
                     }
 
                     const cell = document.elementFromPoint(x, y)?.closest('.c');
-                    // 別のセルに入った場合も長押しをキャンセル
                     if(cell && pressTarget && cell !== pressTarget) {
                         if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
                         if (pressTarget) { pressTarget.classList.remove('pressing'); pressTarget = null; }
@@ -560,8 +551,6 @@ if not os.path.exists("custom_editor_v4"):
                     setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
                     btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
                 }; }
-                
-                // 初回描画時のみ純粋なレンダリング(upd)を使用し、データを上書きしない
                 document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
             }
         }); init(); </script></body></html>
