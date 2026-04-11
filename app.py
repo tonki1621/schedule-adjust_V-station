@@ -176,7 +176,6 @@ def fetch_responses_for_event(event_id, user_map):
 st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide", initial_sidebar_state="expanded")
 APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
-# 💡 CSS修正: サイドバーのメニュー崩れを防止するため、stRadioの幅指定を削除しました
 st.markdown("""
     <style>
         @media (max-width: 650px) {
@@ -250,6 +249,7 @@ if not os.path.exists("custom_editor_v4"):
             <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#81C784; color:#fff;">未定</button>
             <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
             <hr style="margin:0; border-top:1px solid #ddd;">
+            <button class="pen-btn" onclick="window.setPen(-2)" id="pen--2" style="background:#2196F3; color:#fff; border:2px solid #1976D2; font-size:11px;">ℹ️<br>詳細</button>
             <button class="pen-btn" onclick="window.setPen(-1)" id="pen--1" style="background:#9C27B0; color:#fff; border:2px solid #7B1FA2; font-size:10px; margin-top:0px;">📜<br>ｽｸﾛｰﾙ</button>
         </div>
 
@@ -301,7 +301,11 @@ if not os.path.exists("custom_editor_v4"):
 
         window.openModal = function(cell) {
             editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`;
-            const detail = window.cellDetails[key] || {campus: document.getElementById('ui-default-campus') ? document.getElementById('ui-default-campus').value : defaultCampus, note: ""};
+            // 常に最新のセレクトボックスの値を初期値として参照する
+            const campusSelect = document.getElementById('ui-default-campus');
+            const currentDef = campusSelect ? campusSelect.value : defaultCampus;
+            
+            const detail = window.cellDetails[key] || {campus: currentDef, note: ""};
             setModalStatus(parseInt(cell.dataset.v) || 1);
             document.getElementById('modal-campus').value = detail.campus || "";
             document.getElementById('modal-note').value = detail.note || "";
@@ -310,7 +314,7 @@ if not os.path.exists("custom_editor_v4"):
 
         window.closeModal = function() {
             document.getElementById('detail-modal').style.display = 'none';
-            if (editingCell) { editingCell.classList.remove('pressing'); editingCell = null; }
+            if (editingCell) { editingCell = null; }
         };
 
         window.saveModal = function() {
@@ -325,7 +329,9 @@ if not os.path.exists("custom_editor_v4"):
         window.paintCell = function(cell, mode) {
             if(!cell) return;
             const key = `${cell.dataset.r}_${cell.dataset.c}`;
-            const currentDefCampus = document.getElementById('ui-default-campus') ? document.getElementById('ui-default-campus').value : defaultCampus;
+            // 変数同期に頼らず、常に直接DOM(プルダウン)から現在の所在地を取得する
+            const campusSelect = document.getElementById('ui-default-campus');
+            const currentDefCampus = campusSelect ? campusSelect.value : defaultCampus;
             
             if (mode == 1 || mode == 2) {
                 let existingNote = window.cellDetails[key] ? window.cellDetails[key].note : "";
@@ -430,15 +436,16 @@ if not os.path.exists("custom_editor_v4"):
 
         window.setPen = function(mode) {
             selectedMode = mode;
-            [-1, 0, 1, 2].forEach(m => { const b = document.getElementById('pen-' + m); if(b) b.classList.remove('active'); });
-            document.getElementById('pen-' + mode).classList.add('active');
+            [-2, -1, 0, 1, 2].forEach(m => { const b = document.getElementById('pen-' + m); if(b) b.classList.remove('active'); });
+            const activeBtn = document.getElementById('pen-' + mode);
+            if (activeBtn) activeBtn.classList.add('active');
             const g = document.getElementById('g');
             if (g) { if (mode === -1) { g.style.touchAction = 'pan-x pan-y'; } else { g.style.touchAction = 'none'; } }
         };
 
         window.updatePaletteCampus = function() {
             const camp = document.getElementById('ui-default-campus').value;
-            defaultCampus = camp; // ★追加: 以降の入力でもこのキャンパスが保持・適用されるようにする
+            // ★変数の同期処理を削除し、純粋に見た目の更新だけに専念させる
             
             let p1Info = {color:"#4CAF50", txt:"可"};
             if (camp === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
@@ -488,27 +495,25 @@ if not os.path.exists("custom_editor_v4"):
                 setTimeout(() => { window.setPen(selectedMode); }, 50);
                 
                 const g = document.getElementById('g'); if(!g) return;
-                let down = false; let startX = 0, startY = 0; let lastTapTime = 0;
+                let down = false;
 
                 const handleStart = (e, x, y) => {
-                    if (selectedMode === -1) return;
+                    if (selectedMode === -1) return; // scroll mode
                     const cell = e.target.closest('.c'); if(!cell) return;
                     
-                    // ダブルタップ/ダブルクリック判定 (300ms以内に2回押されたらモーダルを開く)
-                    const now = Date.now();
-                    if (now - lastTapTime < 300) {
+                    // ★詳細モード (-2) の場合、モーダルを開いてすぐ終了する (塗らない・ドラッグしない)
+                    if (selectedMode === -2) {
                         openModal(cell);
-                        lastTapTime = 0; // 判定をリセット
-                        down = false;    // ドラッグは開始しない
-                        return;
+                        return; 
                     }
-                    lastTapTime = now;
 
-                    down = true; startX = x; startY = y;
+                    down = true; 
+                    window.paintCell(cell, selectedMode);
                 };
 
                 const handleMove = (e, x, y) => {
-                    if (selectedMode === -1 || !down) return;
+                    // ★詳細モード(-2)やスクロール(-1)ではドラッグ無効
+                    if (selectedMode === -1 || selectedMode === -2 || !down) return;
                     if (e.cancelable) e.preventDefault(); 
                     
                     const cell = document.elementFromPoint(x, y)?.closest('.c');
@@ -516,19 +521,15 @@ if not os.path.exists("custom_editor_v4"):
                 };
 
                 const handleEnd = () => {
-                    if (down && selectedMode !== -1) {
-                        const cell = document.elementFromPoint(startX, startY)?.closest('.c'); 
-                        if(cell) window.paintCell(cell, selectedMode);
-                    }
                     down = false;
                 };
 
-                g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); if(selectedMode !== -1) window.paintCell(e.target.closest('.c'), selectedMode); };
-                g.onmousemove = e => { if (selectedMode === -1 || !down) return; const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest('.c'); if(cell) window.paintCell(cell, selectedMode); }
+                g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); };
+                g.onmousemove = e => { handleMove(e, e.clientX, e.clientY); }
                 window.onmouseup = handleEnd; window.onmouseleave = handleEnd; 
 
                 g.addEventListener('touchstart', e => { if (e.touches.length > 1) return; handleStart(e, e.touches[0].clientX, e.touches[0].clientY); }, {passive: true});
-                g.addEventListener('touchmove', e => { if (selectedMode === -1) return; if (e.touches.length >= 2) return; if(down) { if (e.cancelable) e.preventDefault(); handleMove(e, e.touches[0].clientX, e.touches[0].clientY); } }, {passive: false});
+                g.addEventListener('touchmove', e => { if (e.touches.length >= 2) return; handleMove(e, e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
                 g.addEventListener('touchend', handleEnd); g.addEventListener('touchcancel', handleEnd);
                 
                 const btn = document.getElementById("submit-btn");
@@ -1406,11 +1407,9 @@ def main():
 
     event_type = event.get('type') or event.get('event_type', 'time')
 
-    # 💡 タブUIをネイティブ機能に戻して左寄り問題を解消
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = "📅 入力"
         
-    # st.radio のハックを廃止し、本来の st.tabs を使用
     tab_in, tab_graph = st.tabs(["📅 入力", "📊 みんなの集計"])
 
     if event_type in ['time', 'timetable']:
@@ -1592,7 +1591,6 @@ def main():
 
             scroll_css = "max-height: 650px; height: auto;"
             
-            # 💡 修正: ネイティブのHTML <details> タグを使用することで正しく作動します
             ui_default_selector_html = f"""
             <div style="margin-bottom: 10px; background: #fff; padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <label style="font-weight: bold; font-size: 14px; color: #333; margin:0;">📍 今回のデフォルト所在地（ペンを持ち替え）</label>
@@ -1891,8 +1889,6 @@ def main():
 
         if "active_tab" not in st.session_state: st.session_state.active_tab = "📅 入力"
         
-        # ⚠️ ここにあった tab_in, tab_graph = st.tabs(...) は上部で既に宣言されているため削除します
-
         with tab_in:
             my_ans_row = next((r for r in st.session_state.event_responses if str(r.get('user_id')) == str(user.get('user_id'))), None)
             b_data_val = my_ans_row.get('binary_data') or my_ans_row.get('binary', "") if my_ans_row else ""
@@ -2020,7 +2016,7 @@ def main():
                             st.markdown("<span style='color:#F44336; font-weight:bold;'>× 不可</span>", unsafe_allow_html=True)
                             if details[i]["no"]: st.markdown("<br>".join([f"× {n}" for n in details[i]["no"]]), unsafe_allow_html=True)
                             else: st.write("なし")
-                st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
+            st.markdown("<div style='height:15px;'></div>", unsafe_allow_html=True)
             
             if comments_list and can_view_details:
                 st.markdown("---")
