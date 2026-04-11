@@ -242,8 +242,6 @@ if not os.path.exists("custom_editor_v4"):
         .modal-btn-save{flex:1;background:#4CAF50;color:white;border:none;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;}
         .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;}
         .c{position:relative;transition:filter 0.1s;}
-        @keyframes pressAnim{0%{transform:scale(1);filter:brightness(1);} 100%{transform:scale(0.92);filter:brightness(0.8);box-shadow:inset 0 4px 8px rgba(0,0,0,0.3);}}
-        .pressing{animation:pressAnim 0.4s forwards;z-index:100;}
         </style></head><body>
         
         <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
@@ -440,6 +438,8 @@ if not os.path.exists("custom_editor_v4"):
 
         window.updatePaletteCampus = function() {
             const camp = document.getElementById('ui-default-campus').value;
+            defaultCampus = camp; // ★追加: 以降の入力でもこのキャンパスが保持・適用されるようにする
+            
             let p1Info = {color:"#4CAF50", txt:"可"};
             if (camp === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
             else if (camp === "すぎもと" || camp === "杉本") p1Info = {color:"#42A5F5", txt:"す"};
@@ -488,52 +488,39 @@ if not os.path.exists("custom_editor_v4"):
                 setTimeout(() => { window.setPen(selectedMode); }, 50);
                 
                 const g = document.getElementById('g'); if(!g) return;
-                let down = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0; let touchMode = null; let pressTarget = null;
+                let down = false; let startX = 0, startY = 0; let lastTapTime = 0;
 
                 const handleStart = (e, x, y) => {
                     if (selectedMode === -1) return;
                     const cell = e.target.closest('.c'); if(!cell) return;
-                    down = true; isLongPress = false; touchMode = null; startX = x; startY = y;
                     
-                    pressTarget = cell;
-                    pressTarget.classList.add('pressing');
-                    
-                    pressTimer = setTimeout(() => {
-                        if (down) {
-                            isLongPress = true; down = false; 
-                            if(pressTarget) pressTarget.classList.remove('pressing');
-                            openModal(cell);
-                        }
-                    }, 400);
+                    // ダブルタップ/ダブルクリック判定 (300ms以内に2回押されたらモーダルを開く)
+                    const now = Date.now();
+                    if (now - lastTapTime < 300) {
+                        openModal(cell);
+                        lastTapTime = 0; // 判定をリセット
+                        down = false;    // ドラッグは開始しない
+                        return;
+                    }
+                    lastTapTime = now;
+
+                    down = true; startX = x; startY = y;
                 };
 
                 const handleMove = (e, x, y) => {
                     if (selectedMode === -1 || !down) return;
                     if (e.cancelable) e.preventDefault(); 
                     
-                    if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) {
-                        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-                        if (pressTarget) { pressTarget.classList.remove('pressing'); pressTarget = null; }
-                    }
-
                     const cell = document.elementFromPoint(x, y)?.closest('.c');
-                    if(cell && pressTarget && cell !== pressTarget) {
-                        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-                        if (pressTarget) { pressTarget.classList.remove('pressing'); pressTarget = null; }
-                    }
-
                     if(cell) window.paintCell(cell, selectedMode);
                 };
 
                 const handleEnd = () => {
-                    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
-                    if (pressTarget) { pressTarget.classList.remove('pressing'); pressTarget = null; }
-
-                    if (down && touchMode === null && !isLongPress && selectedMode !== -1) {
+                    if (down && selectedMode !== -1) {
                         const cell = document.elementFromPoint(startX, startY)?.closest('.c'); 
                         if(cell) window.paintCell(cell, selectedMode);
                     }
-                    down = false; touchMode = null;
+                    down = false;
                 };
 
                 g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); if(selectedMode !== -1) window.paintCell(e.target.closest('.c'), selectedMode); };
@@ -1904,7 +1891,7 @@ def main():
 
         if "active_tab" not in st.session_state: st.session_state.active_tab = "📅 入力"
         
-        tab_in, tab_graph = st.tabs(["📅 入力", "📊 みんなの集計"])
+        # ⚠️ ここにあった tab_in, tab_graph = st.tabs(...) は上部で既に宣言されているため削除します
 
         with tab_in:
             my_ans_row = next((r for r in st.session_state.event_responses if str(r.get('user_id')) == str(user.get('user_id'))), None)
