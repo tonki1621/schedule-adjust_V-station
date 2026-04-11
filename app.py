@@ -81,6 +81,7 @@ def save_response_hybrid(payload):
 
 def get_app_data_from_firestore(user):
     user_id = str(user.get("user_id", ""))
+    
     all_users = [doc.to_dict() for doc in db.collection("users").stream()]
     user_map = {str(u["user_id"]): u for u in all_users}
     
@@ -108,7 +109,8 @@ def get_app_data_from_firestore(user):
             try:
                 dl_dt = pd.to_datetime(ev_close_time, errors='coerce')
                 if pd.notna(dl_dt):
-                    if dl_dt.tzinfo is not None: dl_dt = dl_dt.tz_convert(None)
+                    if dl_dt.tzinfo is not None:
+                        dl_dt = dl_dt.tz_convert(None)
                     if now > dl_dt:
                         ev["status"] = "closed"
                         db.collection("events").document(ev["event_id"]).update({"status": "closed"})
@@ -185,21 +187,12 @@ st.markdown("""
             }
             iframe { max-width: 100vw !important; width: 100% !important; }
         }
-        
         .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
         [data-testid="stStatusWidget"] { visibility: visible !important; display: flex !important; position: fixed !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: rgba(255, 255, 255, 0.95) !important; color: #333 !important; padding: 20px 40px !important; border-radius: 12px !important; z-index: 999999 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important; border: 2px solid #4CAF50 !important; text-align: center !important; justify-content: center !important; }
         [data-testid="stStatusWidget"]::after { content: "⏳ 通信中 \\A 処理しています..."; white-space: pre-wrap; font-size: 20px !important; font-weight: bold !important; line-height: 1.5 !important; }
-        
-        /* 独自タブ用デザイン */
         div[data-testid="stRadio"] > div { display: flex; flex-direction: row; background: #f0f2f6; padding: 4px; border-radius: 8px; gap: 4px; }
         div[data-testid="stRadio"] label { background: transparent; padding: 10px 20px !important; border-radius: 6px !important; cursor: pointer; transition: 0.2s; font-weight: bold; flex: 1; text-align: center; justify-content: center;}
         div[data-testid="stRadio"] label[data-checked="true"] { background: #fff !important; color: #4CAF50 !important; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
-        
-        /* ダッシュボードのカード */
-        .dash-card { background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #ddd; border-left: 5px solid #2196F3; margin-bottom: 12px; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
-        .dash-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
-        .dash-card.answered { border-left-color: #4CAF50; }
-        
         .user-header { display: flex; align-items: center; justify-content: space-between; background: #f8f9fa; padding: 10px 20px; border-radius: 8px; border-left: 5px solid #4CAF50; margin-bottom: 20px; }
         .tt-day-header { font-size: 16px; font-weight: bold; background: #4CAF50; color: white; padding: 8px; border-radius: 6px; text-align: center; }
         .tt-time-cell { font-size: 14px; font-weight: bold; background: #f0f2f6; padding: 10px; border-radius: 6px; text-align: center; border-left: 4px solid #4CAF50;}
@@ -307,7 +300,7 @@ if not os.path.exists("custom_editor_v4"):
 
         window.openModal = function(cell) {
             editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`;
-            const detail = window.cellDetails[key] || {campus: defaultCampus, note: ""};
+            const detail = window.cellDetails[key] || {campus: document.getElementById('ui-default-campus') ? document.getElementById('ui-default-campus').value : defaultCampus, note: ""};
             setModalStatus(parseInt(cell.dataset.v) || 1);
             document.getElementById('modal-campus').value = detail.campus || "";
             document.getElementById('modal-note').value = detail.note || "";
@@ -330,15 +323,17 @@ if not os.path.exists("custom_editor_v4"):
 
         window.upd = function(el, v) { 
             el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key];
+            const currentDefCampus = document.getElementById('ui-default-campus') ? document.getElementById('ui-default-campus').value : defaultCampus;
+            
             if (v == 0) {
                 if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
                 else { delete window.cellDetails[key]; detail = null; }
             } else if (v == 1 || v == 2) {
-                if (!detail && defaultCampus) { window.cellDetails[key] = {campus: defaultCampus, note: ""}; detail = window.cellDetails[key]; }
-                if (detail && detail.campus === defaultCampus && !detail.note) { delete window.cellDetails[key]; detail = null; }
+                window.cellDetails[key] = {campus: currentDefCampus, note: detail ? detail.note : ""};
+                detail = window.cellDetails[key];
             }
 
-            let campus = detail ? detail.campus : ((v == 1 || v == 2) ? defaultCampus : "");
+            let campus = detail ? detail.campus : "";
             let note = detail ? detail.note : "";
             
             let bgColor = '#fff'; let txt = ''; let txtColor = '#fff'; let opacity = 1.0;
@@ -369,11 +364,9 @@ if not os.path.exists("custom_editor_v4"):
             el.style.alignItems = 'center';
             el.style.justifyContent = 'center';
 
-            const existingIcon = el.querySelector('.memo-icon');
-            const hasManualSetting = detail && (detail.note !== "" || (detail.campus && detail.campus !== defaultCampus));
-            
+            const showMemo = detail && detail.note !== "";
             let innerHtml = '<span style="font-size:14px; font-weight:bold; pointer-events:none;">' + txt + '</span>';
-            if (hasManualSetting) { innerHtml += '<div class="memo-icon">💬</div>'; }
+            if (showMemo) { innerHtml += '<div class="memo-icon">💬</div>'; }
             
             el.innerHTML = innerHtml;
         };
@@ -435,6 +428,24 @@ if not os.path.exists("custom_editor_v4"):
             if (g) { if (mode === -1) { g.style.touchAction = 'pan-x pan-y'; } else { g.style.touchAction = 'none'; } }
         };
 
+        window.updatePaletteCampus = function() {
+            const camp = document.getElementById('ui-default-campus').value;
+            let p1Info = {color:"#4CAF50", txt:"可"};
+            if (camp === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
+            else if (camp === "すぎもと" || camp === "杉本") p1Info = {color:"#42A5F5", txt:"す"};
+            else if (camp === "もりのみや") p1Info = {color:"#66BB6A", txt:"も"};
+            else if (camp === "あべの" || camp === "阿倍野") p1Info = {color:"#EC407A", txt:"あ"};
+            else if (camp === "りんくう") p1Info = {color:"#AB47BC", txt:"り"};
+            else if (camp === "その他/移動中") p1Info = {color:"#9E9E9E", txt:"他"};
+
+            document.getElementById('pen-1').innerHTML = camp ? `${p1Info.txt}<br><span style='font-size:9px;'>(${camp})</span>` : "可";
+            document.getElementById('pen-1').style.background = p1Info.color;
+            document.getElementById('pen-2').innerHTML = camp ? `未定<br><span style='font-size:9px;'>(${camp})</span>` : "未定";
+            document.getElementById('pen-2').style.background = p1Info.color;
+            document.getElementById('pen-2').style.opacity = 0.6;
+            document.getElementById('pen-2').style.color = "#fff";
+        };
+
         const palette = document.getElementById('palette'); let isDraggingPalette = false; let offsetX, offsetY;
         palette.addEventListener('mousedown', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; });
         document.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
@@ -448,22 +459,13 @@ if not os.path.exists("custom_editor_v4"):
                 const args = event.data.args; 
                 document.getElementById("content").innerHTML = args.html_code;
                 totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
-                window.cellDetails = args.cellDetails || {}; defaultCampus = args.defaultCampus || "";
+                window.cellDetails = args.cellDetails || {}; 
+                defaultCampus = args.defaultCampus || "";
                 
-                let p1Info = {color:"#4CAF50", txt:"可"};
-                if (defaultCampus === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
-                else if (defaultCampus === "すぎもと" || defaultCampus === "杉本") p1Info = {color:"#42A5F5", txt:"す"};
-                else if (defaultCampus === "もりのみや") p1Info = {color:"#66BB6A", txt:"も"};
-                else if (defaultCampus === "あべの" || defaultCampus === "阿倍野") p1Info = {color:"#EC407A", txt:"あ"};
-                else if (defaultCampus === "りんくう") p1Info = {color:"#AB47BC", txt:"り"};
-                else if (defaultCampus === "その他/移動中") p1Info = {color:"#9E9E9E", txt:"他"};
-                
-                document.getElementById('pen-1').innerHTML = defaultCampus ? `${p1Info.txt}<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "可";
-                document.getElementById('pen-1').style.background = p1Info.color;
-                document.getElementById('pen-2').innerHTML = defaultCampus ? `未定<br><span style='font-size:9px;'>(${defaultCampus})</span>` : "未定";
-                document.getElementById('pen-2').style.background = p1Info.color;
-                document.getElementById('pen-2').style.opacity = 0.6;
-                document.getElementById('pen-2').style.color = "#fff";
+                if(document.getElementById('ui-default-campus')) {
+                    document.getElementById('ui-default-campus').value = defaultCampus;
+                    window.updatePaletteCampus();
+                }
                 
                 if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
                 window.renderWeek();
@@ -731,7 +733,6 @@ def main():
     # ====================================================
     # 👤 プロフィール設定 / ⏰ 時間割設定 / ➕ イベント作成 / ⚙️ 管理者画面
     # ====================================================
-    # (省略せずフル実装していますが、ここはビジネスロジック変更なしなのでそのまま)
     if view_mode == "👤 プロフィール設定":
         st.title("👤 プロフィール設定")
         st.write("所属情報の更新を行います。（未所属にする場合は選択を解除してください）")
@@ -811,7 +812,6 @@ def main():
         return
 
     elif view_mode == "⏰ 時間割設定":
-        # 時間割設定画面 (変更なしのため省略せずにそのまま)
         st.title("⏰ 時間割設定")
         st.info("※ここで設定した授業・バイトの予定は、各イベントの日程調整画面で「時間割パワー反映」ボタンを押すことで、自動入力できます。")
         st.markdown("""<style>@media (max-width: 650px) { [data-testid="column"] { min-width: 0 !important; flex: 1 1 0px !important; padding: 0 !important; } [data-testid="column"]:first-child { flex: 0 0 55px !important; } .tt-day-header { font-size: 13px !important; padding: 4px 0 !important; } .tt-time-cell { font-size: 11px !important; padding: 4px 2px !important; } }</style>""", unsafe_allow_html=True)
@@ -883,7 +883,6 @@ def main():
         return
 
     elif view_mode == "➕ イベント新規作成":
-        # イベント作成画面 (変更なし)
         st.title("➕ イベント新規作成")
         ev_type_label = st.radio("📝 タイプを選択", ["🕒 時間帯", "🏫 時間割", "📅 複数の予定"], horizontal=True)
         ev_title = st.text_input("イベント名")
@@ -943,7 +942,6 @@ def main():
         return
 
     elif view_mode == "⚙️ 管理者専用":
-        # 管理者画面 (変更なし)
         st.title("⚙️ 管理者ダッシュボード")
         st.info("※管理者画面の機能は省略していますが、ベースコードと同様にタブ化して配置されています")
         return
@@ -965,7 +963,7 @@ def main():
         return
 
     # ----------------------------------------------------
-    # サイドバーのナビゲーション（プルダウン廃止の代替）
+    # サイドバーのナビゲーション
     # ----------------------------------------------------
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🔴 未回答の予定")
@@ -1004,12 +1002,12 @@ def main():
             if unanswered_events:
                 for ev in unanswered_events:
                     dl_text = format_deadline_jp(ev.get('close_time') or ev.get('deadline', ''))
-                    st.markdown(f"""<div class="dash-card" onclick="document.getElementById('hid_btn_u_{ev['event_id']}').click()">
-                        <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">{ev['title']}</div>
-                        <div style="font-size:12px; color:#E91E63;">⏳ 締切: {dl_text}</div>
-                    </div>""", unsafe_allow_html=True)
-                    # 隠しボタンでStreamlitにクリックを伝えるハック
-                    st.button(" ", key=f"hid_btn_u_{ev['event_id']}", on_click=lambda eid=ev['event_id']: st.session_state.update({"target_ev_id": eid}), help=f"{ev['title']} に回答する")
+                    with st.container(border=True):
+                        st.markdown(f"**{ev['title']}**")
+                        st.markdown(f"<span style='color:#E91E63; font-size:12px;'>⏳ 締切: {dl_text}</span>", unsafe_allow_html=True)
+                        if st.button("📝 このイベントに回答する", key=f"btn_u_{ev['event_id']}", use_container_width=True):
+                            st.session_state.target_ev_id = ev['event_id']
+                            st.rerun()
             else:
                 st.info("未回答のイベントはありません！🎉")
 
@@ -1018,14 +1016,14 @@ def main():
             if answered_events:
                 for ev in answered_events:
                     dl_text = format_deadline_jp(ev.get('close_time') or ev.get('deadline', ''))
-                    st.markdown(f"""<div class="dash-card answered" onclick="document.getElementById('hid_btn_a_{ev['event_id']}').click()">
-                        <div style="font-weight:bold; font-size:16px; margin-bottom:5px;">{ev['title']}</div>
-                        <div style="font-size:12px; color:#666;">締切: {dl_text}</div>
-                    </div>""", unsafe_allow_html=True)
-                    st.button(" ", key=f"hid_btn_a_{ev['event_id']}", on_click=lambda eid=ev['event_id']: st.session_state.update({"target_ev_id": eid}), help=f"{ev['title']} の回答を確認する")
+                    with st.container(border=True):
+                        st.markdown(f"**{ev['title']}**")
+                        st.markdown(f"<span style='color:#666; font-size:12px;'>締切: {dl_text}</span>", unsafe_allow_html=True)
+                        if st.button("✅ 提出済みの回答を見る", key=f"btn_a_{ev['event_id']}", use_container_width=True):
+                            st.session_state.target_ev_id = ev['event_id']
+                            st.rerun()
             else:
                 st.info("回答済みのイベントはありません。")
-        
         return
 
     # ----------------------------------------------------
@@ -1041,7 +1039,6 @@ def main():
 
     st.session_state.event_responses = fetch_responses_for_event(current_ev_id, user_map_fs)
     
-    # ダッシュボードに戻るボタン
     if st.button("🔙 イベント一覧に戻る"):
         st.session_state.target_ev_id = ""
         st.rerun()
@@ -1061,27 +1058,21 @@ def main():
     elif ev_close_time: 
         st.markdown(f"<div style='color: #E91E63; font-weight: bold; margin-bottom: 10px;'>⏳ 回答期限: {format_deadline_jp(ev_close_time)}</div>", unsafe_allow_html=True)
 
-    # 管理者以外には招待URLを隠す、説明文はアコーディオン
     if event.get('description'): 
         with st.expander("📝 イベントの説明・管理者からのメッセージ", expanded=False):
             st.markdown(f"<div style='font-size:14px; line-height:1.6;'>{event['description'].replace(chr(10), '<br>')}</div>", unsafe_allow_html=True)
             
-    if user.get("role") in ["admin", "top_admin"]:
-        st.caption(f"招待URL (管理者のみ表示): {APP_BASE_URL}?event={event.get('event_id')}")
-
     if is_private_event:
         st.info("🤫 **このイベントはプライベート設定されています。** 管理者以外には、誰が回答したかの名前やコメントは表示されず、全体の人数のみが表示されます。")
 
     event_type = event.get('type') or event.get('event_type', 'time')
 
-    # 💡 提出後のタブ自動遷移用ロジック
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = "📅 入力"
         
     selected_tab = st.radio("表示切り替え", ["📅 入力", "📊 みんなの集計"], horizontal=True, label_visibility="collapsed", index=0 if st.session_state.active_tab == "📅 入力" else 1)
     st.session_state.active_tab = selected_tab
 
-    # ＝＝＝＝＝ 🕒 時間帯 / 🏫 時間割 モード ＝＝＝＝＝
     if event_type in ['time', 'timetable']:
         if event_type == 'time':
             s_idx = int(event.get('start_time_idx') or event.get('start_idx', 0))
@@ -1167,21 +1158,9 @@ def main():
         if selected_tab == "📅 入力":
             user_campuses = [x.strip() for x in str(user.get('group_1', '')).split(',') if x.strip()]
             default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
-            campus_options = MASTER_G1 + ["その他/移動中"]
-            default_index = campus_options.index(default_campus_initial) if default_campus_initial in campus_options else 0
             
-            c_left, c_right = st.columns([1, 1])
-            with c_left:
-                st.markdown("##### 📍 今回のデフォルト所在地")
-                selected_default_campus = st.selectbox("「可」を塗った時に自動で設定されるキャンパス", campus_options, index=default_index, label_visibility="collapsed")
-            with c_right:
-                if event_type == 'time' and st.button("🔄 カレンダーから予定取得 (授業等で反映)"):
-                    # カレンダー連携 (処理省略)
-                    pass
-
             st.markdown(campus_legend_html, unsafe_allow_html=True)
             
-            # 💡 初心者向けミニガイド
             st.markdown("""
             <div style="background: #e8f5e9; border-left: 5px solid #4CAF50; padding: 12px; margin-bottom: 15px; border-radius: 6px; font-size: 14px; font-weight: bold; color: #2e7d32; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
                 <span style="font-size:16px;">💡 使い方:</span>
@@ -1211,12 +1190,10 @@ def main():
                 cells_html = ""
                 for r, t_str in enumerate(time_labels):
                     val = int(m[r][c])
-                    
-                    # 💡 キャンパスの色と文字のロジック
                     campus = ""
                     cd_key = f"{r}_{c}"
                     if cd_key in my_cell_details: campus = my_cell_details[cd_key].get("campus", "")
-                    if not campus and val in [1, 2]: campus = selected_default_campus
+                    if not campus and val in [1, 2]: campus = default_campus_initial
                     
                     bg, txt, txt_color, opacity = "#fff", "", "#fff", 1.0
                     if val in [1, 2]:
@@ -1230,11 +1207,11 @@ def main():
                         if val == 2: opacity = 0.4
                     elif val == 3:
                         bg, txt, txt_color = "#E0E0E0", "授", "#555"
-                    
+                    elif val == 0 and cd_key in my_cell_details and (my_cell_details[cd_key].get('note') == "バイト/サークル等" or my_cell_details[cd_key].get('note') == "バイト/私用"):
+                        bg, txt, txt_color = "#f5f5f5", "休", "#aaa"
+                        
                     b_top = get_border_top(t_str, event_type)
-                    
-                    memo_html = '<div class="memo-icon">💬</div>' if cd_key in my_cell_details and (my_cell_details[cd_key].get('note') or my_cell_details[cd_key].get('campus') != selected_default_campus) else ""
-                    
+                    memo_html = '<div class="memo-icon">💬</div>' if cd_key in my_cell_details and my_cell_details[cd_key].get('note') else ""
                     cells_html += f'<div class="c" data-r="{r}" data-c="{c}" data-v="{val}" style="height:{cell_h}; background:{bg}; opacity:{opacity}; color:{txt_color}; display:flex; align-items:center; justify-content:center; cursor:pointer; border-top:{b_top}; border-right:1px solid #eee; box-sizing:border-box;"><span style="font-size:14px; font-weight:bold; pointer-events:none;">{txt}</span>{memo_html}</div>'
                 day_cols_html += f'<div class="day-col" data-c="{c}" style="flex:1; min-width:85px; box-sizing:border-box; display:none;"><div class="header-cell">{lbl}</div>{cells_html}</div>'
 
@@ -1275,10 +1252,24 @@ def main():
                 submit_btn_html = f"""<div style="margin-top: 20px;"><label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント</label><div style="width: 100%; padding: 10px; margin-top: 5px; background: #eee; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; min-height:40px;">{st.session_state.my_comment}</div></div>"""
 
             scroll_css = "max-height: 650px; height: auto;"
+            
+            ui_default_selector_html = """
+            <div style="margin-bottom: 10px; background: #fff; padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
+                <label style="font-weight: bold; font-size: 14px; color: #333; margin:0;">📍 今回のデフォルト所在地（ペンを持ち替え）</label>
+                <select id="ui-default-campus" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px;" onchange="window.updatePaletteCampus()">
+                    <option value="なかもず">なかもず</option>
+                    <option value="すぎもと">すぎもと</option>
+                    <option value="もりのみや">もりのみや</option>
+                    <option value="あべの">あべの</option>
+                    <option value="りんくう">りんくう</option>
+                    <option value="その他/移動中">その他 / 移動中</option>
+                </select>
+            </div>
+            """
 
             html_code = f"""
             <style>
-                .tool-card {{ background: #fdfdfd; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; flex: 1; min-width: 250px; font-family: sans-serif; box-sizing:border-box;}} 
+                .tool-card {{ background: #fdfdfd; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; flex: 1 1 300px; font-family: sans-serif; box-sizing:border-box;}} 
                 .tool-header {{ font-size: 15px; font-weight: bold; color: #333; margin-bottom: 12px; }} 
                 .st-sel {{ padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 13px; }} 
                 .st-btn {{ padding: 6px 16px; border: none; border-radius: 4px; background: #4CAF50; color: white; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}} 
@@ -1291,12 +1282,12 @@ def main():
                 .page-btn {{ padding: 8px 16px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }} 
                 .page-btn:hover:not(:disabled) {{ background: #e9ecef; }} 
                 .page-btn:disabled {{ opacity: 0.4; cursor: not-allowed; }}
-                
                 .scroll-wrapper {{ {scroll_css} overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff; }}
                 .time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
                 .header-cell {{ position: sticky; top: 0; z-index: 11; background: #eee; text-align: center; font-size: 13px; padding: 5px 0; font-weight: bold; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; line-height: 1.2; }}
                 .top-left-cell {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
             </style>
+            {ui_default_selector_html}
             {tools_html}
             <div style='display:flex; justify-content:flex-end; align-items:flex-end; margin-bottom:10px;'>
                 <div style="display:{week_nav_display}; align-items:center; gap: 20px;">
@@ -1317,7 +1308,7 @@ def main():
             raw = grid_editor(
                 html_code=html_code, rows=len(time_labels), cols=len(date_strs), eventId=event.get('event_id'), 
                 isClosed=is_closed, unavailColRows=unavail_col_rows, saveTs=st.session_state.get("last_saved_ts", 0), 
-                cellDetails=my_cell_details, defaultCampus=selected_default_campus, default=None, key=f"editor_{event.get('event_id')}"
+                cellDetails=my_cell_details, defaultCampus=default_campus_initial, default=None, key=f"editor_{event.get('event_id')}"
             )
             
             if raw and isinstance(raw, dict) and "data" in raw:
@@ -1349,7 +1340,6 @@ def main():
                     }
                     if save_response_hybrid(payload):
                         st.session_state.save_success_msg = "回答を保存しました！みんなの集計を確認しましょう👀"
-                        # 💡 提出完了後、自動で集計タブに切り替え
                         st.session_state.active_tab = "📊 みんなの集計"
                         st.rerun()
 
@@ -1487,11 +1477,11 @@ def main():
                         
                         if can_view_details and orig_v in [1, 2, 3]:
                             campus_str = f" ({cell_campus})" if cell_campus else ""
-                            note_str = f" <span style='color:#FFEB3B; font-size:10.5px;'>[{cell_note}]</span>" if cell_note else ""
-                            name_html = f"{r.get('user_name', '')}<span style='font-size:10.5px; color:#bbb;'>{campus_str}</span>{note_str}"
+                            note_str = f" [{cell_note}]" if cell_note else ""
+                            name_html = f"{r.get('user_name', '')}<span style='font-size:10.5px; color:#bbb;'>{campus_str}{note_str}</span>"
                             if orig_v==1: h[disp_r][c_idx] += f"◯ {name_html}<br>"
                             elif orig_v==2: h[disp_r][c_idx] += f"△ {name_html}<br>"
-                            elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>📓 {name_html}</span><br>"
+                            elif orig_v==3: h[disp_r][c_idx] += f"<span style='color:#aaa;'>📓(授) {name_html}</span><br>"
                 
                 max_z = np.max(z) if np.max(z) > 0 else 1
                 
@@ -1532,7 +1522,6 @@ def main():
                 .agg-top-left {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
                 .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
                 .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
-                
                 .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 250px; overflow-y: auto; -webkit-overflow-scrolling: touch; pointer-events: auto; }}
                 .agg-cell .tooltip-up::-webkit-scrollbar, .agg-cell .tooltip-down::-webkit-scrollbar {{ width: 6px; }}
                 .agg-cell .tooltip-up::-webkit-scrollbar-thumb, .agg-cell .tooltip-down::-webkit-scrollbar-thumb {{ background-color: rgba(255, 255, 255, 0.4); border-radius: 3px; }}
