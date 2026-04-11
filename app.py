@@ -217,10 +217,10 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#81C784;color:#fff;border-color:#81C784;box-shadow:0 4px 8px rgba(76,175,80,0.2);transform:translateY(-3px); opacity: 0.8;}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント (任意)</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-if not os.path.exists("custom_editor_v4"):
-    os.makedirs("custom_editor_v4", exist_ok=True)
-    with open("custom_editor_v4/index.html", "w", encoding="utf-8") as f:
-        f.write("""
+# ★ if文を外し、バージョンをv5に変更します
+os.makedirs("custom_editor_v5", exist_ok=True)
+with open("custom_editor_v5/index.html", "w", encoding="utf-8") as f:
+    f.write("""
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>
         body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
         .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
@@ -301,7 +301,6 @@ if not os.path.exists("custom_editor_v4"):
 
         window.openModal = function(cell) {
             editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`;
-            // 常に最新のセレクトボックスの値を初期値として参照する
             const campusSelect = document.getElementById('ui-default-campus');
             const currentDef = campusSelect ? campusSelect.value : defaultCampus;
             
@@ -329,7 +328,6 @@ if not os.path.exists("custom_editor_v4"):
         window.paintCell = function(cell, mode) {
             if(!cell) return;
             const key = `${cell.dataset.r}_${cell.dataset.c}`;
-            // 変数同期に頼らず、常に直接DOM(プルダウン)から現在の所在地を取得する
             const campusSelect = document.getElementById('ui-default-campus');
             const currentDefCampus = campusSelect ? campusSelect.value : defaultCampus;
             
@@ -445,7 +443,6 @@ if not os.path.exists("custom_editor_v4"):
 
         window.updatePaletteCampus = function() {
             const camp = document.getElementById('ui-default-campus').value;
-            // ★変数の同期処理を削除し、純粋に見た目の更新だけに専念させる
             
             let p1Info = {color:"#4CAF50", txt:"可"};
             if (camp === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
@@ -501,7 +498,6 @@ if not os.path.exists("custom_editor_v4"):
                     if (selectedMode === -1) return; // scroll mode
                     const cell = e.target.closest('.c'); if(!cell) return;
                     
-                    // ★詳細モード (-2) の場合、モーダルを開いてすぐ終了する (塗らない・ドラッグしない)
                     if (selectedMode === -2) {
                         openModal(cell);
                         return; 
@@ -512,7 +508,6 @@ if not os.path.exists("custom_editor_v4"):
                 };
 
                 const handleMove = (e, x, y) => {
-                    // ★詳細モード(-2)やスクロール(-1)ではドラッグ無効
                     if (selectedMode === -1 || selectedMode === -2 || !down) return;
                     if (e.cancelable) e.preventDefault(); 
                     
@@ -543,7 +538,8 @@ if not os.path.exists("custom_editor_v4"):
             }
         }); init(); </script></body></html>
         """)
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v4")
+# ★パスを v5 に変更します
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v5")
 
 def call_gas(action, payload=None, method="POST"):
     try:
