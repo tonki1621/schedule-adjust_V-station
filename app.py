@@ -176,6 +176,7 @@ def fetch_responses_for_event(event_id, user_map):
 st.set_page_config(page_title="V-Sync by もっきゅー", layout="wide", initial_sidebar_state="expanded")
 APP_BASE_URL = "https://schedule-adjust-v-station.streamlit.app/"
 
+# 💡 CSS修正: サイドバーのメニュー崩れを防止するため、stRadioの幅指定を削除しました
 st.markdown("""
     <style>
         @media (max-width: 650px) {
@@ -190,9 +191,11 @@ st.markdown("""
         .stDeployStatus, [data-testid="stStatusWidget"] label { display: none !important; }
         [data-testid="stStatusWidget"] { visibility: visible !important; display: flex !important; position: fixed !important; top: 50% !important; left: 50% !important; transform: translate(-50%, -50%) !important; background: rgba(255, 255, 255, 0.95) !important; color: #333 !important; padding: 20px 40px !important; border-radius: 12px !important; z-index: 999999 !important; box-shadow: 0 8px 24px rgba(0,0,0,0.15) !important; border: 2px solid #4CAF50 !important; text-align: center !important; justify-content: center !important; }
         [data-testid="stStatusWidget"]::after { content: "⏳ 通信中 \\A 処理しています..."; white-space: pre-wrap; font-size: 20px !important; font-weight: bold !important; line-height: 1.5 !important; }
-        div[data-testid="stRadio"] > div { display: flex; flex-direction: row; background: #f0f2f6; padding: 4px; border-radius: 8px; gap: 4px; }
-        div[data-testid="stRadio"] label { background: transparent; padding: 10px 20px !important; border-radius: 6px !important; cursor: pointer; transition: 0.2s; font-weight: bold; flex: 1; text-align: center; justify-content: center;}
-        div[data-testid="stRadio"] label[data-checked="true"] { background: #fff !important; color: #4CAF50 !important; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        
+        .dash-card { background: #fff; padding: 15px; border-radius: 10px; border: 1px solid #ddd; border-left: 5px solid #2196F3; margin-bottom: 12px; cursor: pointer; transition: 0.2s; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+        .dash-card:hover { transform: translateY(-2px); box-shadow: 0 4px 8px rgba(0,0,0,0.1); }
+        .dash-card.answered { border-left-color: #4CAF50; }
+        
         .user-header { display: flex; align-items: center; justify-content: space-between; background: #f8f9fa; padding: 10px 20px; border-radius: 8px; border-left: 5px solid #4CAF50; margin-bottom: 20px; }
         .tt-day-header { font-size: 16px; font-weight: bold; background: #4CAF50; color: white; padding: 8px; border-radius: 6px; text-align: center; }
         .tt-time-cell { font-size: 14px; font-weight: bold; background: #f0f2f6; padding: 10px; border-radius: 6px; text-align: center; border-left: 4px solid #4CAF50;}
@@ -428,6 +431,7 @@ if not os.path.exists("custom_editor_v4"):
             if (g) { if (mode === -1) { g.style.touchAction = 'pan-x pan-y'; } else { g.style.touchAction = 'none'; } }
         };
 
+        // 💡 追加: ツールバー上のキャンパスドロップダウンを変更した時に、ペンの色と文字も同期する処理
         window.updatePaletteCampus = function() {
             const camp = document.getElementById('ui-default-campus').value;
             let p1Info = {color:"#4CAF50", txt:"可"};
@@ -462,6 +466,7 @@ if not os.path.exists("custom_editor_v4"):
                 window.cellDetails = args.cellDetails || {}; 
                 defaultCampus = args.defaultCampus || "";
                 
+                // 💡 追加: Streamlitから渡された初期キャンパスをHTMLのセレクトボックスに反映
                 if(document.getElementById('ui-default-campus')) {
                     document.getElementById('ui-default-campus').value = defaultCampus;
                     window.updatePaletteCampus();
@@ -943,7 +948,329 @@ def main():
 
     elif view_mode == "⚙️ 管理者専用":
         st.title("⚙️ 管理者ダッシュボード")
-        st.info("※管理者画面の機能は省略していますが、ベースコードと同様にタブ化して配置されています")
+        tab_manage, tab_users = st.tabs(["📝 イベント・アーカイブ管理", "👥 ユーザー管理"])
+
+        with tab_manage:
+            all_users_admin = [d.to_dict() for d in db.collection("users").stream()]
+            user_map = {str(u.get('user_id')): u.get('name') for u in all_users_admin}
+
+            def format_target_scope(scope_str):
+                if not scope_str or not scope_str.startswith('{'): return "全員"
+                try:
+                    scope = json.loads(scope_str)
+                    groups = scope.get("groups", []); users = scope.get("users", [])
+                    user_names = [user_map.get(str(uid), str(uid)) for uid in users]
+                    res = []
+                    if groups: res.append(f"📁 {', '.join(groups)}")
+                    if user_names: res.append(f"👤 {', '.join(user_names)}")
+                    return " / ".join(res) if res else "全員"
+                except: return "限定"
+
+            all_events = [d.to_dict() for d in db.collection("events").stream()]
+            
+            if all_events:
+                for ev in all_events:
+                    ev['type_safe'] = ev.get('type') or ev.get('event_type', 'time')
+                    ev['start_idx_safe'] = ev.get('start_time_idx') or ev.get('start_idx', 0)
+                    ev['end_idx_safe'] = ev.get('end_time_idx') or ev.get('end_idx', 0)
+                    ev['deadline_safe'] = ev.get('close_time') or ev.get('deadline', '')
+                    
+                df_ev = pd.DataFrame(all_events)
+                df_ev['種類'] = df_ev['type_safe'].replace({"time": "🕒 時間", "timetable": "🏫 時間割", "options": "📅 予定候補"})
+                df_ev['詳細'] = df_ev.apply(lambda row: f"{idx_to_time(row.get('start_idx_safe', 0))}〜{idx_to_time(row.get('end_idx_safe', 0))}" if row.get('type_safe')=='time' else ("月〜金" if row.get('type_safe')=='timetable' else "複数候補"), axis=1)
+                df_ev['期限'] = df_ev['deadline_safe'].apply(format_deadline_jp)
+                df_ev['公開範囲'] = df_ev['target_scope'].apply(format_target_scope)
+                df_ev['秘密'] = df_ev['is_private'].apply(lambda x: "🤫" if x else "-")
+                df_ev['招待URL'] = df_ev['event_id'].apply(lambda x: f"{APP_BASE_URL}?event={x}")
+                
+                df_display = df_ev[['event_id', 'title', '種類', '詳細', '期限', '公開範囲', '秘密', '招待URL', 'status']]
+                
+                active_events = [ev for ev in all_events if ev.get('status') in ['open', 'closed']]
+                st.subheader("🟢 現在のイベント")
+                html_table_ev = df_display[df_display['status'].isin(['open', 'closed'])].to_html(index=False, border=0, classes="custom-tbl")
+                st.markdown("<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; word-break: break-all; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_ev}</div>', unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.subheader("🛠️ イベント管理 (編集・ステータス・削除)")
+                
+                tab_edit, tab_status, tab_delete = st.tabs(["✏️ 情報編集", "⚙️ ステータス変更", "🗑️ 削除"])
+                
+                with tab_edit:
+                    st.markdown("##### ✏️ イベント情報の編集 (タイトル・説明・期限)")
+                    if all_events:
+                        edit_ev = st.selectbox("編集するイベントを選択", all_events, format_func=lambda x: f"{x['title']} ({x.get('status', '')})", key="edit_ev_sel")
+                        with st.form("edit_event_form"):
+                            new_title = st.text_input("タイトル", value=edit_ev.get('title', ''))
+                            new_desc = st.text_area("説明文・備考", value=edit_ev.get('description', ''), height=150)
+                            
+                            existing_dl = edit_ev.get('close_time') or edit_ev.get('deadline', '')
+                            try:
+                                dt_obj = pd.to_datetime(existing_dl)
+                                def_date = dt_obj.date()
+                                def_time = dt_obj.time()
+                            except:
+                                def_date = datetime.today().date() + timedelta(days=7)
+                                def_time = datetime.strptime("23:59", "%H:%M").time()
+                            
+                            c1, c2 = st.columns(2)
+                            with c1: new_d_date = st.date_input("新しい回答期限 (日付)", value=def_date)
+                            with c2: new_d_time = st.time_input("新しい回答期限 (時刻)", value=def_time)
+                            
+                            if st.form_submit_button("💾 変更を保存", type="primary"):
+                                new_dl_str = f"{new_d_date.strftime('%Y-%m-%d')} {new_d_time.strftime('%H:%M')}"
+                                updates = {
+                                    "title": new_title,
+                                    "description": new_desc,
+                                    "close_time": new_dl_str,
+                                    "deadline": new_dl_str
+                                }
+                                db.collection("events").document(edit_ev['event_id']).update(updates)
+                                backup_to_gas_async("update_event_details", {"payload": {"event_id": edit_ev['event_id'], **updates}})
+                                st.success("✅ イベント情報を更新しました！")
+                                time.sleep(1)
+                                st.rerun()
+
+                with tab_status:
+                    st.markdown("##### ⚙️ ステータス手動変更")
+                    if active_events:
+                        with st.form("update_status_form"):
+                            target_ev = st.selectbox("対象イベント", active_events, format_func=lambda x: f"{x['title']} ({x['status']})")
+                            new_status = st.selectbox("ステータス", ["open", "closed", "archived"], index=1)
+                            if st.form_submit_button("更新する"):
+                                call_gas("update_event_status", {"payload": {"event_id": target_ev['event_id'], "status": new_status}}, method="POST")
+                                db.collection("events").document(target_ev['event_id']).update({"status": new_status})
+                                st.rerun()
+
+                with tab_delete:
+                    st.markdown("##### 🗑️ イベントの完全削除")
+                    st.warning("⚠️ 一度削除すると、回答データも含めて完全に消去され、元に戻せません。")
+                    if all_events:
+                        del_ev = st.selectbox("削除するイベントを選択", all_events, format_func=lambda x: f"{x['title']} (ID: {x['event_id']})", key="del_ev_sel")
+                        
+                        res_count = len(list(db.collection("responses").where("event_id", "==", del_ev['event_id']).stream()))
+                        if res_count > 0:
+                            st.error(f"🚨 このイベントにはすでに {res_count} 件の回答があります！削除するとこれらもすべて消去されます。")
+                        else:
+                            st.info("このイベントにはまだ回答がありません。")
+                            
+                        del_confirm = st.text_input(f"確認のため、イベントIDの下4桁「{del_ev['event_id'][-4:]}」を入力してください", key="del_confirm_input")
+                        
+                        if st.button("💥 完全に削除する", type="primary"):
+                            if del_confirm == del_ev['event_id'][-4:]:
+                                with st.spinner("削除中..."):
+                                    res_docs = db.collection("responses").where("event_id", "==", del_ev['event_id']).stream()
+                                    for d in res_docs:
+                                        db.collection("responses").document(d.id).delete()
+                                    db.collection("events").document(del_ev['event_id']).delete()
+                                    backup_to_gas_async("delete_event", {"payload": {"event_id": del_ev['event_id']}})
+                                    
+                                st.success(f"🗑️ 「{del_ev['title']}」を完全に削除しました。")
+                                time.sleep(1.5)
+                                st.rerun()
+                            else:
+                                st.error("確認番号が一致しません。")
+
+                st.markdown("---")
+                st.subheader("👀 未回答者の抽出")
+                if active_events:
+                    check_ev = st.selectbox("確認するイベントを選択", active_events, format_func=lambda x: f"{x['title']} ({x['status']})", key="chk_unanswered")
+                    if st.button("未回答者を抽出する", type="primary"):
+                        with st.spinner("データを照合中..."):
+                            ans_docs = db.collection("responses").where("event_id", "==", check_ev['event_id']).stream()
+                            answered_uids = [str(d.to_dict().get("user_id")) for d in ans_docs]
+
+                            target_users = []
+                            scope_str = check_ev.get('target_scope', '')
+                            is_all = True
+                            t_groups, t_uids = [], []
+                            if scope_str and scope_str.startswith('{'):
+                                try:
+                                    scope = json.loads(scope_str)
+                                    t_groups = scope.get("groups", [])
+                                    t_uids = [str(x) for x in scope.get("users", [])]
+                                    if t_groups or t_uids: is_all = False
+                                except: pass
+
+                            for u in all_users_admin:
+                                uid = str(u.get('user_id'))
+                                if uid in answered_uids: continue
+
+                                if is_all:
+                                    target_users.append(u.get('name', ''))
+                                else:
+                                    if uid in t_uids:
+                                        target_users.append(u.get('name', ''))
+                                        continue
+                                    u_g = []
+                                    for g_key in ['group_1', 'group_2', 'group_3']:
+                                        u_g.extend([x.strip() for x in str(u.get(g_key, '')).split(',') if x.strip()])
+                                    
+                                    if set(t_groups).intersection(set(u_g)):
+                                        target_users.append(u.get('name', ''))
+
+                            if target_users:
+                                st.warning(f"⚠️ 対象者のうち、未回答の人が {len(target_users)} 名います。")
+                                target_users = sorted(target_users)
+                                st.code("\n".join(target_users), language="text")
+                            else:
+                                st.success("🎉 対象者は全員回答済みです！")
+
+                st.markdown("---")
+                st.subheader("📦 アーカイブ済み")
+                html_table_arch = df_display[df_display['status'] == 'archived'].to_html(index=False, border=0, classes="custom-tbl")
+                st.markdown(f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px;">{html_table_arch}</div>', unsafe_allow_html=True)
+            else: st.info("イベントがありません。")
+
+        with tab_users:
+            st.subheader("👥 ユーザー一覧と権限管理")
+            
+            all_users = [d.to_dict() for d in db.collection("users").stream()]
+            
+            if st.button("🔄 ユーザー一覧を最新に更新"):
+                st.rerun()
+
+            if all_users:
+                df_u = pd.DataFrame(all_users)
+                df_u = df_u.rename(columns={"user_id": "ユーザーID", "name": "氏名", "role": "権限", "group_1": "キャンパス", "group_2": "入学年度", "group_3": "オプション"})
+                df_u["権限"] = df_u["権限"].replace({"top_admin": "👑 最高管理者", "admin": "🛠️ 管理者", "user": "📝 ユーザー", "guest": "👤 ゲスト"})
+                display_cols = ["ユーザーID", "氏名", "権限", "キャンパス", "入学年度", "オプション"]
+                display_cols = [c for c in display_cols if c in df_u.columns]
+                
+                html_table = df_u[display_cols].to_html(index=False, border=0, classes="custom-tbl")
+                table_html = "<style>.custom-tbl { width: 100%; border-collapse: collapse; font-size: 14px; text-align: left; } .custom-tbl th { background-color: #f0f2f6; padding: 10px; border-bottom: 2px solid #4CAF50; white-space: nowrap; color: #333; } .custom-tbl td { padding: 10px; border-bottom: 1px solid #eee; color: #333; word-break: break-all; } .custom-tbl tr:hover { background-color: #f8f9fa; }</style>" + f'<div style="overflow-x: auto; border: 1px solid #e0e0e0; border-radius: 8px; margin-bottom: 20px;">{html_table}</div>'
+                st.markdown(table_html, unsafe_allow_html=True)
+                
+                st.markdown("---")
+                st.subheader("🚨 ユーザー情報の更新 (PINリセット等)")
+                tgt_user = st.selectbox("対象ユーザー", all_users, format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})")
+                
+                with st.form("admin_user_update"):
+                    new_u_pin = st.text_input("新しいPIN (リセットする場合のみ入力)", type="password", autocomplete="new-password")
+                    
+                    if user.get("role") == "top_admin":
+                        st.info("👑 最高管理者メニュー: ユーザーIDと氏名の変更が可能です。")
+                        new_u_id = st.text_input("ユーザーID", value=tgt_user.get('user_id'))
+                        new_u_name = st.text_input("氏名", value=tgt_user.get('name'))
+                        
+                        role_opts = ["guest", "user", "admin"]
+                        if tgt_user.get('role') == 'top_admin':
+                            st.info("※最高管理者の権限はここで変更できません。下の譲渡メニューを使用してください。")
+                            new_u_role = "top_admin"
+                        else:
+                            current_role = tgt_user.get('role') if tgt_user.get('role') in role_opts else "guest"
+                            new_u_role = st.selectbox("権限の変更", role_opts, index=role_opts.index(current_role))
+                    else:
+                        st.info("※権限（Role）やユーザーID・氏名の変更は top_admin のみ可能です。")
+                        new_u_id = tgt_user.get('user_id')
+                        new_u_name = tgt_user.get('name')
+                        new_u_role = tgt_user.get('role')
+                        
+                    del_check = st.checkbox("💥 このユーザーを完全に削除する (復旧不可)")
+
+                    if st.form_submit_button("更新/削除 実行", type="primary"):
+                        if del_check:
+                            if tgt_user.get('role') == 'top_admin':
+                                st.error("最高管理者は削除できません。先に譲渡してください。")
+                            else:
+                                uid = str(tgt_user['user_id'])
+                                db.collection("users").document(uid).delete()
+                                res_docs = db.collection("responses").where("user_id", "==", uid).stream()
+                                for d in res_docs:
+                                    db.collection("responses").document(d.id).delete()
+                                
+                                backup_to_gas_async("delete_user", {"payload": {"user_id": uid}})
+                                st.success(f"ユーザー {uid} を削除しました")
+                                time.sleep(1.5)
+                                st.rerun()
+                        else:
+                            if tgt_user.get('role') == 'top_admin' and new_u_role != 'top_admin':
+                                st.error("最高管理者の権限は変更できません。")
+                            else:
+                                old_uid = str(tgt_user['user_id'])
+                                new_uid = new_u_id.strip() if new_u_id else old_uid
+                                new_name = new_u_name.strip() if new_u_name else tgt_user.get('name')
+                                
+                                updates = {"role": new_u_role, "name": new_name}
+                                gas_payload = {"user_id": old_uid, "role": new_u_role, "name": new_name, "new_pin": ""}
+                                
+                                if new_uid != old_uid:
+                                    updates["user_id"] = new_uid
+                                    gas_payload["new_user_id"] = new_uid
+                                    
+                                if new_u_pin:
+                                    updates["pin"] = hash_secret(new_u_pin)
+                                    gas_payload["new_pin"] = "ENCRYPTED_PIN"
+                                    
+                                try:
+                                    if new_uid != old_uid:
+                                        existing = db.collection("users").document(new_uid).get()
+                                        if existing.exists:
+                                            st.error(f"エラー: ユーザーID '{new_uid}' は既に存在します。")
+                                            st.stop()
+                                            
+                                        new_user_data = {**tgt_user, **updates}
+                                        db.collection("users").document(new_uid).set(new_user_data)
+                                        db.collection("users").document(old_uid).delete()
+                                        
+                                        # 回答データの移行
+                                        res_docs = db.collection("responses").where("user_id", "==", old_uid).stream()
+                                        for r_doc in res_docs:
+                                            r_data = r_doc.to_dict()
+                                            r_event_id = r_data.get("event_id")
+                                            r_data["user_id"] = new_uid
+                                            db.collection("responses").document(f"{r_event_id}_{new_uid}").set(r_data)
+                                            db.collection("responses").document(r_doc.id).delete()
+                                    else:
+                                        db.collection("users").document(old_uid).update(updates)
+                                        
+                                    backup_to_gas_async("admin_update_user", {"payload": gas_payload})
+                                    st.success("ユーザー情報を更新しました！")
+                                    time.sleep(1.5)
+                                    st.rerun()
+                                    
+                                except Exception as e:
+                                    st.error(f"更新中にエラーが発生しました: {e}")
+
+                if user.get("role") == "top_admin":
+                    st.markdown("---")
+                    st.subheader("👑 最高管理者 (top_admin) の譲渡")
+                    st.warning("⚠️ この操作を実行すると、あなたは `admin` に降格し、元に戻すことはできません。")
+                    
+                    candidates = [u for u in all_users if u.get('user_id') != user.get('user_id')]
+                    new_top = st.selectbox("譲渡先ユーザー", candidates, format_func=lambda x: f"{x.get('name')} (ID: {x.get('user_id')})")
+                    
+                    st.markdown("<span style='font-size:13px; color:#555;'>PINリセットなどのSOSを受け取るための、新しい管理者の<b>DiscordユーザーID（18桁前後の数字）</b>を入力してください。<br>※Discordの設定から「開発者モード」をオンにし、プロフィールを右クリックしてIDをコピーできます。</span>", unsafe_allow_html=True)
+                    new_discord_id = st.text_input("DiscordユーザーID (例: 123456789012345678)")
+                    
+                    if st.button("🔔 テスト通知を送信"):
+                        if new_discord_id:
+                            clean_id = new_discord_id.strip().replace("@", "").replace("<", "").replace(">", "")
+                            mention_str = f"<@{clean_id}>"
+
+                            res = call_gas("test_discord_mention", {"payload": {"discord_id": mention_str}}, method="POST")
+                            if res.get("status") == "success":
+                                st.success(f"Discordにテスト通知を送信しました！通知が来ているか確認してください。")
+                            else:
+                                st.error("テスト通知の送信に失敗しました。")
+                        else:
+                            st.warning("DiscordユーザーIDを入力してください。")
+                    
+                    confirm_transfer = st.checkbox("✅ Discordでテスト通知が届いたことを確認しました")
+                    
+                    if confirm_transfer:
+                        if st.button("🚀 top_adminを譲渡する", type="primary"):
+                            clean_id = new_discord_id.strip().replace("@", "").replace("<", "").replace(">", "")
+                            mention_str = f"<@{clean_id}>"
+                                
+                            call_gas("transfer_top_admin", {"payload": {"caller_id": user['user_id'], "target_id": new_top['user_id'], "discord_id": mention_str}}, method="POST")
+                            
+                            db.collection("users").document(str(user['user_id'])).update({"role": "admin"})
+                            updates_top = {"role": "top_admin"}
+                            if mention_str: updates_top["discord_id"] = mention_str
+                            db.collection("users").document(str(new_top['user_id'])).update(updates_top)
+                            
+                            st.session_state.auth = None
+                            st.rerun()
         return
 
     # ====================================================
@@ -1067,11 +1394,12 @@ def main():
 
     event_type = event.get('type') or event.get('event_type', 'time')
 
+    # 💡 タブUIをネイティブ機能に戻して左寄り問題を解消
     if "active_tab" not in st.session_state:
         st.session_state.active_tab = "📅 入力"
         
-    selected_tab = st.radio("表示切り替え", ["📅 入力", "📊 みんなの集計"], horizontal=True, label_visibility="collapsed", index=0 if st.session_state.active_tab == "📅 入力" else 1)
-    st.session_state.active_tab = selected_tab
+    # st.radio のハックを廃止し、本来の st.tabs を使用
+    tab_in, tab_graph = st.tabs(["📅 入力", "📊 みんなの集計"])
 
     if event_type in ['time', 'timetable']:
         if event_type == 'time':
@@ -1155,7 +1483,7 @@ def main():
 
         if event_type == 'time': cell_h = "36px"
 
-        if selected_tab == "📅 入力":
+        with tab_in:
             user_campuses = [x.strip() for x in str(user.get('group_1', '')).split(',') if x.strip()]
             default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
             
@@ -1225,21 +1553,20 @@ def main():
             tools_html, submit_btn_html, pointer_css = "", "", ""
             if not is_closed:
                 tt_btn_text = "🚫 該当日の自分の時間割をすべて × にする" if event_type == "time" else "🚫 自分の時間割をそのまま反映する"
-                with st.expander("🛠️ 便利ツール (一括指定・コピー・時間割反映)", expanded=False):
-                    tools_html = f"""
-                    <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom: 20px;">
-                        <div class="tool-card" style="display:{'none' if event_type == 'timetable' else 'block'};"><div class="tool-header">🪄 一括指定ツール</div>
-                            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">状態: <select id="b-val" class="st-sel"><option value="1">可</option><option value="2">未定</option><option value="0">不可</option></select>時間: <select id="b-start" class="st-sel">{time_opts_html}</select> 〜 <select id="b-end" class="st-sel"><option value="{len(time_labels)-1}" selected>{end_time_labels[-1]}</option>{time_opts_end_html}</select></div>
-                            <div style="display:flex; gap:10px; align-items:center;">対象: <div class="ms-container"><div class="ms-header" onclick="window.toggleList('b-days-list');">対象日を選択 <span>▼</span></div><div id="b-days-list" class="ms-options" style="display:none;"><label class="ms-opt" style="font-weight:bold;"><input type="checkbox" onchange="document.querySelectorAll('.b-day-chk').forEach(c => c.checked = this.checked)" checked> 全て選択 / 解除</label><hr style="margin:5px 0; border:0; border-top:1px solid #ccc;">{b_day_opts_html}</div></div><button class="st-btn" onclick="window.doBulk(this)">適用</button></div>
-                        </div>
-                        <div class="tool-card"><div class="tool-header">📋 日程コピー機能</div>
-                            <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">元: <select id="c-src" class="st-sel" style="flex:1;">{src_opts_html}</select></div>
-                            <div style="display:flex; gap:10px; align-items:center;">先: <div class="ms-container"><div class="ms-header" onclick="window.toggleList('c-tgt-list');">対象日を選択 <span>▼</span></div><div id="c-tgt-list" class="ms-options" style="display:none;"><label class="ms-opt" style="font-weight:bold;"><input type="checkbox" onchange="document.querySelectorAll('.c-tgt-chk').forEach(c => c.checked = this.checked)"> 全て選択 / 解除</label><hr style="margin:5px 0; border:0; border-top:1px solid #ccc;">{c_tgt_opts_html}</div></div><button class="st-btn" onclick="window.doCopy(this)" style="background:#FF9800;">コピー実行</button></div>
-                        </div>
-                        <div class="tool-card"><div class="tool-header">⏰ 時間割パワー反映</div>
-                            <button class="st-btn" onclick="window.doTimetable(this)" style="background:#E91E63; width:100%;">{tt_btn_text}</button>
-                        </div>
-                    </div>"""
+                tools_html = f"""
+                <div style="display:flex; gap:15px; flex-wrap:wrap; margin-bottom: 5px;">
+                    <div class="tool-card" style="display:{'none' if event_type == 'timetable' else 'block'};"><div class="tool-header">🪄 一括指定ツール</div>
+                        <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center; flex-wrap:wrap;">状態: <select id="b-val" class="st-sel"><option value="1">可</option><option value="2">未定</option><option value="0">不可</option></select>時間: <select id="b-start" class="st-sel">{time_opts_html}</select> 〜 <select id="b-end" class="st-sel"><option value="{len(time_labels)-1}" selected>{end_time_labels[-1]}</option>{time_opts_end_html}</select></div>
+                        <div style="display:flex; gap:10px; align-items:center;">対象: <div class="ms-container"><div class="ms-header" onclick="window.toggleList('b-days-list');">対象日を選択 <span>▼</span></div><div id="b-days-list" class="ms-options" style="display:none;"><label class="ms-opt" style="font-weight:bold;"><input type="checkbox" onchange="document.querySelectorAll('.b-day-chk').forEach(c => c.checked = this.checked)" checked> 全て選択 / 解除</label><hr style="margin:5px 0; border:0; border-top:1px solid #ccc;">{b_day_opts_html}</div></div><button class="st-btn" onclick="window.doBulk(this)">適用</button></div>
+                    </div>
+                    <div class="tool-card"><div class="tool-header">📋 日程コピー機能</div>
+                        <div style="display:flex; gap:10px; margin-bottom:10px; align-items:center;">元: <select id="c-src" class="st-sel" style="flex:1;">{src_opts_html}</select></div>
+                        <div style="display:flex; gap:10px; align-items:center;">先: <div class="ms-container"><div class="ms-header" onclick="window.toggleList('c-tgt-list');">対象日を選択 <span>▼</span></div><div id="c-tgt-list" class="ms-options" style="display:none;"><label class="ms-opt" style="font-weight:bold;"><input type="checkbox" onchange="document.querySelectorAll('.c-tgt-chk').forEach(c => c.checked = this.checked)"> 全て選択 / 解除</label><hr style="margin:5px 0; border:0; border-top:1px solid #ccc;">{c_tgt_opts_html}</div></div><button class="st-btn" onclick="window.doCopy(this)" style="background:#FF9800;">コピー実行</button></div>
+                    </div>
+                    <div class="tool-card"><div class="tool-header">⏰ 時間割パワー反映</div>
+                        <button class="st-btn" onclick="window.doTimetable(this)" style="background:#E91E63; width:100%; padding:10px;">{tt_btn_text}</button>
+                    </div>
+                </div>"""
                 submit_btn_html = f"""
                 <div style="margin-top: 20px;">
                     <label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント (遅刻・早退など任意)</label>
@@ -1253,7 +1580,8 @@ def main():
 
             scroll_css = "max-height: 650px; height: auto;"
             
-            ui_default_selector_html = """
+            # 💡 修正: ネイティブのHTML <details> タグを使用することで正しく作動します
+            ui_default_selector_html = f"""
             <div style="margin-bottom: 10px; background: #fff; padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
                 <label style="font-weight: bold; font-size: 14px; color: #333; margin:0;">📍 今回のデフォルト所在地（ペンを持ち替え）</label>
                 <select id="ui-default-campus" style="padding: 6px; border-radius: 4px; border: 1px solid #ccc; font-size: 14px;" onchange="window.updatePaletteCampus()">
@@ -1265,12 +1593,18 @@ def main():
                     <option value="その他/移動中">その他 / 移動中</option>
                 </select>
             </div>
+            <details style="background: #fdfdfd; padding: 10px 15px; border-radius: 8px; border: 1px solid #ddd; margin-bottom: 20px;">
+                <summary style="font-weight: bold; cursor: pointer; font-size: 15px; color: #333; outline: none;">🛠️ 便利ツールを開く (一括指定・コピー・時間割反映)</summary>
+                <div style="margin-top: 15px;">
+                    {tools_html}
+                </div>
+            </details>
             """
 
             html_code = f"""
             <style>
-                .tool-card {{ background: #fdfdfd; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; flex: 1 1 300px; font-family: sans-serif; box-sizing:border-box;}} 
-                .tool-header {{ font-size: 15px; font-weight: bold; color: #333; margin-bottom: 12px; }} 
+                .tool-card {{ background: #fff; padding: 15px; border: 1px solid #e0e0e0; border-radius: 8px; flex: 1 1 300px; font-family: sans-serif; box-sizing:border-box; box-shadow: 0 2px 4px rgba(0,0,0,0.05);}} 
+                .tool-header {{ font-size: 15px; font-weight: bold; color: #333; margin-bottom: 12px; border-bottom: 2px solid #4CAF50; padding-bottom: 5px; display: inline-block;}} 
                 .st-sel {{ padding: 6px; border: 1px solid #ccc; border-radius: 4px; font-family: inherit; font-size: 13px; }} 
                 .st-btn {{ padding: 6px 16px; border: none; border-radius: 4px; background: #4CAF50; color: white; cursor: pointer; font-weight: bold; transition: 0.2s; font-size: 13px; box-shadow: 0 2px 4px rgba(0,0,0,0.1);}} 
                 .st-btn:hover {{ opacity: 0.9; }} 
@@ -1288,7 +1622,6 @@ def main():
                 .top-left-cell {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
             </style>
             {ui_default_selector_html}
-            {tools_html}
             <div style='display:flex; justify-content:flex-end; align-items:flex-end; margin-bottom:10px;'>
                 <div style="display:{week_nav_display}; align-items:center; gap: 20px;">
                     <button id="btn-prev" class="page-btn" onclick="window.changeWeek(-1)">◀ 前の週</button>
@@ -1343,7 +1676,7 @@ def main():
                         st.session_state.active_tab = "📊 みんなの集計"
                         st.rerun()
 
-        elif selected_tab == "📊 みんなの集計":
+        with tab_graph:
             st.subheader("📊 全体の集計結果")
             col1, col2 = st.columns([2, 1])
             with col1: policy = st.radio("「未定(△)」の計算方法", [0.5, 1.0, 0.0], format_func=lambda x: f"{x}人としてカウント", horizontal=True)
@@ -1545,10 +1878,10 @@ def main():
         if "event_responses" not in st.session_state: st.session_state.event_responses = []
 
         if "active_tab" not in st.session_state: st.session_state.active_tab = "📅 入力"
-        selected_tab = st.radio("表示切り替え", ["📅 入力", "📊 みんなの集計"], horizontal=True, label_visibility="collapsed", index=0 if st.session_state.active_tab == "📅 入力" else 1)
-        st.session_state.active_tab = selected_tab
+        
+        tab_in, tab_graph = st.tabs(["📅 入力", "📊 みんなの集計"])
 
-        if selected_tab == "📅 入力":
+        with tab_in:
             my_ans_row = next((r for r in st.session_state.event_responses if str(r.get('user_id')) == str(user.get('user_id'))), None)
             b_data_val = my_ans_row.get('binary_data') or my_ans_row.get('binary', "") if my_ans_row else ""
             my_ans_bin = b_data_val.replace("'", "").zfill(96) if b_data_val else "0" * 96
@@ -1570,7 +1903,7 @@ def main():
                     st.session_state.active_tab = "📊 みんなの集計"
                     st.rerun()
 
-        elif selected_tab == "📊 みんなの集計":
+        with tab_graph:
             st.subheader("📊 予定の集計結果")
             col1, col2 = st.columns([2, 1])
             with col1: policy = st.radio("「未定(△)」の計算方法", [0.5, 1.0, 0.0], format_func=lambda x: f"{x}人としてカウント", horizontal=True, key="opt_policy")
