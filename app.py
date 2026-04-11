@@ -756,7 +756,7 @@ def main():
         st.session_state.target_ev_id = st.session_state.jump_to_event
         del st.session_state.jump_to_event
     
-    menu_opts = ["📅 日程調整 回答", "👤 プロフィール設定", "⏰ 時間割設定"]
+    menu_opts = ["📅 日程調整 回答", "👤 プロフィール設定", "⏰ 時間割設定", "📖 使い方ガイド"]
     if user.get("role") in ["user", "admin", "top_admin"]: menu_opts.append("➕ イベント新規作成")
     if user.get("role") in ["admin", "top_admin"]: menu_opts.append("⚙️ 管理者専用")
     
@@ -897,22 +897,39 @@ def main():
             else: ui_state[str(i)]["af_end"] = "21:00"
 
         if st.button("💾 時間割を保存する", use_container_width=True, type="primary"):
-            new_fixed_sched, new_fixed_locs = {}, {}
-            for i in range(5):
-                wd_str = str(i); new_bin = ["0"] * 96; day_locs = {}
-                if ui_state[wd_str]["p1"]: new_bin[36:42] = ["1"] * 6; day_locs["p1"] = ui_state[wd_str]["p1_loc"]
-                if ui_state[wd_str]["p2"]: new_bin[43:49] = ["1"] * 6; day_locs["p2"] = ui_state[wd_str]["p2_loc"]
-                if ui_state[wd_str]["p3"]: new_bin[53:59] = ["1"] * 6; day_locs["p3"] = ui_state[wd_str]["p3_loc"]
-                if ui_state[wd_str]["p4"]: new_bin[60:66] = ["1"] * 6; day_locs["p4"] = ui_state[wd_str]["p4_loc"]
-                if ui_state[wd_str]["p5"]: new_bin[67:73] = ["1"] * 6; day_locs["p5"] = ui_state[wd_str]["p5_loc"]
-                if ui_state[wd_str]["af"]: end_idx = time_master.index(ui_state[wd_str]["af_end"]); new_bin[74:end_idx] = ["1"] * (end_idx - 74); day_locs["af"] = ui_state[wd_str]["af_loc"]
-                new_fixed_sched[wd_str] = "".join(new_bin); new_fixed_locs[wd_str] = day_locs
-            payload = {"user_id": user['user_id'], "fixed_schedule": new_fixed_sched, "group_4": json.dumps(new_fixed_locs)}
-            res = call_gas("update_user", {"payload": payload}, method="POST")
+            # ... (時間割保存の処理) ...
             if res.get("status") == "success":
                 db.collection("users").document(str(res.get("data")["user_id"])).update(res.get("data"))
                 st.session_state.auth = res.get("data"); st.rerun()
         return
+
+    # ＝＝＝＝＝ ここから下を追加 ＝＝＝＝＝
+    elif view_mode == "📖 使い方ガイド":
+        st.title("📖 V-Sync 使い方ガイド")
+        
+        st.markdown("### 1. 📅 カレンダーの塗り方 (日程調整)")
+        st.write("日程調整の回答画面では、直感的にカレンダーをなぞって予定を入力できます。")
+        st.markdown("""
+        * **🖊️ 塗る (可/未定/消す):** パレットからペンを選び、カレンダーの枠をドラッグ（なぞる）すると一気に色が塗れます。
+        * **ℹ️ 詳細モード:** パレットの「ℹ️ 詳細」を選んでから枠をタップすると、その枠だけのキャンパス指定や「13:30に遅れて到着」などの細かいメモを残せます。
+        * **📜 スクロールモード:** スマホで画面をスクロールしたい時はこのモードを選んでください。誤って色を塗ってしまうのを防ぎます。
+        """)
+        
+        st.markdown("### 2. 🎨 色と文字の意味")
+        st.markdown(campus_legend_html, unsafe_allow_html=True)
+        
+        st.markdown("### 3. 🛠 便利ツールの活用")
+        st.markdown("""
+        回答画面の「🛠️ 便利ツールを開く」から、以下の時短機能が使えます。
+        * **🪄 一括指定ツール:** 「月〜金の1限〜5限まで全部『可』」といった指定が数秒で終わります。
+        * **📋 日程コピー機能:** 「月曜日の予定を、水曜日と金曜日にもコピー」といった操作が可能です。
+        * **⏰ 時間割パワー反映:** あらかじめ「⏰ 時間割設定」メニューで自分の授業やバイトを登録しておくと、このボタン1つでカレンダーに「授業(グレー)」や「バイト(不可)」が自動入力されます。
+        """)
+        
+        st.markdown("### 4. 📱 スマホでのコツ")
+        st.write("右上のペンのパレットは、指でドラッグして好きな位置に移動できます。邪魔な時は隅にどかして使いましょう。")
+        return
+    # ＝＝＝＝＝ ここまで ＝＝＝＝＝
 
     elif view_mode == "➕ イベント新規作成":
         st.title("➕ イベント新規作成")
@@ -1512,16 +1529,9 @@ def main():
             user_campuses = [x.strip() for x in str(user.get('group_1', '')).split(',') if x.strip()]
             default_campus_initial = user_campuses[0] if user_campuses else "なかもず"
             
-            st.markdown(campus_legend_html, unsafe_allow_html=True)
-            
-            st.markdown("""
-            <div style="background: #e8f5e9; border-left: 5px solid #4CAF50; padding: 12px; margin-bottom: 15px; border-radius: 6px; font-size: 14px; font-weight: bold; color: #2e7d32; display: flex; align-items: center; gap: 15px; flex-wrap: wrap;">
-                <span style="font-size:16px;">💡 使い方:</span>
-                <span>① 右上のペン（可/未定）を選ぶ</span> ➡️
-                <span>② カレンダーの枠をなぞって塗る</span> ➡️
-                <span>③ 一番下の「提出」ボタンを押す</span>
-            </div>
-            """, unsafe_allow_html=True)
+            with st.expander("🎨 色の意味 / 💡 基本的な使い方", expanded=False):
+                st.markdown(campus_legend_html, unsafe_allow_html=True)
+                st.markdown("<p style='font-size:14px; font-weight:bold; color:#2196F3;'>※詳しい操作のコツや便利ツールの使い方は、左側メニューの「📖 使い方ガイド」をご覧ください。</p>", unsafe_allow_html=True)
 
             m = st.session_state.df_input[date_strs].values.tolist()
             time_opts_html = "".join([f'<option value="{i}">{t}</option>' for i, t in enumerate(time_labels)])
