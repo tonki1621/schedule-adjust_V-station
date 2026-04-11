@@ -528,12 +528,20 @@ with open("custom_editor_v5/index.html", "w", encoding="utf-8") as f:
                 g.addEventListener('touchend', handleEnd); g.addEventListener('touchcancel', handleEnd);
                 
                 const btn = document.getElementById("submit-btn");
-                if(btn) { btn.onclick = () => { 
-                    const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => parseInt(document.querySelector(`[data-r="${r}"][data-c="${c}"]`).dataset.v))); 
-                    const commentText = document.getElementById("comment-box").value; 
-                    setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
-                    btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
-                }; }
+        if(btn) { btn.onclick = () => { 
+            // parseIntでエラー(NaN)になった場合でも確実に「0」として処理する安全策を追加
+            const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => {
+                const cellNode = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+                const val = cellNode && cellNode.dataset.v ? parseInt(cellNode.dataset.v) : 0;
+                return isNaN(val) ? 0 : val;
+            })); 
+            // コメントボックスが存在しない場合のエラーも防ぐ
+            const commentBox = document.getElementById("comment-box");
+            const commentText = commentBox ? commentBox.value : ""; 
+            
+            setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails || {}, trigger_save: true, ts: Date.now() }); 
+            btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
+        }; }
                 document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
             }
         }); init(); </script></body></html>
