@@ -218,9 +218,11 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
 options_editor = components.declare_component("options_editor", path="options_editor")
 
 # ★ if文を外し、バージョンをv5に変更します
-os.makedirs("custom_editor_v5", exist_ok=True)
-with open("custom_editor_v5/index.html", "w", encoding="utf-8") as f:
-    f.write("""
+# ★ ここを v6 に変更して強制的に新規作成させます
+if not os.path.exists("custom_editor_v6"):
+    os.makedirs("custom_editor_v6", exist_ok=True)
+    with open("custom_editor_v6/index.html", "w", encoding="utf-8") as f:
+        f.write("""
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>
         body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
         .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
@@ -483,6 +485,14 @@ with open("custom_editor_v5/index.html", "w", encoding="utf-8") as f:
                     window.updatePaletteCampus();
                 }
                 
+                // ★追加：便利ツール等（details）を開いたときに高さが再計算されるようにして、提出ボタンが消えないようにする
+                const detailsEl = document.querySelector('details');
+                if (detailsEl) {
+                    detailsEl.addEventListener('toggle', () => {
+                        setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
+                    });
+                }
+                
                 if(window.lastEventId !== args.eventId) { currentWeek = 0; window.lastEventId = args.eventId; }
                 window.renderWeek();
                 
@@ -523,31 +533,27 @@ with open("custom_editor_v5/index.html", "w", encoding="utf-8") as f:
                 g.onmousemove = e => { handleMove(e, e.clientX, e.clientY); }
                 window.onmouseup = handleEnd; window.onmouseleave = handleEnd; 
 
-                g.addEventListener('touchstart', e => { if (e.touches.length > 1) return; handleStart(e, e.touches[0].clientX, e.touches[0].clientY); }, {passive: true});
-                g.addEventListener('touchmove', e => { if (e.touches.length >= 2) return; handleMove(e, e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
-                g.addEventListener('touchend', handleEnd); g.addEventListener('touchcancel', handleEnd);
-                
                 const btn = document.getElementById("submit-btn");
-        if(btn) { btn.onclick = () => { 
-            // parseIntでエラー(NaN)になった場合でも確実に「0」として処理する安全策を追加
-            const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => {
-                const cellNode = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
-                const val = cellNode && cellNode.dataset.v ? parseInt(cellNode.dataset.v) : 0;
-                return isNaN(val) ? 0 : val;
-            })); 
-            // コメントボックスが存在しない場合のエラーも防ぐ
-            const commentBox = document.getElementById("comment-box");
-            const commentText = commentBox ? commentBox.value : ""; 
-            
-            setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails || {}, trigger_save: true, ts: Date.now() }); 
-            btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
-        }; }
+                if(btn) { btn.onclick = () => { 
+                    // ★追加：エラー発生（NaN）を防ぐための安全策
+                    const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => {
+                        const cellNode = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+                        const val = cellNode && cellNode.dataset.v ? parseInt(cellNode.dataset.v) : 0;
+                        return isNaN(val) ? 0 : val;
+                    })); 
+                    const commentBox = document.getElementById("comment-box");
+                    const commentText = commentBox ? commentBox.value : ""; 
+                    
+                    setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails || {}, trigger_save: true, ts: Date.now() }); 
+                    btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
+                }; }
                 document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
             }
         }); init(); </script></body></html>
         """)
-# ★パスを v5 に変更します
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v5")
+        
+# ★ 必ずここも v6 に変更してください
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v6")
 
 def call_gas(action, payload=None, method="POST"):
     try:
