@@ -324,16 +324,26 @@ if not os.path.exists("custom_editor_v4"):
             closeModal();
         };
 
+        // 💡 追加: ユーザーがペンで塗った時「専用」の処理（ここで初めてデータを書き換える）
+        window.paintCell = function(cell, mode) {
+            if(!cell) return;
+            const key = `${cell.dataset.r}_${cell.dataset.c}`;
+            const currentDefCampus = document.getElementById('ui-default-campus') ? document.getElementById('ui-default-campus').value : defaultCampus;
+            
+            if (mode == 1 || mode == 2) {
+                let existingNote = window.cellDetails[key] ? window.cellDetails[key].note : "";
+                window.cellDetails[key] = {campus: currentDefCampus, note: existingNote};
+            }
+            window.upd(cell, mode);
+        };
+
+        // 💡 修正: レンダリング処理（既存のデータを読み込んで見た目を作るだけ）
         window.upd = function(el, v) { 
             el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key];
-            const currentDefCampus = document.getElementById('ui-default-campus') ? document.getElementById('ui-default-campus').value : defaultCampus;
             
             if (v == 0) {
                 if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
                 else { delete window.cellDetails[key]; detail = null; }
-            } else if (v == 1 || v == 2) {
-                window.cellDetails[key] = {campus: currentDefCampus, note: detail ? detail.note : ""};
-                detail = window.cellDetails[key];
             }
 
             let campus = detail ? detail.campus : "";
@@ -385,18 +395,19 @@ if not os.path.exists("custom_editor_v4"):
         };
         window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
         
+        // 💡 修正: 便利ツール内での一括指定とコピーにも paintCell を適用
         window.doBulk = function(btnEl) {
             const val = document.getElementById('b-val').value;
             const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value);
             if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; }
-            document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, val); } } });
+            document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.paintCell(cell, val); } } });
             const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
         };
         window.doCopy = function(btnEl) {
             const srcIdx = parseInt(document.getElementById('c-src').value);
             let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); }
             let copied = false;
-            document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.upd(cell, srcData[r]); } } } });
+            document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.paintCell(cell, srcData[r]); } } } });
             if(!copied) { alert('コピー先を選択してください。'); return; }
             const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
         };
@@ -431,7 +442,6 @@ if not os.path.exists("custom_editor_v4"):
             if (g) { if (mode === -1) { g.style.touchAction = 'pan-x pan-y'; } else { g.style.touchAction = 'none'; } }
         };
 
-        // 💡 追加: ツールバー上のキャンパスドロップダウンを変更した時に、ペンの色と文字も同期する処理
         window.updatePaletteCampus = function() {
             const camp = document.getElementById('ui-default-campus').value;
             let p1Info = {color:"#4CAF50", txt:"可"};
@@ -448,6 +458,9 @@ if not os.path.exists("custom_editor_v4"):
             document.getElementById('pen-2').style.background = p1Info.color;
             document.getElementById('pen-2').style.opacity = 0.6;
             document.getElementById('pen-2').style.color = "#fff";
+            
+            // 💡 修正: ペンを持ち替えたら自動的に「可」を選択状態にする
+            window.setPen(1);
         };
 
         const palette = document.getElementById('palette'); let isDraggingPalette = false; let offsetX, offsetY;
@@ -466,7 +479,6 @@ if not os.path.exists("custom_editor_v4"):
                 window.cellDetails = args.cellDetails || {}; 
                 defaultCampus = args.defaultCampus || "";
                 
-                // 💡 追加: Streamlitから渡された初期キャンパスをHTMLのセレクトボックスに反映
                 if(document.getElementById('ui-default-campus')) {
                     document.getElementById('ui-default-campus').value = defaultCampus;
                     window.updatePaletteCampus();
@@ -481,16 +493,23 @@ if not os.path.exists("custom_editor_v4"):
                 setTimeout(() => { window.setPen(selectedMode); }, 50);
                 
                 const g = document.getElementById('g'); if(!g) return;
-                let down = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0; let touchMode = null;
+                
+                // 💡 修正: ドラッグと長押しの厳密な判定と視覚的フィードバック
+                let down = false; let pressTimer = null; let isLongPress = false; let startX = 0, startY = 0; let touchMode = null; let pressTarget = null;
 
                 const handleStart = (e, x, y) => {
                     if (selectedMode === -1) return;
                     const cell = e.target.closest('.c'); if(!cell) return;
                     down = true; isLongPress = false; touchMode = null; startX = x; startY = y;
                     
+                    pressTarget = cell;
+                    pressTarget.classList.add('pressing'); // へこむアニメーションを開始
+                    
                     pressTimer = setTimeout(() => {
-                        if (touchMode !== 'scroll' && down) {
-                            isLongPress = true; down = false; document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing')); openModal(cell);
+                        if (down) {
+                            isLongPress = true; down = false; 
+                            if(pressTarget) pressTarget.classList.remove('pressing');
+                            openModal(cell);
                         }
                     }, 400);
                 };
@@ -498,21 +517,36 @@ if not os.path.exists("custom_editor_v4"):
                 const handleMove = (e, x, y) => {
                     if (selectedMode === -1 || !down) return;
                     if (e.cancelable) e.preventDefault(); 
+                    
+                    // 10px以上動いたらドラッグ（塗りつぶし）と判定し、長押しを即座にキャンセル
+                    if (Math.abs(x - startX) > 10 || Math.abs(y - startY) > 10) {
+                        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+                        if (pressTarget) { pressTarget.classList.remove('pressing'); pressTarget = null; }
+                    }
+
                     const cell = document.elementFromPoint(x, y)?.closest('.c');
-                    if(cell) window.upd(cell, selectedMode);
+                    // 別のセルに入った場合も長押しをキャンセル
+                    if(cell && pressTarget && cell !== pressTarget) {
+                        if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+                        if (pressTarget) { pressTarget.classList.remove('pressing'); pressTarget = null; }
+                    }
+
+                    if(cell) window.paintCell(cell, selectedMode);
                 };
 
                 const handleEnd = () => {
-                    if (pressTimer) clearTimeout(pressTimer);
-                    document.querySelectorAll('.pressing').forEach(el => el.classList.remove('pressing'));
+                    if (pressTimer) { clearTimeout(pressTimer); pressTimer = null; }
+                    if (pressTarget) { pressTarget.classList.remove('pressing'); pressTarget = null; }
+
                     if (down && touchMode === null && !isLongPress && selectedMode !== -1) {
-                        const cell = document.elementFromPoint(startX, startY)?.closest('.c'); if(cell) window.upd(cell, selectedMode);
+                        const cell = document.elementFromPoint(startX, startY)?.closest('.c'); 
+                        if(cell) window.paintCell(cell, selectedMode);
                     }
                     down = false; touchMode = null;
                 };
 
-                g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); if(selectedMode !== -1) window.upd(e.target.closest('.c'), selectedMode); };
-                g.onmousemove = e => { if (selectedMode === -1 || !down) return; const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest('.c'); if(cell) window.upd(cell, selectedMode); }
+                g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); if(selectedMode !== -1) window.paintCell(e.target.closest('.c'), selectedMode); };
+                g.onmousemove = e => { if (selectedMode === -1 || !down) return; const cell = document.elementFromPoint(e.clientX, e.clientY)?.closest('.c'); if(cell) window.paintCell(cell, selectedMode); }
                 window.onmouseup = handleEnd; window.onmouseleave = handleEnd; 
 
                 g.addEventListener('touchstart', e => { if (e.touches.length > 1) return; handleStart(e, e.touches[0].clientX, e.touches[0].clientY); }, {passive: true});
@@ -526,6 +560,8 @@ if not os.path.exists("custom_editor_v4"):
                     setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails, trigger_save: true, ts: Date.now() }); 
                     btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
                 }; }
+                
+                // 初回描画時のみ純粋なレンダリング(upd)を使用し、データを上書きしない
                 document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
             }
         }); init(); </script></body></html>
