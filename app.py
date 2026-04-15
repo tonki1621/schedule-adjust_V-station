@@ -354,7 +354,7 @@ if not os.path.exists("custom_editor_v7"):
             if (v == 1 || v == 2) {
                 let info = { color: "#4CAF50", text: "◯" }; 
                 if (campus === "なかもず") info = { color: "#FFA726", text: "な" };
-                else if (campus === "すぎもoth" || campus === "杉本") info = { color: "#42A5F5", text: "す" };
+                else if (campus === "すぎもと" || campus === "杉本") info = { color: "#42A5F5", text: "す" };
                 else if (campus === "もりのみや") info = { color: "#66BB6A", text: "も" };
                 else if (campus === "あべの" || campus === "阿倍野") info = { color: "#EC407A", text: "あ" };
                 else if (campus === "りんくう") info = { color: "#AB47BC", text: "り" };
@@ -1764,6 +1764,13 @@ def main():
 
             all_res_data = st.session_state.event_responses
             all_names = list(set([r.get('user_name', '不明') for r in all_res_data]))
+            
+            # --- 追加: 回答者一覧の表示 ---
+            if can_view_details:
+                with st.expander(f"🙋 回答済みのメンバー ({len(all_names)}名)", expanded=False):
+                    st.write(", ".join(sorted(all_names)))
+            # ------------------------------
+
             all_g1, all_g2, all_g3 = set(), set(), set()
             for r in all_res_data:
                 for g in str(r.get('group_1', '')).split(','):
@@ -1989,6 +1996,13 @@ def main():
 
             all_res_data = st.session_state.event_responses
             all_names = list(set([r.get('user_name', '不明') for r in all_res_data]))
+            
+            # --- 追加: 回答者一覧の表示 ---
+            if can_view_details:
+                with st.expander(f"🙋 回答済みのメンバー ({len(all_names)}名)", expanded=False):
+                    st.write(", ".join(sorted(all_names)))
+            # ------------------------------
+
             all_g1, all_g2, all_g3 = set(), set(), set()
             for r in all_res_data:
                 for g in str(r.get('group_1', '')).split(','):
