@@ -1040,8 +1040,9 @@ def main():
                 created_event_id = generate_custom_id("EV")
                 payload = {
                     "event_id": created_event_id, "title": ev_title, "description": ev_desc_raw or "", 
-                    "start_date": ev_start.strftime("%Y-%m-%d") if ev_type == "time" else "", 
-                    "end_date": ev_end.strftime("%Y-%m-%d") if ev_type == "time" else "", 
+                    # ↓ time だけでなく date_timetable の時も日付を保存するように変更
+                    "start_date": ev_start.strftime("%Y-%m-%d") if ev_type in ["time", "date_timetable"] else "", 
+                    "end_date": ev_end.strftime("%Y-%m-%d") if ev_type in ["time", "date_timetable"] else "", 
                     "start_time_idx": time_master.index(t_start) if ev_type == "time" else 0, 
                     "end_time_idx": time_master.index(t_end) if ev_type == "time" else 0, 
                     "status": "open", "type": ev_type, "options_name": json.dumps([o.strip() for o in opts_list if o.strip()]) if ev_type == "options" else "",
