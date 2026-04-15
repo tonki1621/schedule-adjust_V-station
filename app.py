@@ -1548,10 +1548,9 @@ def main():
                             unavail_rows.append({"row": gi - s_idx, "campus": campus})
                     if unavail_rows: unavail_col_rows[str(c)] = unavail_rows
                     
-        else: # timetable
+        elif event_type == 'timetable': # ★ここを else: から書き換える
             s_idx, e_idx = 0, 6
             date_strs = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday"]
-            clean_date_labels = ["月曜", "火曜", "水曜", "木曜", "金曜"]
             time_labels = ["1限", "2限", "3限", "4限", "5限", "放課後"]
             cell_h = "50px"
             week_nav_display = "none"
