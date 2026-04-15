@@ -609,6 +609,16 @@ campus_legend_html = """
 </div>
 """
 
+# ★ 追加: アプリ全体で使う時間割マスター（昼休みを追加）
+PERIODS_MASTER = [
+    ("1限", "09:00〜", 36, 42, "p1"),
+    ("2限", "10:45〜", 43, 49, "p2"),
+    ("昼休み", "12:15〜", 49, 53, "lunch"), # 追加
+    ("3限", "13:15〜", 53, 59, "p3"),
+    ("4限", "15:00〜", 60, 66, "p4"),
+    ("5限", "16:45〜", 67, 73, "p5")
+]
+
 def main():
     if "app_initialized" not in st.session_state:
         st.session_state.app_initialized = True
@@ -860,7 +870,7 @@ def main():
         cols[0].markdown("<div style='padding:8px;'></div>", unsafe_allow_html=True)
         for i, d in enumerate(days_jp): cols[i+1].markdown(f"<div class='tt-day-header'>{d}</div>", unsafe_allow_html=True)
 
-        periods = [("1限", "09:00〜", 36, 42, "p1"), ("2限", "10:45〜", 43, 49, "p2"), ("3限", "13:15〜", 53, 59, "p3"), ("4限", "15:00〜", 60, 66, "p4"), ("5限", "16:45〜", 67, 73, "p5")]
+        periods = PERIODS_MASTER # ★ 修正: マスターデータを参照する
         for p_name, p_time, s_idx, e_idx, p_key in periods:
             cols = st.columns(col_ratios)
             cols[0].markdown(f"<div class='tt-time-cell'>{p_name}<br><span class='tt-time-sub'>{p_time}</span></div>", unsafe_allow_html=True)
@@ -978,7 +988,8 @@ def main():
 
     elif view_mode == "➕ イベント新規作成":
         st.title("➕ イベント新規作成")
-        ev_type_label = st.radio("📝 タイプを選択", ["🕒 時間帯", "🏫 時間割", "📅 複数の予定"], horizontal=True)
+        # ★ 修正: 「📅 日付指定コマ」を追加
+        ev_type_label = st.radio("📝 タイプを選択", ["🕒 時間帯", "🏫 時間割", "📅 日付指定コマ", "📅 複数の予定"], horizontal=True)
         ev_title = st.text_input("イベント名")
         with st.container(border=True):
             st.markdown("##### ⏳ 回答期限の設定")
@@ -997,6 +1008,12 @@ def main():
             with c3: t_start = st.selectbox("開始時刻", time_master, index=36)
             with c4: t_end = st.selectbox("終了時刻", time_master, index=72)
         elif ev_type_label == "🏫 時間割": ev_type = "timetable"
+        # ★ 追加: 日付指定コマ形式のUI表示ロジック
+        elif ev_type_label == "📅 日付指定コマ":
+            ev_type = "date_timetable"
+            c1, c_m, c2 = st.columns([10, 1, 10])
+            with c1: ev_start = st.date_input("開始日")
+            with c2: ev_end = st.date_input("終了日")
         else:
             ev_type = "options"
             if "opt_count" not in st.session_state: st.session_state.opt_count = 3
@@ -1488,7 +1505,8 @@ def main():
         
     tab_in, tab_graph = st.tabs(["📅 入力", "📊 みんなの集計"])
 
-    if event_type in ['time', 'timetable']:
+    # ★ 修正: date_timetable を条件に追加
+    if event_type in ['time', 'timetable', 'date_timetable']:
         if event_type == 'time':
             s_idx = int(event.get('start_time_idx') or event.get('start_idx', 0))
             e_idx = int(event.get('end_time_idx') or event.get('end_idx', 0))
@@ -1551,6 +1569,45 @@ def main():
                     if "1" in day_bin[60:66]: u_rows.append({"row": 3, "campus": fixed_locs.get(wd, {}).get("p4", "")})
                     if "1" in day_bin[67:73]: u_rows.append({"row": 4, "campus": fixed_locs.get(wd, {}).get("p5", "")})
                     if "1" in day_bin[74:]: u_rows.append({"row": 5, "campus": fixed_locs.get(wd, {}).get("af", "")})
+                    if u_rows: unavail_col_rows[str(c)] = u_rows
+                    
+        # ★ 追加: date_timetable（日付指定コマ形式）の生成と時間割反映ロジック
+        elif event_type == 'date_timetable':
+            s_idx, e_idx = 0, len(PERIODS_MASTER) + 1 # 1限〜5限＋昼休み＋放課後
+            time_labels = [p[0] for p in PERIODS_MASTER] + ["放課後"]
+            cell_h = "50px"
+            week_nav_display = "flex"
+
+            date_objs = []
+            try:
+                curr = pd.to_datetime(event.get('start_date', ''), errors='coerce').date()
+                end_d = pd.to_datetime(event.get('end_date', ''), errors='coerce').date()
+                if pd.isna(curr) or pd.isna(end_d): raise Exception
+            except:
+                curr = datetime.today().date(); end_d = curr + timedelta(days=7)
+
+            while curr <= end_d: date_objs.append(curr); curr += timedelta(days=1)
+            date_strs = [d.strftime("%Y-%m-%d") for d in date_objs]
+            clean_date_labels = [f"{d.strftime('%m/%d')}({['月','火','水','木','金','土','日'][d.weekday()]})" for d in date_objs]
+
+            fixed_sched = user.get("fixed_schedule", {})
+            try: fixed_locs = json.loads(user.get("group_4", "{}"))
+            except: fixed_locs = {}
+            unavail_col_rows = {}
+
+            for c, date_obj in enumerate(date_objs):
+                wd = str(date_obj.weekday())
+                if wd in fixed_sched:
+                    day_bin = fixed_sched[wd]
+                    u_rows = []
+                    # マスターデータに沿って自分の時間割と照合
+                    for r, (p_name, _, p_start, p_end, p_key) in enumerate(PERIODS_MASTER):
+                        if "1" in day_bin[p_start:p_end]:
+                            u_rows.append({"row": r, "campus": fixed_locs.get(wd, {}).get(p_key, "")})
+                    # 放課後
+                    if "1" in day_bin[74:]:
+                        u_rows.append({"row": len(PERIODS_MASTER), "campus": fixed_locs.get(wd, {}).get("af", "")})
+                    
                     if u_rows: unavail_col_rows[str(c)] = u_rows
 
         if "df_input" not in st.session_state or st.session_state.get("last_build_ev_id") != event.get('event_id'):
@@ -1739,8 +1796,17 @@ def main():
                         for t_idx in range(len(time_labels)): 
                             val = int(st.session_state.df_input.loc[time_labels[t_idx], d_id])
                             if val > 0: has_data = True
-                            if event_type == 'time': bits[s_idx + t_idx] = str(val)
-                            else: bits[t_idx] = str(val)
+                            
+                            if event_type == 'time': 
+                                bits[s_idx + t_idx] = str(val)
+                            elif event_type == 'date_timetable':
+                                # ★ 追加: date_timetable は periods の開始インデックスに値を保存する
+                                if t_idx < len(PERIODS_MASTER):
+                                    bits[PERIODS_MASTER[t_idx][2]] = str(val)
+                                else: # 放課後
+                                    bits[74] = str(val)
+                            else: # timetable
+                                bits[t_idx] = str(val)
                             
                         if has_data: all_res.append({"date": d_id, "binary_data": "".join(bits)})
                             
