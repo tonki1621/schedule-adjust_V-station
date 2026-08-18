@@ -539,6 +539,25 @@ if not os.path.exists("custom_editor_v7"):
                 g.onmousemove = e => { handleMove(e, e.clientX, e.clientY); }
                 window.onmouseup = handleEnd; window.onmouseleave = handleEnd; 
 
+                // 💡 ここから下を追加
+                g.addEventListener('touchstart', e => { 
+                    if (e.touches.length > 1) return; // 2本指以上のタッチは無視（ズーム等と衝突させない）
+                    handleStart(e, e.touches[0].clientX, e.touches[0].clientY);
+                }, {passive: true});
+                
+                g.addEventListener('touchmove', e => { 
+                    if (selectedMode === -1 || selectedMode === -2) return; // スクロール/詳細モードの時は何もしない
+                    if (e.touches.length >= 2) return; 
+                    if(down) { 
+                        if (e.cancelable) e.preventDefault(); // デフォルトのスクロール挙動を止めて、ペン塗りを優先
+                        handleMove(e, e.touches[0].clientX, e.touches[0].clientY); 
+                    } 
+                }, {passive: false}); // preventDefaultを使うため passive: false が必須
+                
+                g.addEventListener('touchend', handleEnd);
+                g.addEventListener('touchcancel', handleEnd);
+                // 💡 ここまで追加
+
                 const btn = document.getElementById("submit-btn");
                 if(btn) { btn.onclick = () => { 
                     const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => {
@@ -685,8 +704,8 @@ def main():
             elif login_mode == "📝 新規アカウント作成":
                 st.subheader("新規アカウント作成")
                 st.info("💡 未所属の方でも、そのまま下部の登録ボタンを押して利用可能です。")
-                reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name")
-                reg_p = st.text_input("PIN (自由な文字列・数字)", type="password", key="reg_pin")
+                reg_n = st.text_input("氏名 (スペースは自動で削除されます)", key="reg_name", autocomplete="username")
+                reg_p = st.text_input("PIN (自由な文字列・数字)", type="password", key="reg_pin", autocomplete="new-password")
                 reg_s = st.text_input("🔑 秘密の合言葉", key="reg_secret")
                 
                 st.markdown("---")
@@ -856,7 +875,30 @@ def main():
     elif view_mode == "⏰ 時間割設定":
         st.title("⏰ 時間割設定")
         st.info("※ここで設定した授業・バイトの予定は、各イベントの日程調整画面で「時間割パワー反映」ボタンを押すことで、自動入力できます。")
-        st.markdown("""<style>@media (max-width: 650px) { [data-testid="column"] { min-width: 0 !important; flex: 1 1 0px !important; padding: 0 !important; } [data-testid="column"]:first-child { flex: 0 0 55px !important; } .tt-day-header { font-size: 13px !important; padding: 4px 0 !important; } .tt-time-cell { font-size: 11px !important; padding: 4px 2px !important; } }</style>""", unsafe_allow_html=True)
+        
+        # 💡 ここを追加・変更
+        st.markdown("""
+        <style>
+            @media (max-width: 650px) { 
+                [data-testid="column"] { min-width: 0 !important; flex: 1 1 0px !important; padding: 0 !important; } 
+                [data-testid="column"]:first-child { flex: 0 0 55px !important; } 
+                .tt-day-header { font-size: 13px !important; padding: 4px 0 !important; } 
+                .tt-time-cell { font-size: 11px !important; padding: 4px 2px !important; } 
+            }
+            .mobile-rotate-guide { display: none; }
+            @media (max-width: 650px) and (orientation: portrait) {
+                .mobile-rotate-guide {
+                    display: flex; align-items: center; justify-content: center;
+                    background: linear-gradient(135deg, #e8f5e9, #c8e6c9); color: #2e7d32;
+                    padding: 12px 15px; border-radius: 8px; margin-bottom: 20px;
+                    font-size: 13px; font-weight: bold; border-left: 5px solid #4CAF50;
+                }
+                .mobile-rotate-guide::before { content: "📱🔄"; font-size: 20px; margin-right: 10px; }
+            }
+        </style>
+        <div class="mobile-rotate-guide">スマホを横向きにすると、時間割が綺麗に表示されます！</div>
+        """, unsafe_allow_html=True)
+        
         fixed_sched = user.get("fixed_schedule", {})
         try: fixed_locs = json.loads(user.get("group_4", "{}"))
         except: fixed_locs = {}
@@ -1999,21 +2041,68 @@ def main():
                         cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
                     agg_day_cols += f'<div class="agg-day-col"><div class="agg-header">{lbl}</div>{cells_html}</div>'
 
+                # 💡 ここを丸ごと置き換え
                 agg_css = f"""
                 <style>
-                .agg-wrapper {{ max-height: 680px; height: auto; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; padding-bottom: 50px; }}
-                .agg-time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; }}
+                /* Streamlit特有のコンテナの切り取り(overflow:hidden)を強制的に解除 */
+                .stTabs [data-baseweb="tab-panel"] {{ overflow: visible !important; padding-bottom: 200px; }}
+                div[data-testid="stVerticalBlock"] {{ overflow: visible !important; }}
+                div[data-testid="stVerticalBlockBorderWrapper"] {{ overflow: visible !important; }}
+                
+                .agg-wrapper {{ 
+                    max-height: 680px; 
+                    height: auto; 
+                    overflow-x: auto; 
+                    overflow-y: visible !important; 
+                    -webkit-overflow-scrolling: touch; 
+                    border: 1px solid #ccc; 
+                    border-radius: 6px; 
+                    position: relative; 
+                    display: flex; 
+                    background: #fff; 
+                    padding-bottom: 200px; 
+                    margin-bottom: 50px;
+                }}
+                .agg-time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
                 .agg-header {{ position: sticky; top: 0; z-index: 11; background: #eee; font-size: 13px; font-weight: bold; text-align: center; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-sizing: border-box; line-height: 1.2; }}
                 .agg-top-left {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
                 .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
-                .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
-                .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ visibility: hidden; width: 180px; background-color: rgba(30,30,30,0.95); color: #fff; text-align: left; border-radius: 6px; padding: 10px; position: absolute; z-index: 99999; left: 50%; transform: translateX(-50%); opacity: 0; transition: opacity 0.2s; font-size: 11.5px; font-weight: normal; line-height: 1.5; pointer-events: none; white-space: pre-wrap; box-shadow: 0 4px 12px rgba(0,0,0,0.3); max-height: 250px; overflow-y: auto; -webkit-overflow-scrolling: touch; pointer-events: auto; }}
-                .agg-cell .tooltip-up::-webkit-scrollbar, .agg-cell .tooltip-down::-webkit-scrollbar {{ width: 6px; }}
-                .agg-cell .tooltip-up::-webkit-scrollbar-thumb, .agg-cell .tooltip-down::-webkit-scrollbar-thumb {{ background-color: rgba(255, 255, 255, 0.4); border-radius: 3px; }}
+                
+                /* マス目の設定（overflow: visible にしてツールチップが枠外に出れるようにする） */
+                .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; overflow: visible !important; }}
+                
+                /* ツールチップの本体設定。z-indexを極端に高くする */
+                .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ 
+                    visibility: hidden; 
+                    width: 200px; 
+                    max-height: 300px; 
+                    overflow-y: auto; 
+                    background-color: rgba(30, 30, 30, 0.95); 
+                    color: #fff; 
+                    text-align: left; 
+                    border-radius: 8px; 
+                    padding: 12px; 
+                    position: absolute; 
+                    z-index: 9999999 !important; 
+                    left: 50%; 
+                    transform: translateX(-50%); 
+                    opacity: 0; 
+                    transition: opacity 0.2s; 
+                    font-size: 12px; 
+                    font-weight: normal; 
+                    line-height: 1.5; 
+                    pointer-events: auto; 
+                    white-space: pre-wrap; 
+                    box-shadow: 0 8px 24px rgba(0,0,0,0.4); 
+                    -webkit-overflow-scrolling: touch; 
+                }}
+                .agg-cell .tooltip-up::-webkit-scrollbar, .agg-cell .tooltip-down::-webkit-scrollbar {{ width: 8px; }}
+                .agg-cell .tooltip-up::-webkit-scrollbar-thumb, .agg-cell .tooltip-down::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.5); border-radius: 4px; }}
+                
                 .agg-cell .tooltip-up {{ bottom: 100%; margin-bottom: 8px; }}
                 .agg-cell .tooltip-down {{ top: 100%; margin-top: 8px; }}
-                .agg-cell .tooltip-up::after {{ content: ""; position: absolute; top: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: rgba(30,30,30,0.95) transparent transparent transparent; }}
-                .agg-cell .tooltip-down::after {{ content: ""; position: absolute; bottom: 100%; left: 50%; margin-left: -6px; border-width: 6px; border-style: solid; border-color: transparent transparent rgba(30,30,30,0.95) transparent; }}
+                .agg-cell .tooltip-up::after {{ content: ""; position: absolute; top: 100%; left: 50%; margin-left: -8px; border-width: 8px; border-style: solid; border-color: rgba(30,30,30,0.95) transparent transparent transparent; }}
+                .agg-cell .tooltip-down::after {{ content: ""; position: absolute; bottom: 100%; left: 50%; margin-left: -8px; border-width: 8px; border-style: solid; border-color: transparent transparent rgba(30,30,30,0.95) transparent; }}
                 .agg-cell:hover .tooltip-up, .agg-cell:hover .tooltip-down {{ visibility: visible; opacity: 1; }}
                 .agg-time-cell {{ background: #f0f2f6; font-size: 12px; font-weight: bold; color: #555; display: flex; align-items: center; justify-content: center; border-right: 1px solid #ccc; box-sizing: border-box; }}
                 </style>
