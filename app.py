@@ -14,6 +14,7 @@ import threading
 import hashlib
 import random
 import string
+import html
 
 # ==========================================
 # Firebase の初期化 ＆ 高速連携関数
@@ -538,25 +539,6 @@ if not os.path.exists("custom_editor_v7"):
                 g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); };
                 g.onmousemove = e => { handleMove(e, e.clientX, e.clientY); }
                 window.onmouseup = handleEnd; window.onmouseleave = handleEnd; 
-
-                // 💡 ここから下を追加
-                g.addEventListener('touchstart', e => { 
-                    if (e.touches.length > 1) return; // 2本指以上のタッチは無視（ズーム等と衝突させない）
-                    handleStart(e, e.touches[0].clientX, e.touches[0].clientY);
-                }, {passive: true});
-                
-                g.addEventListener('touchmove', e => { 
-                    if (selectedMode === -1 || selectedMode === -2) return; // スクロール/詳細モードの時は何もしない
-                    if (e.touches.length >= 2) return; 
-                    if(down) { 
-                        if (e.cancelable) e.preventDefault(); // デフォルトのスクロール挙動を止めて、ペン塗りを優先
-                        handleMove(e, e.touches[0].clientX, e.touches[0].clientY); 
-                    } 
-                }, {passive: false}); // preventDefaultを使うため passive: false が必須
-                
-                g.addEventListener('touchend', handleEnd);
-                g.addEventListener('touchcancel', handleEnd);
-                // 💡 ここまで追加
 
                 const btn = document.getElementById("submit-btn");
                 if(btn) { btn.onclick = () => { 
@@ -2036,78 +2018,131 @@ def main():
                         else: tooltip_txt = h[r][c] if h[r][c] else "参加可能者なし"
                             
                         agg_font_size = "11px" if cell_h == "20px" else "15px"
-                        tt_class = "tooltip-down" if r < 3 else "tooltip-up"
                         
-                        cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};">{val_txt}<span class="{tt_class}">{t_str}<br><b>{val_txt}人</b><br><hr style="margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);">{tooltip_txt}</span></div>'
+                        # 💡変更: HTMLの属性(data-tooltip)に安全に埋め込むためエスケープ処理
+                        raw_tooltip_html = f"{t_str}<br><b>{val_txt}人</b><br><hr style='margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);'>{tooltip_txt}"
+                        escaped_tooltip = html.escape(raw_tooltip_html)
+                        
+                        cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};" data-tooltip="{escaped_tooltip}">{val_txt}</div>'
                     agg_day_cols += f'<div class="agg-day-col"><div class="agg-header">{lbl}</div>{cells_html}</div>'
 
-                # 💡 ここを丸ごと置き換え
-                agg_css = f"""
+                # 💡変更: StreamlitのDOMに依存しない、堅牢な独立コンポーネント(Vanilla JS)へ移行
+                agg_full_html = f"""
+                <!DOCTYPE html>
+                <html>
+                <head>
+                <meta charset="utf-8">
                 <style>
-                /* Streamlit特有のコンテナの切り取り(overflow:hidden)を強制的に解除 */
-                .stTabs [data-baseweb="tab-panel"] {{ overflow: visible !important; padding-bottom: 200px; }}
-                div[data-testid="stVerticalBlock"] {{ overflow: visible !important; }}
-                div[data-testid="stVerticalBlockBorderWrapper"] {{ overflow: visible !important; }}
-                
-                .agg-wrapper {{ 
-                    max-height: 680px; 
-                    height: auto; 
-                    overflow-x: auto; 
-                    overflow-y: visible !important; 
-                    -webkit-overflow-scrolling: touch; 
-                    border: 1px solid #ccc; 
-                    border-radius: 6px; 
-                    position: relative; 
-                    display: flex; 
-                    background: #fff; 
-                    padding-bottom: 200px; 
-                    margin-bottom: 50px;
-                }}
-                .agg-time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
-                .agg-header {{ position: sticky; top: 0; z-index: 11; background: #eee; font-size: 13px; font-weight: bold; text-align: center; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-sizing: border-box; line-height: 1.2; }}
-                .agg-top-left {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
-                .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
-                
-                /* マス目の設定（overflow: visible にしてツールチップが枠外に出れるようにする） */
-                .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; overflow: visible !important; }}
-                
-                /* ツールチップの本体設定。z-indexを極端に高くする */
-                .agg-cell .tooltip-up, .agg-cell .tooltip-down {{ 
-                    visibility: hidden; 
-                    width: 200px; 
-                    max-height: 300px; 
-                    overflow-y: auto; 
-                    background-color: rgba(30, 30, 30, 0.95); 
-                    color: #fff; 
-                    text-align: left; 
-                    border-radius: 8px; 
-                    padding: 12px; 
-                    position: absolute; 
-                    z-index: 9999999 !important; 
-                    left: 50%; 
-                    transform: translateX(-50%); 
-                    opacity: 0; 
-                    transition: opacity 0.2s; 
-                    font-size: 12px; 
-                    font-weight: normal; 
-                    line-height: 1.5; 
-                    pointer-events: auto; 
-                    white-space: pre-wrap; 
-                    box-shadow: 0 8px 24px rgba(0,0,0,0.4); 
-                    -webkit-overflow-scrolling: touch; 
-                }}
-                .agg-cell .tooltip-up::-webkit-scrollbar, .agg-cell .tooltip-down::-webkit-scrollbar {{ width: 8px; }}
-                .agg-cell .tooltip-up::-webkit-scrollbar-thumb, .agg-cell .tooltip-down::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.5); border-radius: 4px; }}
-                
-                .agg-cell .tooltip-up {{ bottom: 100%; margin-bottom: 8px; }}
-                .agg-cell .tooltip-down {{ top: 100%; margin-top: 8px; }}
-                .agg-cell .tooltip-up::after {{ content: ""; position: absolute; top: 100%; left: 50%; margin-left: -8px; border-width: 8px; border-style: solid; border-color: rgba(30,30,30,0.95) transparent transparent transparent; }}
-                .agg-cell .tooltip-down::after {{ content: ""; position: absolute; bottom: 100%; left: 50%; margin-left: -8px; border-width: 8px; border-style: solid; border-color: transparent transparent rgba(30,30,30,0.95) transparent; }}
-                .agg-cell:hover .tooltip-up, .agg-cell:hover .tooltip-down {{ visibility: visible; opacity: 1; }}
-                .agg-time-cell {{ background: #f0f2f6; font-size: 12px; font-weight: bold; color: #555; display: flex; align-items: center; justify-content: center; border-right: 1px solid #ccc; box-sizing: border-box; }}
+                    body {{ margin: 0; font-family: sans-serif; overflow: hidden; }}
+                    .agg-wrapper {{ max-height: 680px; height: 100vh; overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; display: flex; background: #fff; box-sizing: border-box; }}
+                    .agg-time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
+                    .agg-header {{ position: sticky; top: 0; z-index: 11; background: #eee; font-size: 13px; font-weight: bold; text-align: center; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; display: flex; align-items: center; justify-content: center; padding: 0 5px; box-sizing: border-box; line-height: 1.2; }}
+                    .agg-top-left {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
+                    .agg-day-col {{ flex: 1; min-width: 85px; box-sizing: border-box; }}
+                    .agg-cell {{ border-right: 1px solid #eee; display: flex; align-items: center; justify-content: center; font-weight: bold; position: relative; box-sizing: border-box; cursor: pointer; }}
+                    .agg-time-cell {{ background: #f0f2f6; font-size: 12px; font-weight: bold; color: #555; display: flex; align-items: center; justify-content: center; border-right: 1px solid #ccc; box-sizing: border-box; }}
+                    
+                    #global-tooltip {{
+                        position: fixed;
+                        display: none;
+                        width: 200px;
+                        max-height: 250px;
+                        overflow-y: auto;
+                        background-color: rgba(30, 30, 30, 0.95);
+                        color: #fff;
+                        text-align: left;
+                        border-radius: 8px;
+                        padding: 12px;
+                        z-index: 999999;
+                        font-size: 12px;
+                        line-height: 1.5;
+                        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+                        pointer-events: auto;
+                        -webkit-overflow-scrolling: touch;
+                    }}
+                    #global-tooltip::-webkit-scrollbar {{ width: 8px; }}
+                    #global-tooltip::-webkit-scrollbar-thumb {{ background: rgba(255,255,255,0.5); border-radius: 4px; }}
                 </style>
+                </head>
+                <body>
+                    <div class="agg-wrapper" id="scroll-area">
+                        {agg_time_col}
+                        {agg_day_cols}
+                    </div>
+                    <div id="global-tooltip"></div>
+                    
+                    <script>
+                        const tooltip = document.getElementById('global-tooltip');
+                        const scrollArea = document.getElementById('scroll-area');
+                        let activeCell = null;
+                        
+                        function showTooltip(cell) {{
+                            const ttHtml = cell.getAttribute('data-tooltip');
+                            if (!ttHtml) return;
+                            
+                            tooltip.innerHTML = ttHtml;
+                            tooltip.style.display = 'block';
+                            
+                            const rect = cell.getBoundingClientRect();
+                            const tooltipRect = tooltip.getBoundingClientRect();
+                            
+                            // デフォルトはマスの上側に表示
+                            let top = rect.top - tooltipRect.height - 8;
+                            let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+                            
+                            // 上にスペースがなければ下側に表示
+                            if (top < 0) {{
+                                top = rect.bottom + 8;
+                            }}
+                            // 左右の画面外にはみ出さないよう調整
+                            if (left < 10) left = 10;
+                            if (left + tooltipRect.width > window.innerWidth - 10) {{
+                                left = window.innerWidth - tooltipRect.width - 10;
+                            }}
+                            
+                            tooltip.style.top = top + 'px';
+                            tooltip.style.left = left + 'px';
+                        }}
+                        
+                        document.querySelectorAll('.agg-cell').forEach(cell => {{
+                            cell.addEventListener('mouseenter', () => {{
+                                activeCell = cell;
+                                showTooltip(cell);
+                            }});
+                            
+                            cell.addEventListener('mouseleave', () => {{
+                                activeCell = null;
+                                tooltip.style.display = 'none';
+                            }});
+                            
+                            // スマホタップ用
+                            cell.addEventListener('touchstart', (e) => {{
+                                activeCell = cell;
+                                showTooltip(cell);
+                            }}, {{passive: true}});
+                        }});
+                        
+                        // スクロール時にツールチップが追従するよう更新
+                        scrollArea.addEventListener('scroll', () => {{
+                            if (activeCell) {{
+                                showTooltip(activeCell);
+                            }}
+                        }}, {{passive: true}});
+                        
+                        // 枠外タップでツールチップを閉じる
+                        document.addEventListener('touchstart', (e) => {{
+                            if (!e.target.closest('.agg-cell') && !e.target.closest('#global-tooltip')) {{
+                                tooltip.style.display = 'none';
+                                activeCell = null;
+                            }}
+                        }}, {{passive: true}});
+                    </script>
+                </body>
+                </html>
                 """
-                st.markdown(f"{agg_css}<div class='agg-wrapper'>{agg_time_col}{agg_day_cols}</div>", unsafe_allow_html=True)
+                
+                # iframeとして700pxの高さを確保し、内部スクロールに委ねる
+                components.html(agg_full_html, height=700, scrolling=False)
                 
                 if comments_list and can_view_details:
                     st.markdown("### 💬 参加者からのコメント")
