@@ -245,7 +245,7 @@ if not os.path.exists("custom_editor_v7"):
         .c{position:relative;transition:filter 0.1s;}
         </style></head><body>
         
-        <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none !important; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
+        <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
             <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
             <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
             <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#81C784; color:#fff;">未定</button>
@@ -503,11 +503,12 @@ if not os.path.exists("custom_editor_v7"):
                 
                 window.renderWeek();
                 
+                // パレット表示の制御
                 if(args.isClosed) { 
-                    palette.style.setProperty('display', 'none', 'important'); 
+                    palette.style.display = 'none'; 
                     return; 
                 } else { 
-                    palette.style.setProperty('display', 'flex', 'important'); 
+                    palette.style.display = 'flex'; 
                 }
                 
                 setTimeout(() => { window.setPen(selectedMode); }, 50);
@@ -540,29 +541,52 @@ if not os.path.exists("custom_editor_v7"):
                     down = false;
                 };
 
+                // PCマウス用
                 g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); };
                 g.onmousemove = e => { handleMove(e, e.clientX, e.clientY); }
                 window.onmouseup = handleEnd; window.onmouseleave = handleEnd; 
 
-                // 💡 スマホのタッチ操作・ピンチ（拡大縮小）の対応を追加
-                g.addEventListener('touchstart', function(e) {
-                    if (e.touches.length >= 2) return;  // 2本指は無視
-                    if (e.cancelable) e.preventDefault(); // スクロール抑止（必須）
-                    handleStart(e, e.touches[0].clientX, e.touches[0].clientY);
-                }, { passive: false });
+                // ------------------------------------------------------------
+                // 📱 スマホタッチイベントの修正
+                // ------------------------------------------------------------
+                if (window._touchCleanup) {
+                    g.removeEventListener('touchstart', window._touchStartHandler);
+                    g.removeEventListener('touchmove', window._touchMoveHandler);
+                    g.removeEventListener('touchend', window._touchEndHandler);
+                    g.removeEventListener('touchcancel', window._touchCancelHandler);
+                }
 
-                g.addEventListener('touchmove', function(e) {
-                    if (selectedMode === -1 || selectedMode === -2) return;
-                    if (e.touches.length >= 2) return;  // 2本指はブラウザデフォルト（ピンチ）に任せる
+                window._touchStartHandler = function(e) {
+                    if (e.touches.length >= 2) return; // 2本指以上はブラウザのデフォルト動作（ピンチ）に任せる
+                    if (e.cancelable) e.preventDefault(); // 1本指の場合はスクロールを抑止して塗りを開始
+                    handleStart(e, e.touches[0].clientX, e.touches[0].clientY);
+                };
+
+                window._touchMoveHandler = function(e) {
+                    if (selectedMode === -1 || selectedMode === -2) return; // スクロールモード or 詳細モードの時は何もしない
+                    if (e.touches.length >= 2) return; // 2本指以上はピンチ操作としてブラウザに任せる
                     if (down) {
-                        if (e.cancelable) e.preventDefault(); // 1本指のみスクロール抑止
+                        if (e.cancelable) e.preventDefault(); // 1本指ドラッグ中のみスクロールを抑止
                         handleMove(e, e.touches[0].clientX, e.touches[0].clientY);
                     }
-                }, { passive: false });
+                };
 
-                g.addEventListener('touchend', handleEnd);
-                g.addEventListener('touchcancel', handleEnd);
+                window._touchEndHandler = function(e) {
+                    down = false;
+                };
 
+                window._touchCancelHandler = function(e) {
+                    down = false;
+                };
+
+                // イベントリスナーを追加（passive: false が必須）
+                g.addEventListener('touchstart', window._touchStartHandler, { passive: false });
+                g.addEventListener('touchmove', window._touchMoveHandler, { passive: false });
+                g.addEventListener('touchend', window._touchEndHandler);
+                g.addEventListener('touchcancel', window._touchCancelHandler);
+
+                // クリーンアップ用フラグ
+                window._touchCleanup = true;
                 const btn = document.getElementById("submit-btn");
                 if(btn) { btn.onclick = () => { 
                     const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => {
