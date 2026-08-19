@@ -244,65 +244,30 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
     .c{position:relative;transition:filter 0.1s;}
     
     /* 📱 スマホ横画面対応: パレットを横一列にして下部中央に固定 */
-    /* 📱 スマホ横画面 */
-    @media (max-width: 900px) and (orientation: landscape) {
-
+    @media (max-width: 900px) and (orientation: landscape), (max-height: 500px) {
         #palette {
             top: auto !important;
             bottom: 10px !important;
-
             left: 50% !important;
             right: auto !important;
-
             transform: translateX(-50%) !important;
-
             flex-direction: row !important;
             align-items: center !important;
-            justify-content: center !important;
-
-            gap: 5px !important;
-            padding: 5px 6px !important;
-
-            width: max-content !important;
-            max-width: calc(100vw - 16px) !important;
-
+            gap: 6px !important;
+            padding: 6px 8px !important;
+            max-width: calc(100vw - 20px) !important;
             box-sizing: border-box !important;
-
-            /* 横画面では固定 */
-            cursor: default !important;
         }
-
-        /* 「🖊️ ペン」の見出しを非表示 */
-        #palette > div:first-child {
-            display: none !important;
-        }
-
-        /* 区切り線 */
+        #palette > div:first-child { display: none !important; }
         #palette > hr {
-            height: 28px !important;
-            width: 1px !important;
-
-            margin: 0 2px !important;
-
-            border: 0 !important;
+            height: 30px !important; width: 1px !important;
+            margin: 0 2px !important; border: 0 !important;
             border-left: 1px solid #ddd !important;
         }
-
-        /* ボタン */
         #palette .pen-btn {
-            flex: 0 0 48px !important;
-
-            width: 48px !important;
-            min-width: 48px !important;
-
-            height: 38px !important;
-
-            padding: 2px !important;
-            margin: 0 !important;
-
-            font-size: 11px !important;
-
-            box-sizing: border-box !important;
+            width: 50px !important; min-width: 50px !important;
+            height: 40px !important; padding: 2px !important;
+            font-size: 11px !important; margin: 0 !important;
         }
     }
     </style></head><body>
@@ -550,52 +515,10 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
     };
 
     const palette = document.getElementById('palette'); let isDraggingPalette = false; let offsetX, offsetY;
-    palette.addEventListener('mousedown', e => {
-
-    // スマホ横画面では固定
-    if (window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) {
-        isDraggingPalette = false;
-        return;
-    }
-
-    if (e.target.tagName.toLowerCase() === 'button') return;
-
-    isDraggingPalette = true;
-
-    offsetX =
-        e.clientX -
-        palette.getBoundingClientRect().left;
-
-    offsetY =
-        e.clientY -
-        palette.getBoundingClientRect().top;
-
-});
+    palette.addEventListener('mousedown', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; });
     document.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
     document.addEventListener('mouseup', () => { isDraggingPalette = false; });
-    palette.addEventListener('touchstart', e => {
-
-    // スマホ横画面ではパレットを固定する
-    if (window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) {
-        isDraggingPalette = false;
-        return;
-    }
-
-    if (e.target.tagName.toLowerCase() === 'button') return;
-
-    isDraggingPalette = true;
-
-    const touch = e.touches[0];
-
-    offsetX =
-        touch.clientX -
-        palette.getBoundingClientRect().left;
-
-    offsetY =
-        touch.clientY -
-        palette.getBoundingClientRect().top;
-
-}, {passive: false});
+    palette.addEventListener('touchstart', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false});
     document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
     document.addEventListener('touchend', () => { isDraggingPalette = false; });
 
