@@ -221,10 +221,6 @@ options_editor = components.declare_component("options_editor", path="options_ed
 # ★ バージョンをv7に変更し、再描画ブロック処理を追加
 # ★ バージョンをv7に変更し、再描画ブロック処理を追加
 if not os.path.exists("custom_editor_v7"):
-    # ★ バージョンをv7に変更し、再描画ブロック処理を追加
-    # 💡 修正1: if not os.path.exists(...) を削除し、必ず最新のHTMLで上書きする
-    # ★ バージョンをv7に変更し、再描画ブロック処理を追加
-    # 💡 修正1: if not os.path.exists(...) を削除し、必ず最新のHTMLで上書き(更新)する
     os.makedirs("custom_editor_v7", exist_ok=True)
     with open("custom_editor_v7/index.html", "w", encoding="utf-8") as f:
         f.write("""
@@ -448,10 +444,8 @@ if not os.path.exists("custom_editor_v7"):
         window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
         document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
-        // 💡 修正2: setPen() ではタッチ操作をJavaScript側で完全に管理するように修正
         window.setPen = function(mode) {
             selectedMode = mode;
-
             [-2, -1, 0, 1, 2].forEach(m => {
                 const b = document.getElementById('pen-' + m);
                 if (b) b.classList.remove('active');
@@ -462,14 +456,8 @@ if not os.path.exists("custom_editor_v7"):
 
             const g = document.getElementById('g');
             if (g) {
-                if (mode === -1) {
-                    // スクロールモード
-                    g.style.touchAction = 'pan-x pan-y';
-                } else {
-                    // 入力・詳細モード
-                    // タッチ操作をブラウザに奪われないようにする
-                    g.style.touchAction = 'none';
-                }
+                // 💡 修正2: 今回はテスト目的のため、全モードで none に固定する
+                g.style.touchAction = 'none';
             }
         };
 
@@ -541,6 +529,10 @@ if not os.path.exists("custom_editor_v7"):
                 setTimeout(() => { window.setPen(selectedMode); }, 50);
                 
                 const g = document.getElementById('g'); if(!g) return;
+
+                // 💡 追加: 確実なtouch-actionの設定
+                g.style.touchAction = 'none';
+
                 const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
                 if (window.globalScale !== 1) {
@@ -560,7 +552,6 @@ if not os.path.exists("custom_editor_v7"):
                     g.removeEventListener('pointerup', window._pointerEndHandler);
                     g.removeEventListener('pointercancel', window._pointerEndHandler);
                     
-                    // 古いデバッグイベントのクリーンアップも追加
                     g.removeEventListener('pointerdown', window._debugPointerDown);
                     g.removeEventListener('pointermove', window._debugPointerMove);
                     g.removeEventListener('pointerup', window._debugPointerUp);
@@ -568,11 +559,15 @@ if not os.path.exists("custom_editor_v7"):
                     g.removeEventListener('touchmove', window._debugTouchMove);
                 }
 
-                // --- 💡 最小デバッグログの挿入 ---
+                // 💡 修正3: デバッグログの出力強化
                 console.log("=== GRID EVENT DEBUG INIT ===");
                 console.log("g =", g);
                 console.log("pointer events supported =", "PointerEvent" in window);
-                console.log("touchAction before =", window.getComputedStyle(g).touchAction);
+                console.log("touchAction =", window.getComputedStyle(g).touchAction);
+                console.log("pointerEvents =", window.getComputedStyle(g).pointerEvents);
+                console.log("userSelect =", window.getComputedStyle(g).userSelect);
+                console.log("g rect =", g.getBoundingClientRect());
+                console.log("cell count =", document.querySelectorAll(".c").length);
 
                 window._debugPointerDown = function(e) {
                     console.log("[DEBUG pointerdown]", "pointerId=", e.pointerId, "pointerType=", e.pointerType, "client=", e.clientX, e.clientY, "target=", e.target, "closestCell=", e.target.closest(".c"));
