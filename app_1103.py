@@ -223,8 +223,6 @@ options_editor = components.declare_component("options_editor", path="options_ed
 if not os.path.exists("custom_editor_v7"):
     # ★ バージョンをv7に変更し、再描画ブロック処理を追加
     # 💡 修正1: if not os.path.exists(...) を削除し、必ず最新のHTMLで上書きする
-    # ★ バージョンをv7に変更し、再描画ブロック処理を追加
-    # 💡 修正1: if not os.path.exists(...) を削除し、必ず最新のHTMLで上書き(更新)する
     os.makedirs("custom_editor_v7", exist_ok=True)
     with open("custom_editor_v7/index.html", "w", encoding="utf-8") as f:
         f.write("""
@@ -298,6 +296,7 @@ if not os.path.exists("custom_editor_v7"):
         let numRows = 0;
         let unavailColRows = {};
 
+        // 💡 修正2: 確実に1回だけ初期化する
         window.globalScale = Number.isFinite(window.globalScale) ? window.globalScale : 1;
 
         window.cellDetails = {};
@@ -448,7 +447,7 @@ if not os.path.exists("custom_editor_v7"):
         window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
         document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
-        // 💡 修正2: setPen() ではタッチ操作をJavaScript側で完全に管理するように修正
+        // 💡 修正3: setPen() ではタッチ操作をJavaScript側で完全に管理するように修正
         window.setPen = function(mode) {
             selectedMode = mode;
 
@@ -543,6 +542,7 @@ if not os.path.exists("custom_editor_v7"):
                 const g = document.getElementById('g'); if(!g) return;
                 const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
+                // 再描画時にズーム状態を復元する
                 if (window.globalScale !== 1) {
                     g.style.transform = `scale(${window.globalScale})`;
                     g.style.transformOrigin = "0 0";
@@ -552,71 +552,40 @@ if not os.path.exists("custom_editor_v7"):
                 }
 
                 // ------------------------------------------------------------
-                // 📱 Pointer Events 登録
+                // 📱 Pointer Events による「1本指ドラッグ」と「自前2本指ズーム/パン」
                 // ------------------------------------------------------------
                 if (window._pointerCleanup) {
                     g.removeEventListener('pointerdown', window._pointerDownHandler);
                     g.removeEventListener('pointermove', window._pointerMoveHandler);
                     g.removeEventListener('pointerup', window._pointerEndHandler);
                     g.removeEventListener('pointercancel', window._pointerEndHandler);
-                    
-                    // 古いデバッグイベントのクリーンアップも追加
-                    g.removeEventListener('pointerdown', window._debugPointerDown);
-                    g.removeEventListener('pointermove', window._debugPointerMove);
-                    g.removeEventListener('pointerup', window._debugPointerUp);
-                    g.removeEventListener('touchstart', window._debugTouchStart);
-                    g.removeEventListener('touchmove', window._debugTouchMove);
                 }
 
-                // --- 💡 最小デバッグログの挿入 ---
-                console.log("=== GRID EVENT DEBUG INIT ===");
-                console.log("g =", g);
-                console.log("pointer events supported =", "PointerEvent" in window);
-                console.log("touchAction before =", window.getComputedStyle(g).touchAction);
-
-                window._debugPointerDown = function(e) {
-                    console.log("[DEBUG pointerdown]", "pointerId=", e.pointerId, "pointerType=", e.pointerType, "client=", e.clientX, e.clientY, "target=", e.target, "closestCell=", e.target.closest(".c"));
-                };
-                window._debugPointerMove = function(e) {
-                    console.log("[DEBUG pointermove]", "pointerId=", e.pointerId, "pointerType=", e.pointerType, "client=", e.clientX, e.clientY);
-                };
-                window._debugPointerUp = function(e) {
-                    console.log("[DEBUG pointerup]", "pointerId=", e.pointerId, "pointerType=", e.pointerType);
-                };
-                window._debugTouchStart = function(e) {
-                    console.log("[DEBUG touchstart]", "touches=", e.touches.length);
-                };
-                window._debugTouchMove = function(e) {
-                    console.log("[DEBUG touchmove]", "touches=", e.touches.length);
-                };
-
-                g.addEventListener("pointerdown", window._debugPointerDown);
-                g.addEventListener("pointermove", window._debugPointerMove);
-                g.addEventListener("pointerup", window._debugPointerUp);
-                g.addEventListener("touchstart", window._debugTouchStart, {passive:false});
-                g.addEventListener("touchmove", window._debugTouchMove, {passive:false});
-                console.log("=== GRID EVENT DEBUG READY ===");
-                // ------------------------------
-
                 let activePointers = new Map();
-                let gestureMode = "none";
+                let gestureMode = "none"; // 状態マシン: "none", "paint", "pinch"
                 
+                // ズーム・パン用の状態変数
                 let initialScale = 1;
                 let initialDistance = 0;
                 let lastCenter = null;
 
+                // 2点間の距離を計算
                 function getDistance(p1, p2) {
                     return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
                 }
 
+                // 2点間の中心座標を計算
                 function getCenter(p1, p2) {
                     return { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 };
                 }
 
                 window._pointerDownHandler = function(e) {
+                    // 💡 修正4: デバッグログの出力
+                    console.log("[GRID pointerdown]", e.pointerType, e.pointerId, e.clientX, e.clientY, e.target);
+                    
                     activePointers.set(e.pointerId, e);
 
-                    if (selectedMode === -1) return;
+                    if (selectedMode === -1) return; // スクロールモードはブラウザネイティブに任せる
 
                     if (selectedMode === -2) {
                         if (activePointers.size === 1) {
@@ -632,9 +601,10 @@ if not os.path.exists("custom_editor_v7"):
                         if (cell) window.paintCell(cell, selectedMode);
                         
                         if (g.hasPointerCapture(e.pointerId)) {
-                            g.releasePointerCapture(e.pointerId);
+                            g.releasePointerCapture(e.pointerId); // ドラッグ中の要素取得のためキャプチャを解放
                         }
                     } else if (activePointers.size === 2) {
+                        // 2本指になったらペイントを中止し、自前のピンチズームモードへ移行
                         gestureMode = "pinch";
                         const pts = Array.from(activePointers.values());
                         initialDistance = getDistance(pts[0], pts[1]);
@@ -644,33 +614,41 @@ if not os.path.exists("custom_editor_v7"):
                 };
 
                 window._pointerMoveHandler = function(e) {
+                    // 💡 修正4: デバッグログの出力
+                    console.log("[GRID pointermove]", e.pointerType, e.pointerId, e.clientX, e.clientY);
                     if (!activePointers.has(e.pointerId)) return;
                     activePointers.set(e.pointerId, e);
 
                     if (gestureMode === "paint" && activePointers.size === 1) {
+                        // 1本指ペイントドラッグ
                         const el = document.elementFromPoint(e.clientX, e.clientY);
                         const cell = el ? el.closest('.c') : null;
                         if (cell) {
                             window.paintCell(cell, selectedMode);
                         }
                     } else if (gestureMode === "pinch" && activePointers.size === 2) {
+                        // 2本指ズーム ＆ パン（移動）
                         const pts = Array.from(activePointers.values());
                         const currentDistance = getDistance(pts[0], pts[1]);
                         const currentCenter = getCenter(pts[0], pts[1]);
 
+                        // ズーム処理
                         if (initialDistance > 0) {
                             let newScale = initialScale * (currentDistance / initialDistance);
-                            newScale = Math.max(0.5, Math.min(newScale, 3.0));
-                            window.globalScale = newScale;
+                            newScale = Math.max(0.5, Math.min(newScale, 3.0)); // 倍率制限 (0.5x 〜 3.0x)
+                            window.globalScale = newScale; // グローバル変数を更新
                             
+                            // グリッド自体を拡大縮小する
                             g.style.transform = `scale(${window.globalScale})`;
                             g.style.transformOrigin = "0 0";
                             
+                            // 拡大時に右下が見切れないよう、擬似的に余白を広げる
                             const marginPct = Math.max(0, (window.globalScale - 1) * 100);
                             g.style.marginBottom = `${marginPct}%`;
                             g.style.marginRight = `${marginPct}%`;
                         }
 
+                        // パン（移動）処理
                         if (lastCenter && scrollArea) {
                             const dx = currentCenter.x - lastCenter.x;
                             const dy = currentCenter.y - lastCenter.y;
@@ -686,9 +664,16 @@ if not os.path.exists("custom_editor_v7"):
                     if (activePointers.size === 0) {
                         gestureMode = "none";
                     } else if (activePointers.size === 1) {
+                        // 2本指から1本指に戻った時は、誤爆を防ぐためペイントを再開しない
                         gestureMode = "none";
                     }
                 };
+
+                // 💡 修正4: デバッグログの出力
+                console.log("=== GRID READY ===");
+                console.log("g =", g);
+                console.log("touchAction =", window.getComputedStyle(g).touchAction);
+                console.log("PointerEvent =", "PointerEvent" in window);
 
                 g.addEventListener('pointerdown', window._pointerDownHandler);
                 g.addEventListener('pointermove', window._pointerMoveHandler);
