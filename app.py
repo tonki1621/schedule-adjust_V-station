@@ -1548,7 +1548,7 @@ def main():
     # ----------------------------------------------------
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🔴 未回答の予定")
-    unanswered_events = [ev for ev in events if not ev.get('is_answered') and ev.get('status'] == 'open']
+    unanswered_events = [ev for ev in events if not ev.get('is_answered') and ev.get('status') == 'open']
     if unanswered_events:
         for u_ev in unanswered_events:
             if st.sidebar.button(f"🔴 {u_ev.get('title', '')}", key=f"side_btn_u_{u_ev.get('event_id')}", use_container_width=True):
