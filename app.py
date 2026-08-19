@@ -220,7 +220,7 @@ options_editor = components.declare_component("options_editor", path="options_ed
 
 # ★ バージョンをv7に変更し、再描画ブロック処理を追加
 # ★ バージョンをv7に変更し、再描画ブロック処理を追加
-if not os.path.exists("custom_editor_v7"):
+if not os.path.exists("custom_editor_v8"):
     os.makedirs("custom_editor_v8", exist_ok=True)
     with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
         f.write("""
