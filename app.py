@@ -219,9 +219,9 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
 options_editor = components.declare_component("options_editor", path="options_editor")
 
 # ★ バージョンをv8に固定し、毎回必ず最新のHTMLで上書き更新する
-# ★ パレット下部固定ナビ化・イベント単一化・ズーム復旧版 (v11)
-os.makedirs("custom_editor_v12", exist_ok=True)
-with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
+# ★ パレットグリッド追従＆Pointer状態管理最適化版 (v13)
+os.makedirs("custom_editor_v13", exist_ok=True)
+with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -244,12 +244,10 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
     .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;}
     .c{position:relative;transition:filter 0.1s;}
     
-    /* 📱 スマホ用: パレットを下部ナビゲーションバーとして完全固定 */
+    /* 📱 スマホ用: パレットを横一列に (top/bottomはJSで制御) */
     @media (max-width: 900px) {
         #palette {
             position: fixed !important;
-            top: auto !important;
-            bottom: 20px !important;
             left: 50% !important;
             right: auto !important;
             transform: translateX(-50%) !important;
@@ -272,9 +270,8 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
         #palette .pen-btn { flex: 0 0 48px !important; width: 48px !important; min-width: 48px !important; height: 38px !important; padding: 2px !important; margin: 0 !important; font-size: 11px !important; box-sizing: border-box !important; }
     }
     
-    /* 下部パレットに隠れないようにグリッド下部に余白を確保 */
     .scroll-wrapper {
-        margin-bottom: 80px !important;
+        overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff;
     }
     </style></head><body>
     
@@ -326,6 +323,7 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
     window.globalScale = Number.isFinite(window.globalScale) ? window.globalScale : 1;
     window.cellDetails = {}; let defaultCampus = "";
     let modalStatus = 1; let selectedMode = 1; let editingCell = null;
+    window.isPaletteClosed = false;
 
     let activePointers = new Map();
     let gestureMode = "none";
@@ -333,7 +331,6 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
     let initialDistance = 0;
     let lastCenter = null;
     
-    // 💡 長押し判定用変数
     let longPressTimer = null;
     let startPointer = { x: 0, y: 0, cell: null };
 
@@ -423,6 +420,7 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
         const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
         if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
         setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
+        window.updatePalettePosition();
     };
     window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
     
@@ -476,7 +474,6 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
 
         const g = document.getElementById('g');
         if (g) {
-            // 移動モード(-1)時はブラウザ標準のスクロール操作等を許可、その他はJSでタッチ完全制御
             g.style.touchAction = (mode === -1) ? 'pan-x pan-y pinch-zoom' : 'none';
         }
     };
@@ -498,42 +495,46 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
         document.getElementById('pen-2').style.opacity = 0.6;
         document.getElementById('pen-2').style.color = "#fff";
         
-        // 💡 再描画でモードが「可」に戻らないよう、現在のモードを維持
         window.setPen(selectedMode);
     };
 
-    // 💡 パレットのドラッグ処理（PCマウスのみ・スマホは無効・はみ出し防止）
+    // 💡 調整マスの見えている最下部にパレットを追従させる処理
+    window.updatePalettePosition = function() {
+        const g = document.getElementById('g');
+        const palette = document.getElementById('palette');
+        if (!g || !palette) return;
+
+        // PC幅の場合は従来通り(JS追従させず、ドラッグに任せる)
+        if (!window.matchMedia('(max-width: 900px)').matches) {
+            if (window.isPaletteClosed) { palette.style.display = 'none'; } else { palette.style.display = 'flex'; }
+            return;
+        }
+
+        const rect = g.getBoundingClientRect();
+        const vh = window.innerHeight;
+
+        // グリッドが完全に画面外なら非表示
+        if (rect.bottom <= 0 || rect.top >= vh || window.isPaletteClosed) {
+            palette.style.display = 'none';
+            return;
+        }
+
+        palette.style.display = 'flex';
+
+        // グリッドの現在見えている下端
+        const bottom = Math.min(rect.bottom, vh - 8);
+        const paletteHeight = palette.offsetHeight || 50;
+
+        palette.style.top = `${bottom - paletteHeight}px`;
+        palette.style.bottom = 'auto';
+    };
+
+    // 💡 PC用のパレットドラッグ処理（スマホは無視）
     const palette = document.getElementById('palette');
     let isDraggingPalette = false; let offsetX, offsetY;
 
-    function clampPalettePosition() {
-        if (!palette) return;
-        if (window.matchMedia('(max-width: 900px)').matches) {
-            palette.style.left = ''; palette.style.top = ''; palette.style.right = ''; palette.style.bottom = '';
-            return;
-        }
-        const rect = palette.getBoundingClientRect();
-        const margin = 8;
-        let left = parseFloat(palette.style.left);
-        let top = parseFloat(palette.style.top);
-        
-        if (isNaN(left)) left = rect.left;
-        if (isNaN(top)) top = rect.top;
-        
-        const maxLeft = window.innerWidth - rect.width - margin;
-        const maxTop = window.innerHeight - rect.height - margin;
-        
-        left = Math.max(margin, Math.min(left, maxLeft));
-        top = Math.max(margin, Math.min(top, maxTop));
-        
-        palette.style.left = left + 'px';
-        palette.style.top = top + 'px';
-        palette.style.right = 'auto';
-        palette.style.bottom = 'auto';
-    }
-
     palette.addEventListener('mousedown', e => {
-        if (window.matchMedia('(max-width: 900px)').matches) return; // スマホ幅ならドラッグ無効
+        if (window.matchMedia('(max-width: 900px)').matches) return;
         if (e.target.tagName.toLowerCase() === 'button') return;
         isDraggingPalette = true;
         offsetX = e.clientX - palette.getBoundingClientRect().left;
@@ -544,22 +545,31 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
         if (!isDraggingPalette) return;
         palette.style.left = (e.clientX - offsetX) + 'px';
         palette.style.top = (e.clientY - offsetY) + 'px';
-        clampPalettePosition();
+        palette.style.right = 'auto';
+        palette.style.bottom = 'auto';
     });
 
     document.addEventListener('mouseup', () => { isDraggingPalette = false; });
-    window.addEventListener('resize', clampPalettePosition);
+    
+    // イベントリスナーの登録（リサイズ、回転、スクロールで位置同期）
+    window.addEventListener('resize', window.updatePalettePosition);
+    window.addEventListener('orientationchange', () => { setTimeout(window.updatePalettePosition, 100); });
+    window.addEventListener('scroll', window.updatePalettePosition, {passive: true});
 
     // ============================================================
-    // 💡 Pointer Events の統合管理 (1回だけ登録する)
+    // 💡 Pointer Events の統合管理 (一回だけ登録する)
     // ============================================================
-    function getDistance(p1, p2) { return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY); }
-    function getCenter(p1, p2) { return { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 }; }
+    function getDistance(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
+    function getCenter(p1, p2) { return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }; }
 
     window._pointerDownHandler = function(e) {
-        activePointers.set(e.pointerId, e);
+        // オブジェクトとして明示的に座標とタイプを保存
+        activePointers.set(e.pointerId, {
+            x: e.clientX,
+            y: e.clientY,
+            pointerType: e.pointerType
+        });
 
-        // マルチタッチ時に pointermove が正しく取れるようキャプチャ解放
         try { if (e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId); } catch(err) {}
 
         if (selectedMode === -1) return; // 移動モード
@@ -574,7 +584,7 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
             startPointer = { x: e.clientX, y: e.clientY, cell: e.target.closest('.c') };
             
             // 💡 長押し(450ms)で詳細設定モーダルを開く
-            if (longPressTimer) clearTimeout(longPressTimer);
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
             longPressTimer = setTimeout(() => {
                 if (gestureMode === "pending") {
                     gestureMode = "longpress";
@@ -584,7 +594,7 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
             
         } else if (activePointers.size >= 2) {
             // 💡 2本指検知でズーム＆パン開始
-            if (longPressTimer) clearTimeout(longPressTimer);
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
             gestureMode = "pinch";
             const pts = Array.from(activePointers.values());
             initialDistance = getDistance(pts[0], pts[1]);
@@ -595,9 +605,14 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
 
     window._pointerMoveHandler = function(e) {
         if (!activePointers.has(e.pointerId)) return;
-        activePointers.set(e.pointerId, e);
         
-        // ピンチズームやペイント時はブラウザ標準のスクロールを防ぐ
+        // 座標更新
+        activePointers.set(e.pointerId, {
+            x: e.clientX,
+            y: e.clientY,
+            pointerType: e.pointerType
+        });
+        
         if (gestureMode === "pinch" || gestureMode === "paint") {
             if (e.cancelable) e.preventDefault();
         }
@@ -608,9 +623,8 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
         if (activePointers.size === 1) {
             if (gestureMode === "pending") {
                 const dist = Math.hypot(e.clientX - startPointer.x, e.clientY - startPointer.y);
-                // 指が少し動いたら長押しをキャンセルしてペイントドラッグ開始
-                if (dist > 8) {
-                    if (longPressTimer) clearTimeout(longPressTimer);
+                if (dist > 8) { // 指が動いたら長押しキャンセル、ペイント開始
+                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
                     gestureMode = "paint";
                     if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
                     const el = document.elementFromPoint(e.clientX, e.clientY);
@@ -638,6 +652,9 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
                 const marginPct = Math.max(0, (window.globalScale - 1) * 100);
                 g.style.marginBottom = `${marginPct}%`;
                 g.style.marginRight = `${marginPct}%`;
+                
+                // ズームでグリッド座標が変わるのでパレット位置も同期
+                window.updatePalettePosition();
             }
 
             // 💡 2本指パン
@@ -650,16 +667,15 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
     };
 
     window._pointerEndHandler = function(e) {
-        // 長押し・ドラッグせずに指を離した場合は「短タップ塗り」
         if (activePointers.size === 1 && gestureMode === "pending") {
-            if (longPressTimer) clearTimeout(longPressTimer);
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
             if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
         }
         
         activePointers.delete(e.pointerId);
         if (activePointers.size === 0) {
             gestureMode = "none";
-            if (longPressTimer) clearTimeout(longPressTimer);
+            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
         } else if (activePointers.size === 1) {
             gestureMode = "none"; // ズーム後の誤爆防止
         }
@@ -706,16 +722,17 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
             const detailsEl = document.querySelector('details');
             if (detailsEl) {
                 detailsEl.addEventListener('toggle', () => {
-                    setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
+                    setTimeout(() => {
+                        sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50});
+                        window.updatePalettePosition();
+                    }, 150);
                 });
             }
             
             window.renderWeek();
+            window.isPaletteClosed = args.isClosed;
             
-            const paletteEl = document.getElementById('palette');
-            if(args.isClosed) { paletteEl.style.display = 'none'; } else { paletteEl.style.display = 'flex'; }
-            
-            setTimeout(() => { window.setPen(selectedMode); }, 50);
+            setTimeout(() => { window.setPen(selectedMode); window.updatePalettePosition(); }, 50);
 
             // 💡 DOM再構築後に必ず1回だけイベントリスナーを登録
             initPointerEvents();
@@ -727,6 +744,14 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
                 const marginPct = Math.max(0, (window.globalScale - 1) * 100);
                 g.style.marginBottom = `${marginPct}%`;
                 g.style.marginRight = `${marginPct}%`;
+            }
+
+            // スクロールラッパーのイベント紐付け
+            const scrollArea = g ? (g.closest('.scroll-wrapper') || g.parentElement) : null;
+            if (scrollArea && scrollArea !== window._boundScrollArea) {
+                if (window._boundScrollArea) window._boundScrollArea.removeEventListener('scroll', window.updatePalettePosition);
+                scrollArea.addEventListener('scroll', window.updatePalettePosition, {passive: true});
+                window._boundScrollArea = scrollArea;
             }
             
             const btn = document.getElementById("submit-btn");
@@ -740,14 +765,15 @@ with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
                 const commentText = commentBox ? commentBox.value : ""; 
                 
                 setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails || {}, trigger_save: true, ts: Date.now() }); 
-                btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; paletteEl.style.display = 'none'; 
+                btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; 
+                const paletteEl = document.getElementById('palette'); if(paletteEl) paletteEl.style.display = 'none'; 
             }; }
             document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
         }
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v12")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v13")
 
 def call_gas(action, payload=None, method="POST"):
     try:
