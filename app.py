@@ -218,503 +218,468 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#81C784;color:#fff;border-color:#81C784;box-shadow:0 4px 8px rgba(76,175,80,0.2);transform:translateY(-3px); opacity: 0.8;}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント (任意)</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-# ★ バージョンをv7に変更し、再描画ブロック処理を追加
-# ★ バージョンをv7に変更し、再描画ブロック処理を追加
-if not os.path.exists("custom_editor_v8"):
-    # 💡 修正1: if not os.path.exists(...) を完全に削除し、毎回必ず最新のHTMLで上書き更新する
-    os.makedirs("custom_editor_v8", exist_ok=True)
-    with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
-        f.write("""
-        <!DOCTYPE html><html><head><meta charset="utf-8"><style>
-        body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
-        .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
-        .pen-btn:hover { opacity: 0.8; }
-        .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
-        
-        #detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999999;justify-content:center;align-items:center;backdrop-filter:blur(2px);}
-        .modal-content{background:#fff;width:320px;padding:20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);position:relative;}
-        .modal-title{font-size:16px;font-weight:bold;color:#333;margin-bottom:10px;border-bottom:2px solid #4CAF50;padding-bottom:5px;}
-        .modal-label{font-size:12px;font-weight:bold;color:#666;margin-top:15px;display:block;}
-        .modal-select, .modal-input{width:100%;padding:8px;margin-top:5px;border:1px solid #ccc;border-radius:6px;font-size:14px;}
-        .status-switch{display:flex;gap:8px;margin-top:5px;}
-        .sw-btn{flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;background:#f9f9f9;color:#555;transition:0.2s;}
-        .sw-btn.active[data-v="1"]{background:#4CAF50;color:white;border-color:#4CAF50;}
-        .sw-btn.active[data-v="2"]{background:#81C784;color:#fff;border-color:#81C784;opacity:0.8;}
-        .sw-btn.active[data-v="0"]{background:#fff;color:#333;border-color:#999;}
-        .modal-btns{display:flex;gap:10px;margin-top:20px;}
-        .modal-btn-save{flex:1;background:#4CAF50;color:white;border:none;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;}
-        .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;}
-        .c{position:relative;transition:filter 0.1s;}
-        </style></head><body>
-        
-        <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
-            <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
-            <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
-            <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#81C784; color:#fff;">未定</button>
-            <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
-            <hr style="margin:0; border-top:1px solid #ddd;">
-            <button class="pen-btn" onclick="window.setPen(-2)" id="pen--2" style="background:#2196F3; color:#fff; border:2px solid #1976D2; font-size:11px;">ℹ️<br>詳細</button>
-            <button class="pen-btn" onclick="window.setPen(-1)" id="pen--1" style="background:#9C27B0; color:#fff; border:2px solid #7B1FA2; font-size:10px; margin-top:0px;">📜<br>ｽｸﾛｰﾙ</button>
-        </div>
+# ★ バージョンをv8に固定し、毎回必ず最新のHTMLで上書き更新する
+os.makedirs("custom_editor_v8", exist_ok=True)
+with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
+    f.write("""
+    <!DOCTYPE html><html><head><meta charset="utf-8"><style>
+    body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
+    .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
+    .pen-btn:hover { opacity: 0.8; }
+    .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+    
+    #detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999999;justify-content:center;align-items:center;backdrop-filter:blur(2px);}
+    .modal-content{background:#fff;width:320px;padding:20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);position:relative;}
+    .modal-title{font-size:16px;font-weight:bold;color:#333;margin-bottom:10px;border-bottom:2px solid #4CAF50;padding-bottom:5px;}
+    .modal-label{font-size:12px;font-weight:bold;color:#666;margin-top:15px;display:block;}
+    .modal-select, .modal-input{width:100%;padding:8px;margin-top:5px;border:1px solid #ccc;border-radius:6px;font-size:14px;}
+    .status-switch{display:flex;gap:8px;margin-top:5px;}
+    .sw-btn{flex:1;padding:8px;border:1px solid #ddd;border-radius:6px;cursor:pointer;font-size:13px;font-weight:bold;background:#f9f9f9;color:#555;transition:0.2s;}
+    .sw-btn.active[data-v="1"]{background:#4CAF50;color:white;border-color:#4CAF50;}
+    .sw-btn.active[data-v="2"]{background:#81C784;color:#fff;border-color:#81C784;opacity:0.8;}
+    .sw-btn.active[data-v="0"]{background:#fff;color:#333;border-color:#999;}
+    .modal-btns{display:flex;gap:10px;margin-top:20px;}
+    .modal-btn-save{flex:1;background:#4CAF50;color:white;border:none;padding:12px;border-radius:6px;font-weight:bold;cursor:pointer;}
+    .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;}
+    .c{position:relative;transition:filter 0.1s;}
+    
+    /* 📱 スマホ横画面対応: パレットを横一列にして下部中央に固定 */
+    @media (max-width: 900px) and (orientation: landscape), (max-height: 500px) {
+        #palette {
+            top: auto !important;
+            bottom: 10px !important;
+            left: 50% !important;
+            right: auto !important;
+            transform: translateX(-50%) !important;
+            flex-direction: row !important;
+            align-items: center !important;
+            gap: 6px !important;
+            padding: 6px 8px !important;
+            max-width: calc(100vw - 20px) !important;
+            box-sizing: border-box !important;
+        }
+        #palette > div:first-child { display: none !important; }
+        #palette > hr {
+            height: 30px !important; width: 1px !important;
+            margin: 0 2px !important; border: 0 !important;
+            border-left: 1px solid #ddd !important;
+        }
+        #palette .pen-btn {
+            width: 50px !important; min-width: 50px !important;
+            height: 40px !important; padding: 2px !important;
+            font-size: 11px !important; margin: 0 !important;
+        }
+    }
+    </style></head><body>
+    
+    <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
+        <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
+        <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
+        <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#81C784; color:#fff;">未定</button>
+        <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
+        <hr style="margin:0; border-top:1px solid #ddd;">
+        <button class="pen-btn" onclick="window.setPen(-2)" id="pen--2" style="background:#2196F3; color:#fff; border:2px solid #1976D2; font-size:11px;">ℹ️<br>詳細</button>
+        <button class="pen-btn" onclick="window.setPen(-1)" id="pen--1" style="background:#9C27B0; color:#fff; border:2px solid #7B1FA2; font-size:10px; margin-top:0px;">📜<br>ｽｸﾛｰﾙ</button>
+    </div>
 
-        <div id="detail-modal">
-            <div class="modal-content" id="modal-content-box">
-                <div class="modal-title" id="modal-cell-title">詳細設定</div>
-                <label class="modal-label">🚥 予定のステータス</label>
-                <div class="status-switch">
-                    <button class="sw-btn" data-v="1" onclick="setModalStatus(1)">◯ 可</button>
-                    <button class="sw-btn" data-v="2" onclick="setModalStatus(2)">△ 未定</button>
-                    <button class="sw-btn" data-v="0" onclick="setModalStatus(0)">× 不可</button>
-                </div>
-                <label class="modal-label">🏫 キャンパスの指定</label>
-                <select id="modal-campus" class="modal-select">
-                    <option value="">指定なし</option>
-                    <option value="なかもず">なかもず</option>
-                    <option value="すぎもと">すぎもと</option>
-                    <option value="あべの">あべの</option>
-                    <option value="りんくう">りんくう</option>
-                    <option value="もりのみや">もりのみや</option>
-                    <option value="その他/移動中">その他 / 移動中</option>
-                </select>
-                <label class="modal-label">📝 補足コメント (任意)</label>
-                <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
-                <div class="modal-btns">
-                    <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
-                </div>
-                <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
+    <div id="detail-modal">
+        <div class="modal-content" id="modal-content-box">
+            <div class="modal-title" id="modal-cell-title">詳細設定</div>
+            <label class="modal-label">🚥 予定のステータス</label>
+            <div class="status-switch">
+                <button class="sw-btn" data-v="1" onclick="setModalStatus(1)">◯ 可</button>
+                <button class="sw-btn" data-v="2" onclick="setModalStatus(2)">△ 未定</button>
+                <button class="sw-btn" data-v="0" onclick="setModalStatus(0)">× 不可</button>
             </div>
+            <label class="modal-label">🏫 キャンパスの指定</label>
+            <select id="modal-campus" class="modal-select">
+                <option value="">指定なし</option>
+                <option value="なかもず">なかもず</option>
+                <option value="すぎもと">すぎもと</option>
+                <option value="あべの">あべの</option>
+                <option value="りんくう">りんくう</option>
+                <option value="もりのみや">もりのみや</option>
+                <option value="その他/移動中">その他 / 移動中</option>
+            </select>
+            <label class="modal-label">📝 補足コメント (任意)</label>
+            <input type="text" id="modal-note" class="modal-input" placeholder="例: 13:30に移動開始, 20分遅延">
+            <div class="modal-btns">
+                <button class="modal-btn-save" onclick="saveModal()">💾 保存して閉じる</button>
+            </div>
+            <div style="text-align:center; font-size:10px; color:#999; margin-top:10px;">※枠外をタップでキャンセル</div>
         </div>
+    </div>
 
-        <div id="content"></div><script>
-        function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
-        function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
-        function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
+    <div id="content"></div><script>
+    function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); }
+    function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
+    function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
+    
+    let currentWeek = 0;
+    let totalDays = 0;
+    let numRows = 0;
+    let unavailColRows = {};
+
+    window.globalScale = Number.isFinite(window.globalScale) ? window.globalScale : 1;
+
+    window.cellDetails = {};
+    let defaultCampus = "";
+    let modalStatus = 1;
+    let selectedMode = 1;
+    let editingCell = null;
+
+    let activePointers = new Map();
+    let gestureMode = "none";
+    let initialScale = 1;
+    let initialDistance = 0;
+    let lastCenter = null;
+
+    const modalBg = document.getElementById('detail-modal');
+    modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
+    modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
+
+    window.setModalStatus = function(v) {
+        modalStatus = v;
+        document.querySelectorAll('.sw-btn').forEach(b => { b.classList.toggle('active', parseInt(b.dataset.v) === v); });
+    };
+
+    window.openModal = function(cell) {
+        editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`;
+        const campusSelect = document.getElementById('ui-default-campus');
+        const currentDef = campusSelect ? campusSelect.value : defaultCampus;
         
-        let currentWeek = 0;
-        let totalDays = 0;
-        let numRows = 0;
-        let unavailColRows = {};
+        const detail = window.cellDetails[key] || {campus: currentDef, note: ""};
+        setModalStatus(parseInt(cell.dataset.v) || 1);
+        document.getElementById('modal-campus').value = detail.campus || "";
+        document.getElementById('modal-note').value = detail.note || "";
+        document.getElementById('detail-modal').style.display = 'flex';
+    };
 
-        window.globalScale = Number.isFinite(window.globalScale) ? window.globalScale : 1;
+    window.closeModal = function() {
+        document.getElementById('detail-modal').style.display = 'none';
+        if (editingCell) { editingCell = null; }
+    };
 
-        window.cellDetails = {};
-        let defaultCampus = "";
-        let modalStatus = 1;
-        let selectedMode = 1;
-        let editingCell = null;
+    window.saveModal = function() {
+        if(!editingCell) return;
+        const r = editingCell.dataset.r; const c = editingCell.dataset.c; const key = `${r}_${c}`;
+        const campus = document.getElementById('modal-campus').value; const note = document.getElementById('modal-note').value.trim();
+        if(campus || note || modalStatus === 0) { window.cellDetails[key] = {campus: campus, note: note}; window.upd(editingCell, modalStatus); }
+        else { delete window.cellDetails[key]; window.upd(editingCell, modalStatus); }
+        closeModal();
+    };
 
-        let activePointers = new Map();
-        let gestureMode = "none";
-        let initialScale = 1;
-        let initialDistance = 0;
-        let lastCenter = null;
-
-        const modalBg = document.getElementById('detail-modal');
-        modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
-        modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
-
-        window.setModalStatus = function(v) {
-            modalStatus = v;
-            document.querySelectorAll('.sw-btn').forEach(b => { b.classList.toggle('active', parseInt(b.dataset.v) === v); });
-        };
-
-        window.openModal = function(cell) {
-            editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`;
-            const campusSelect = document.getElementById('ui-default-campus');
-            const currentDef = campusSelect ? campusSelect.value : defaultCampus;
-            
-            const detail = window.cellDetails[key] || {campus: currentDef, note: ""};
-            setModalStatus(parseInt(cell.dataset.v) || 1);
-            document.getElementById('modal-campus').value = detail.campus || "";
-            document.getElementById('modal-note').value = detail.note || "";
-            document.getElementById('detail-modal').style.display = 'flex';
-        };
-
-        window.closeModal = function() {
-            document.getElementById('detail-modal').style.display = 'none';
-            if (editingCell) { editingCell = null; }
-        };
-
-        window.saveModal = function() {
-            if(!editingCell) return;
-            const r = editingCell.dataset.r; const c = editingCell.dataset.c; const key = `${r}_${c}`;
-            const campus = document.getElementById('modal-campus').value; const note = document.getElementById('modal-note').value.trim();
-            if(campus || note || modalStatus === 0) { window.cellDetails[key] = {campus: campus, note: note}; window.upd(editingCell, modalStatus); }
-            else { delete window.cellDetails[key]; window.upd(editingCell, modalStatus); }
-            closeModal();
-        };
-
-        window.paintCell = function(cell, mode) {
-            if(!cell) return;
-            const key = `${cell.dataset.r}_${cell.dataset.c}`;
-            const campusSelect = document.getElementById('ui-default-campus');
-            const currentDefCampus = campusSelect ? campusSelect.value : defaultCampus;
-            
-            if (mode == 1 || mode == 2) {
-                let existingNote = window.cellDetails[key] ? window.cellDetails[key].note : "";
-                window.cellDetails[key] = {campus: currentDefCampus, note: existingNote};
-            } else if (mode == 0) {
-                let detail = window.cellDetails[key];
-                if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
-                else { delete window.cellDetails[key]; }
-            }
-            window.upd(cell, mode);
-        };
-
-        window.upd = function(el, v) { 
-            el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key];
-            
-            let campus = detail ? detail.campus : "";
-            let note = detail ? detail.note : "";
-            
-            let bgColor = '#fff'; let txt = ''; let txtColor = '#fff'; let opacity = 1.0;
-
-            if (v == 1 || v == 2) {
-                let info = { color: "#4CAF50", text: "◯" }; 
-                if (campus === "なかもず") info = { color: "#FFA726", text: "な" };
-                else if (campus === "すぎもと" || campus === "杉本") info = { color: "#42A5F5", text: "す" };
-                else if (campus === "もりのみや") info = { color: "#66BB6A", text: "も" };
-                else if (campus === "あべの" || campus === "阿倍野") info = { color: "#EC407A", text: "あ" };
-                else if (campus === "りんくう") info = { color: "#AB47BC", text: "り" };
-                else if (campus === "その他/移動中") info = { color: "#9E9E9E", text: "他" };
-                
-                bgColor = info.color;
-                txt = info.text;
-                if (v == 2) opacity = 0.4; 
-            } else if (v == 3) {
-                bgColor = '#E0E0E0'; txt = '授'; txtColor = '#555';
-            } else if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) {
-                bgColor = '#f5f5f5'; txt = '休'; txtColor = '#aaa';
-            }
-            
-            el.style.backgroundColor = bgColor;
-            el.style.opacity = opacity;
-            el.style.backgroundImage = 'none';
-            el.style.color = txtColor;
-            el.style.display = 'flex';
-            el.style.alignItems = 'center';
-            el.style.justifyContent = 'center';
-
-            const showMemo = detail && detail.note !== "";
-            let innerHtml = '<span style="font-size:14px; font-weight:bold; pointer-events:none;">' + txt + '</span>';
-            if (showMemo) { innerHtml += '<div class="memo-icon">💬</div>'; }
-            
-            el.innerHTML = innerHtml;
-        };
+    window.paintCell = function(cell, mode) {
+        if(!cell) return;
+        const key = `${cell.dataset.r}_${cell.dataset.c}`;
+        const campusSelect = document.getElementById('ui-default-campus');
+        const currentDefCampus = campusSelect ? campusSelect.value : defaultCampus;
         
-        window.renderWeek = function() {
-            const start = currentWeek * 7; const end = start + 7;
-            document.querySelectorAll('.day-col').forEach(el => {
-                const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none';
-            });
-            const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
-            if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
-            setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
-        };
-        window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
-        
-        window.doBulk = function(btnEl) {
-            const val = document.getElementById('b-val').value;
-            const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value);
-            if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; }
-            document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.paintCell(cell, val); } } });
-            const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
-        };
-        window.doCopy = function(btnEl) {
-            const srcIdx = parseInt(document.getElementById('c-src').value);
-            let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); }
-            let copied = false;
-            document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.paintCell(cell, srcData[r]); } } } });
-            if(!copied) { alert('コピー先を選択してください。'); return; }
-            const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
-        };
-        
-        window.doTimetable = function(btnEl) {
-            if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; }
-            for(let c = 0; c < totalDays; c++) {
-                let key = String(c);
-                if (unavailColRows[key]) {
-                    unavailColRows[key].forEach(item => {
-                        const r = (typeof item === 'object') ? item.row : item; const campus = (typeof item === 'object') ? item.campus : ""; const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
-                        if(cell) {
-                            const cellKey = `${r}_${c}`;
-                            if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") { window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"}; window.paintCell(cell, 0); }
-                            else if (campus) { window.cellDetails[cellKey] = {campus: campus, note: "定期授業"}; window.paintCell(cell, 3); }
-                            else { window.paintCell(cell, 3); }
-                        }
-                    });
-                }
-            }
-            const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000);
-        };
-        
-        window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
-        document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
-
-        // 💡 修正2: setPen() は純粋なモード変更関数に刷新。イベント登録はしない。
-        window.setPen = function(mode) {
-            selectedMode = mode;
-            console.log("[SET MODE]", "selectedMode=", selectedMode);
-
-            [-2, -1, 0, 1, 2].forEach(m => {
-                const b = document.getElementById('pen-' + m);
-                if (b) b.classList.remove('active');
-            });
-
-            const activeBtn = document.getElementById('pen-' + mode);
-            if (activeBtn) activeBtn.classList.add('active');
-        };
-
-        window.updatePaletteCampus = function() {
-            const camp = document.getElementById('ui-default-campus').value;
-            
-            let p1Info = {color:"#4CAF50", txt:"可"};
-            if (camp === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
-            else if (camp === "すぎもと" || camp === "杉本") p1Info = {color:"#42A5F5", txt:"す"};
-            else if (camp === "もりのみや") p1Info = {color:"#66BB6A", txt:"も"};
-            else if (camp === "あべの" || camp === "阿倍野") p1Info = {color:"#EC407A", txt:"あ"};
-            else if (camp === "りんくう") p1Info = {color:"#AB47BC", txt:"り"};
-            else if (camp === "その他/移動中") p1Info = {color:"#9E9E9E", txt:"他"};
-
-            document.getElementById('pen-1').innerHTML = camp ? `${p1Info.txt}<br><span style='font-size:9px;'>(${camp})</span>` : "可";
-            document.getElementById('pen-1').style.background = p1Info.color;
-            document.getElementById('pen-2').innerHTML = camp ? `未定<br><span style='font-size:9px;'>(${camp})</span>` : "未定";
-            document.getElementById('pen-2').style.background = p1Info.color;
-            document.getElementById('pen-2').style.opacity = 0.6;
-            document.getElementById('pen-2').style.color = "#fff";
-            
-            window.setPen(1);
-        };
-
-        const palette = document.getElementById('palette'); let isDraggingPalette = false; let offsetX, offsetY;
-        palette.addEventListener('mousedown', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; });
-        document.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
-        document.addEventListener('mouseup', () => { isDraggingPalette = false; });
-        palette.addEventListener('touchstart', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false});
-        document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
-        document.addEventListener('touchend', () => { isDraggingPalette = false; });
-
-        // ------------------------------------------------------------
-        // 💡 修正3: Pointer Events 用のハンドラー定義（1回のみ）
-        // ------------------------------------------------------------
-        function getDistance(p1, p2) {
-            return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+        if (mode == 1 || mode == 2) {
+            let existingNote = window.cellDetails[key] ? window.cellDetails[key].note : "";
+            window.cellDetails[key] = {campus: currentDefCampus, note: existingNote};
+        } else if (mode == 0) {
+            let detail = window.cellDetails[key];
+            if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
+            else { delete window.cellDetails[key]; }
         }
-        function getCenter(p1, p2) {
-            return { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 };
+        window.upd(cell, mode);
+    };
+
+    window.upd = function(el, v) { 
+        el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key];
+        
+        let campus = detail ? detail.campus : "";
+        let note = detail ? detail.note : "";
+        
+        let bgColor = '#fff'; let txt = ''; let txtColor = '#fff'; let opacity = 1.0;
+
+        if (v == 1 || v == 2) {
+            let info = { color: "#4CAF50", text: "◯" }; 
+            if (campus === "なかもず") info = { color: "#FFA726", text: "な" };
+            else if (campus === "すぎもと" || campus === "杉本") info = { color: "#42A5F5", text: "す" };
+            else if (campus === "もりのみや") info = { color: "#66BB6A", text: "も" };
+            else if (campus === "あべの" || campus === "阿倍野") info = { color: "#EC407A", text: "あ" };
+            else if (campus === "りんくう") info = { color: "#AB47BC", text: "り" };
+            else if (campus === "その他/移動中") info = { color: "#9E9E9E", text: "他" };
+            
+            bgColor = info.color;
+            txt = info.text;
+            if (v == 2) opacity = 0.4; 
+        } else if (v == 3) {
+            bgColor = '#E0E0E0'; txt = '授'; txtColor = '#555';
+        } else if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) {
+            bgColor = '#f5f5f5'; txt = '休'; txtColor = '#aaa';
         }
+        
+        el.style.backgroundColor = bgColor;
+        el.style.opacity = opacity;
+        el.style.backgroundImage = 'none';
+        el.style.color = txtColor;
+        el.style.display = 'flex';
+        el.style.alignItems = 'center';
+        el.style.justifyContent = 'center';
 
-        window._pointerDownHandler = function(e) {
-            console.log(
-                "[MAIN pointerdown]",
-                "selectedMode=", selectedMode,
-                "pointerType=", e.pointerType,
-                "pointerId=", e.pointerId,
-                "target=", e.target,
-                "activeBefore=", activePointers.size
-            );
+        const showMemo = detail && detail.note !== "";
+        let innerHtml = '<span style="font-size:14px; font-weight:bold; pointer-events:none;">' + txt + '</span>';
+        if (showMemo) { innerHtml += '<div class="memo-icon">💬</div>'; }
+        
+        el.innerHTML = innerHtml;
+    };
+    
+    window.renderWeek = function() {
+        const start = currentWeek * 7; const end = start + 7;
+        document.querySelectorAll('.day-col').forEach(el => {
+            const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none';
+        });
+        const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
+        if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
+        setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
+    };
+    window.changeWeek = function(dir) { currentWeek += dir; window.renderWeek(); };
+    
+    window.doBulk = function(btnEl) {
+        const val = document.getElementById('b-val').value;
+        const sIdx = parseInt(document.getElementById('b-start').value); const eIdx = parseInt(document.getElementById('b-end').value);
+        if(sIdx > eIdx) { alert('エラー：開始時刻は終了時刻より前に設定してください。'); return; }
+        document.querySelectorAll('.b-day-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); for(let r = sIdx; r <= eIdx; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.paintCell(cell, val); } } });
+        const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
+    };
+    window.doCopy = function(btnEl) {
+        const srcIdx = parseInt(document.getElementById('c-src').value);
+        let srcData = []; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${srcIdx}"]`); srcData.push(cell ? cell.dataset.v : 0); }
+        let copied = false;
+        document.querySelectorAll('.c-tgt-chk').forEach(chk => { if(chk.checked) { const cIdx = parseInt(chk.value); if(cIdx !== srcIdx) { copied = true; for(let r = 0; r < numRows; r++) { const cell = document.querySelector(`[data-r="${r}"][data-c="${cIdx}"]`); if(cell) window.paintCell(cell, srcData[r]); } } } });
+        if(!copied) { alert('コピー先を選択してください。'); return; }
+        const origText = btnEl.innerText; btnEl.innerText = "✅ 完了"; setTimeout(() => btnEl.innerText = origText, 1500);
+    };
+    
+    window.doTimetable = function(btnEl) {
+        if(!unavailColRows || Object.keys(unavailColRows).length === 0) { alert('時間割が登録されていないか、対象日がありません。'); return; }
+        for(let c = 0; c < totalDays; c++) {
+            let key = String(c);
+            if (unavailColRows[key]) {
+                unavailColRows[key].forEach(item => {
+                    const r = (typeof item === 'object') ? item.row : item; const campus = (typeof item === 'object') ? item.campus : ""; const cell = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+                    if(cell) {
+                        const cellKey = `${r}_${c}`;
+                        if (campus === "💼 バイト/サークル等" || campus === "💼 バイト/私用") { window.cellDetails[cellKey] = {campus: "", note: "バイト/サークル等"}; window.paintCell(cell, 0); }
+                        else if (campus) { window.cellDetails[cellKey] = {campus: campus, note: "定期授業"}; window.paintCell(cell, 3); }
+                        else { window.paintCell(cell, 3); }
+                    }
+                });
+            }
+        }
+        const origText = btnEl.innerHTML; btnEl.innerHTML = "✅ 反映完了！"; setTimeout(() => btnEl.innerHTML = origText, 2000);
+    };
+    
+    window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
+    document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
-            activePointers.set(e.pointerId, e);
+    window.setPen = function(mode) {
+        selectedMode = mode;
 
-            console.log("[MAIN pointerdown after set]", "selectedMode=", selectedMode, "activeAfter=", activePointers.size);
+        [-2, -1, 0, 1, 2].forEach(m => {
+            const b = document.getElementById('pen-' + m);
+            if (b) b.classList.remove('active');
+        });
 
-            if (selectedMode === -1) {
-                console.log("[MAIN pointerdown RETURN] selectedMode === -1 (scroll mode)");
+        const activeBtn = document.getElementById('pen-' + mode);
+        if (activeBtn) activeBtn.classList.add('active');
+
+        const g = document.getElementById('g');
+        if (g) {
+            g.style.touchAction = (mode === -1) ? 'pan-x pan-y' : 'none';
+        }
+    };
+
+    window.updatePaletteCampus = function() {
+        const camp = document.getElementById('ui-default-campus').value;
+        
+        let p1Info = {color:"#4CAF50", txt:"可"};
+        if (camp === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
+        else if (camp === "すぎもと" || camp === "杉本") p1Info = {color:"#42A5F5", txt:"す"};
+        else if (camp === "もりのみや") p1Info = {color:"#66BB6A", txt:"も"};
+        else if (camp === "あべの" || camp === "阿倍野") p1Info = {color:"#EC407A", txt:"あ"};
+        else if (camp === "りんくう") p1Info = {color:"#AB47BC", txt:"り"};
+        else if (camp === "その他/移動中") p1Info = {color:"#9E9E9E", txt:"他"};
+
+        document.getElementById('pen-1').innerHTML = camp ? `${p1Info.txt}<br><span style='font-size:9px;'>(${camp})</span>` : "可";
+        document.getElementById('pen-1').style.background = p1Info.color;
+        document.getElementById('pen-2').innerHTML = camp ? `未定<br><span style='font-size:9px;'>(${camp})</span>` : "未定";
+        document.getElementById('pen-2').style.background = p1Info.color;
+        document.getElementById('pen-2').style.opacity = 0.6;
+        document.getElementById('pen-2').style.color = "#fff";
+        
+        window.setPen(1);
+    };
+
+    const palette = document.getElementById('palette'); let isDraggingPalette = false; let offsetX, offsetY;
+    palette.addEventListener('mousedown', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; });
+    document.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
+    document.addEventListener('mouseup', () => { isDraggingPalette = false; });
+    palette.addEventListener('touchstart', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false});
+    document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
+    document.addEventListener('touchend', () => { isDraggingPalette = false; });
+
+    window.addEventListener("message", function(event) {
+        if (event.data.type === "streamlit:render") {
+            const args = event.data.args; 
+            
+            if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) {
                 return;
             }
+            if(window.lastEventId !== args.eventId) { currentWeek = 0; }
+            window.lastEventId = args.eventId;
+            window.lastSaveTs = args.saveTs;
+            
+            document.getElementById("content").innerHTML = args.html_code;
+            totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
+            window.cellDetails = args.cellDetails || {}; 
+            defaultCampus = args.defaultCampus || "";
+            
+            if(document.getElementById('ui-default-campus')) {
+                document.getElementById('ui-default-campus').value = defaultCampus;
+                window.updatePaletteCampus();
+            }
+            
+            const detailsEl = document.querySelector('details');
+            if (detailsEl) {
+                detailsEl.addEventListener('toggle', () => {
+                    setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
+                });
+            }
+            
+            window.renderWeek();
+            
+            if(args.isClosed) { 
+                palette.style.display = 'none'; 
+            } else { 
+                palette.style.display = 'flex'; 
+            }
 
-            if (selectedMode === -2) {
-                console.log("[MAIN pointerdown DETAIL MODE]");
+            window.setPen(selectedMode);
+            
+            const g = document.getElementById('g'); if(!g) return;
+
+            const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
+
+            if (window.globalScale !== 1) {
+                g.style.transform = `scale(${window.globalScale})`;
+                g.style.transformOrigin = "0 0";
+                const marginPct = Math.max(0, (window.globalScale - 1) * 100);
+                g.style.marginBottom = `${marginPct}%`;
+                g.style.marginRight = `${marginPct}%`;
+            }
+
+            if (window._pointerCleanup) {
+                g.removeEventListener('pointerdown', window._pointerDownHandler);
+                g.removeEventListener('pointermove', window._pointerMoveHandler);
+                g.removeEventListener('pointerup', window._pointerEndHandler);
+                g.removeEventListener('pointercancel', window._pointerEndHandler);
+            }
+
+            window._pointerDownHandler = function(e) {
+                activePointers.set(e.pointerId, e);
+
+                if (selectedMode === -1) return;
+
+                if (selectedMode === -2) {
+                    if (activePointers.size === 1) {
+                        const cell = e.target.closest('.c');
+                        if (cell) openModal(cell);
+                    }
+                    return;
+                }
+
                 if (activePointers.size === 1) {
+                    gestureMode = "paint";
                     const cell = e.target.closest('.c');
-                    console.log("[DETAIL cell]", cell);
-                    if (cell) openModal(cell);
-                }
-                return;
-            }
-
-            console.log("[MAIN pointerdown PAINT MODE]", "selectedMode=", selectedMode);
-            const g = document.getElementById('g');
-
-            if (activePointers.size === 1) {
-                gestureMode = "paint";
-                const cell = e.target.closest('.c');
-                console.log("[MAIN paint target]", cell);
-
-                if (cell) {
-                    window.paintCell(cell, selectedMode);
-                }
-
-                if (g && g.hasPointerCapture(e.pointerId)) {
-                    g.releasePointerCapture(e.pointerId);
-                }
-            } else if (activePointers.size === 2) {
-                console.log("[MAIN pinch start]");
-                gestureMode = "pinch";
-                const pts = Array.from(activePointers.values());
-                initialDistance = getDistance(pts[0], pts[1]);
-                initialScale = window.globalScale;
-                lastCenter = getCenter(pts[0], pts[1]);
-            }
-        };
-
-        window._pointerMoveHandler = function(e) {
-            if (!activePointers.has(e.pointerId)) return;
-            activePointers.set(e.pointerId, e);
-            
-            const g = document.getElementById('g');
-            const scrollArea = g ? (g.closest('.scroll-wrapper') || g.parentElement) : null;
-
-            if (gestureMode === "paint" && activePointers.size === 1) {
-                const el = document.elementFromPoint(e.clientX, e.clientY);
-                const cell = el ? el.closest('.c') : null;
-                if (cell) {
-                    window.paintCell(cell, selectedMode);
-                }
-            } else if (gestureMode === "pinch" && activePointers.size === 2) {
-                const pts = Array.from(activePointers.values());
-                const currentDistance = getDistance(pts[0], pts[1]);
-                const currentCenter = getCenter(pts[0], pts[1]);
-
-                if (initialDistance > 0) {
-                    let newScale = initialScale * (currentDistance / initialDistance);
-                    newScale = Math.max(0.5, Math.min(newScale, 3.0));
-                    window.globalScale = newScale;
+                    if (cell) window.paintCell(cell, selectedMode);
                     
-                    if (g) {
+                    if (g.hasPointerCapture(e.pointerId)) {
+                        g.releasePointerCapture(e.pointerId);
+                    }
+                } else if (activePointers.size === 2) {
+                    gestureMode = "pinch";
+                    const pts = Array.from(activePointers.values());
+                    initialDistance = getDistance(pts[0], pts[1]);
+                    initialScale = window.globalScale;
+                    lastCenter = getCenter(pts[0], pts[1]);
+                }
+            };
+
+            window._pointerMoveHandler = function(e) {
+                if (!activePointers.has(e.pointerId)) return;
+                activePointers.set(e.pointerId, e);
+
+                if (gestureMode === "paint" && activePointers.size === 1) {
+                    const el = document.elementFromPoint(e.clientX, e.clientY);
+                    const cell = el ? el.closest('.c') : null;
+                    if (cell) {
+                        window.paintCell(cell, selectedMode);
+                    }
+                } else if (gestureMode === "pinch" && activePointers.size === 2) {
+                    const pts = Array.from(activePointers.values());
+                    const currentDistance = getDistance(pts[0], pts[1]);
+                    const currentCenter = getCenter(pts[0], pts[1]);
+
+                    if (initialDistance > 0) {
+                        let newScale = initialScale * (currentDistance / initialDistance);
+                        newScale = Math.max(0.5, Math.min(newScale, 3.0));
+                        window.globalScale = newScale;
+                        
                         g.style.transform = `scale(${window.globalScale})`;
                         g.style.transformOrigin = "0 0";
+                        
                         const marginPct = Math.max(0, (window.globalScale - 1) * 100);
                         g.style.marginBottom = `${marginPct}%`;
                         g.style.marginRight = `${marginPct}%`;
                     }
+
+                    if (lastCenter && scrollArea) {
+                        const dx = currentCenter.x - lastCenter.x;
+                        const dy = currentCenter.y - lastCenter.y;
+                        scrollArea.scrollLeft -= dx;
+                        scrollArea.scrollTop -= dy;
+                    }
+                    lastCenter = currentCenter;
                 }
-
-                if (lastCenter && scrollArea) {
-                    const dx = currentCenter.x - lastCenter.x;
-                    const dy = currentCenter.y - lastCenter.y;
-                    scrollArea.scrollLeft -= dx;
-                    scrollArea.scrollTop -= dy;
-                }
-                lastCenter = currentCenter;
-            }
-        };
-
-        window._pointerEndHandler = function(e) {
-            activePointers.delete(e.pointerId);
-            if (activePointers.size === 0) {
-                gestureMode = "none";
-            } else if (activePointers.size === 1) {
-                gestureMode = "none";
-            }
-        };
-
-        // 💡 修正4: initPointerEvents() でDOM更新直後に1度だけイベントをアタッチする
-        function initPointerEvents() {
-            const g = document.getElementById("g");
-            if (!g) {
-                console.error("[POINTER INIT] #g not found");
-                return;
-            }
-
-            console.log("[POINTER INIT] registering handlers");
-            
-            // タッチ操作をJavaScriptに完全委譲
-            g.style.touchAction = "none";
-
-            // DOM再生成に備え、一旦古いイベントを削除
-            g.removeEventListener("pointerdown", window._pointerDownHandler);
-            g.removeEventListener("pointermove", window._pointerMoveHandler);
-            g.removeEventListener("pointerup", window._pointerEndHandler);
-            g.removeEventListener("pointercancel", window._pointerEndHandler);
-            g.removeEventListener("pointerdown", window._debugPointerDown);
-            
-            // 新しいDOM要素にイベントを登録
-            g.addEventListener("pointerdown", window._pointerDownHandler);
-            g.addEventListener("pointermove", window._pointerMoveHandler);
-            g.addEventListener("pointerup", window._pointerEndHandler);
-            g.addEventListener("pointercancel", window._pointerEndHandler);
-            
-            // デバッグ用リスナー
-            window._debugPointerDown = function(e) {
-                console.log("[DEBUG pointerdown]", "pointerType=", e.pointerType, "pointerId=", e.pointerId, "target=", e.target, "closestCell=", e.target.closest(".c"));
             };
-            g.addEventListener("pointerdown", window._debugPointerDown);
 
-            console.log("[POINTER INIT] registration complete");
-            console.log("[REGISTER MAIN POINTERDOWN]", window._pointerDownHandler);
+            window._pointerEndHandler = function(e) {
+                activePointers.delete(e.pointerId);
+                if (activePointers.size === 0) {
+                    gestureMode = "none";
+                } else if (activePointers.size === 1) {
+                    gestureMode = "none";
+                }
+            };
+
+            g.addEventListener('pointerdown', window._pointerDownHandler);
+            g.addEventListener('pointermove', window._pointerMoveHandler);
+            g.addEventListener('pointerup', window._pointerEndHandler);
+            g.addEventListener('pointercancel', window._pointerEndHandler);
+
+            window._pointerCleanup = true;
+            
+            const btn = document.getElementById("submit-btn");
+            if(btn) { btn.onclick = () => { 
+                const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => {
+                    const cellNode = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
+                    const val = cellNode && cellNode.dataset.v ? parseInt(cellNode.dataset.v) : 0;
+                    return isNaN(val) ? 0 : val;
+                })); 
+                const commentBox = document.getElementById("comment-box");
+                const commentText = commentBox ? commentBox.value : ""; 
+                
+                setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails || {}, trigger_save: true, ts: Date.now() }); 
+                btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
+            }; }
+            document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
         }
-
-        window.addEventListener("message", function(event) {
-            if (event.data.type === "streamlit:render") {
-                const args = event.data.args; 
-                
-                if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) {
-                    return;
-                }
-                if(window.lastEventId !== args.eventId) { currentWeek = 0; }
-                window.lastEventId = args.eventId;
-                window.lastSaveTs = args.saveTs;
-                
-                // DOMツリーの生成 (g が作り直される)
-                document.getElementById("content").innerHTML = args.html_code;
-                
-                totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
-                window.cellDetails = args.cellDetails || {}; 
-                defaultCampus = args.defaultCampus || "";
-                
-                if(document.getElementById('ui-default-campus')) {
-                    document.getElementById('ui-default-campus').value = defaultCampus;
-                    window.updatePaletteCampus();
-                }
-                
-                const detailsEl = document.querySelector('details');
-                if (detailsEl) {
-                    detailsEl.addEventListener('toggle', () => {
-                        setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
-                    });
-                }
-                
-                window.renderWeek();
-                
-                if(args.isClosed) { 
-                    palette.style.display = 'none'; 
-                } else { 
-                    palette.style.display = 'flex'; 
-                }
-
-                // 💡 DOMが生成された直後に、必ず1回だけイベントをアタッチする
-                initPointerEvents();
-                
-                // ボタンの見た目更新
-                setTimeout(() => { window.setPen(selectedMode); }, 50);
-                
-                const g = document.getElementById('g'); 
-                if(g && window.globalScale !== 1) {
-                    g.style.transform = `scale(${window.globalScale})`;
-                    g.style.transformOrigin = "0 0";
-                    const marginPct = Math.max(0, (window.globalScale - 1) * 100);
-                    g.style.marginBottom = `${marginPct}%`;
-                    g.style.marginRight = `${marginPct}%`;
-                }
-                
-                const btn = document.getElementById("submit-btn");
-                if(btn) { btn.onclick = () => { 
-                    const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => {
-                        const cellNode = document.querySelector(`[data-r="${r}"][data-c="${c}"]`);
-                        const val = cellNode && cellNode.dataset.v ? parseInt(cellNode.dataset.v) : 0;
-                        return isNaN(val) ? 0 : val;
-                    })); 
-                    const commentBox = document.getElementById("comment-box");
-                    const commentText = commentBox ? commentBox.value : ""; 
-                    
-                    setComponentValue({ data: res, comment: commentText, cell_details: window.cellDetails || {}, trigger_save: true, ts: Date.now() }); 
-                    btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; palette.style.display = 'none'; 
-                }; }
-                document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
-            }
-        }); init(); </script></body></html>
-        """)
+    }); init(); </script></body></html>
+    """)
 
 grid_editor = components.declare_component("grid_editor", path="custom_editor_v8")
 
@@ -854,7 +819,7 @@ def main():
                 g3 = st.multiselect("🤝 オプション", MASTER_G3, key="reg_g3")
 
                 if st.button("✅ 登録してログイン", use_container_width=True, type="primary"):
-                    clean_name = reg_n.replace(" ", "").replace("　", "")
+                    clean_name = reg_n.replace(" ", "").replace(" ", "")
                     if clean_name and reg_p and reg_s:
                         all_users_list = [doc.to_dict() for doc in db.collection("users").stream()]
                         new_num = len(all_users_list) + 1
@@ -893,7 +858,7 @@ def main():
                         rec_s = st.text_input("秘密の合言葉")
                         new_p = st.text_input("設定したい新しいPIN", type="password")
                         if st.form_submit_button("新しいPINで更新する", use_container_width=True, type="primary"):
-                            clean_n = rec_n.replace(" ","").replace("　","")
+                            clean_n = rec_n.replace(" ","").replace(" ","")
                             docs = db.collection("users").where("name", "==", clean_n).stream()
                             target_user = None
                             for doc in docs: target_user = doc.to_dict(); break
@@ -1143,7 +1108,7 @@ def main():
         c3, c4 = st.columns([1, 1])
         with c3:
             # st.image("assets/scroll_demo.gif", use_container_width=True)
-            st.info("🖼️ 【実装予定】ここに「『📜スクロール』を選んで画面をスワイプするGIF」を配置します。")
+            st.info("🖼️ 【実装予定】ここにC『📜スクロール』を選んで画面をスワイプするGIF」を配置します。")
         with c4:
             st.markdown("""
             * **画面をスクロールしたい時:** パレットから **「📜 スクロール」** を選んでください。色を塗らずに画面を上下左右に動かせます。
@@ -1567,7 +1532,7 @@ def main():
     # ====================================================
     
     active_groups = [str(user.get(f"group_{i}", "")).strip() for i in range(1, 4) if str(user.get(f"group_{i}", "")).strip()]
-    group_str = f"<span style='color: #666; font-size: 0.9em; margin-left: 10px;'>({' / '.join(active_groups)})</span>" if active_groups else "<span style='color: #aaa; font-size: 0.9em; margin-left: 10px;'>(未所属)</span>"
+    group_str = f"<span style='color: #666; font-size: 0.9em; margin-left: 10px; data-source: 14'>({' / '.join(active_groups)})</span>" if active_groups else "<span style='color: #aaa; font-size: 0.9em; margin-left: 10px;'>(未所属)</span>"
     role_emoji = {"top_admin": "👑", "admin": "🛠️", "user": "📝", "guest": "👤"}.get(user.get("role"), "👤")
     st.markdown(f'<div class="user-header"><div style="font-size: 1.1em;"><b>{role_emoji} {user.get("name", "")}</b> さん {group_str}</div><div style="font-size: 0.8em; background: #e0e0e0; padding: 3px 8px; border-radius: 12px;">ID: {user.get("user_id", "")}</div></div>', unsafe_allow_html=True)
 
@@ -1583,7 +1548,7 @@ def main():
     # ----------------------------------------------------
     st.sidebar.markdown("---")
     st.sidebar.markdown("### 🔴 未回答の予定")
-    unanswered_events = [ev for ev in events if not ev.get('is_answered') and ev.get('status') == 'open']
+    unanswered_events = [ev for ev in events if not ev.get('is_answered') and ev.get('status'] == 'open']
     if unanswered_events:
         for u_ev in unanswered_events:
             if st.sidebar.button(f"🔴 {u_ev.get('title', '')}", key=f"side_btn_u_{u_ev.get('event_id')}", use_container_width=True):
@@ -2274,7 +2239,7 @@ def main():
                                 activeCell = cell;
                                 showTooltip(cell);
                             }}, {{passive: true}});
-                        }});
+                        }));
                         
                         scrollArea.addEventListener('scroll', () => {{
                             if (activeCell) {{
@@ -2433,7 +2398,7 @@ def main():
                             if details[i]["yes"]: st.code("\n".join(details[i]["yes"]), language="text")
                             else: st.write("なし")
                         with c_maybe:
-                            st.markdown("<span style='color:#FF9800; font-weight:bold;'>△ 未定</span>", unsafe_allow_html=True)
+                            st.markdown("<span style='color:#FF9800; font-weight:bold;'>△ 未定</span>", unsafe_array := True)
                             if details[i]["maybe"]: st.markdown("<br>".join([f"△ {n}" for n in details[i]["maybe"]]), unsafe_allow_html=True)
                             else: st.write("なし")
                         with c_no:
