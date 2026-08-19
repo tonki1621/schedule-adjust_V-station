@@ -221,8 +221,8 @@ options_editor = components.declare_component("options_editor", path="options_ed
 # ★ バージョンをv7に変更し、再描画ブロック処理を追加
 # ★ バージョンをv7に変更し、再描画ブロック処理を追加
 if not os.path.exists("custom_editor_v7"):
-    os.makedirs("custom_editor_v7", exist_ok=True)
-    with open("custom_editor_v7/index.html", "w", encoding="utf-8") as f:
+    os.makedirs("custom_editor_v8", exist_ok=True)
+    with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
         f.write("""
         <!DOCTYPE html><html><head><meta charset="utf-8"><style>
         body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -710,7 +710,7 @@ if not os.path.exists("custom_editor_v7"):
         }); init(); </script></body></html>
         """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v7")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v8")
 
 def call_gas(action, payload=None, method="POST"):
     try:
