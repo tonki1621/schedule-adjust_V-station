@@ -629,27 +629,64 @@ if not os.path.exists("custom_editor_v8"):
                 }
 
                 window._pointerDownHandler = function(e) {
+
+                    console.log(
+                        "[MAIN pointerdown]",
+                        "selectedMode=", selectedMode,
+                        "pointerType=", e.pointerType,
+                        "pointerId=", e.pointerId,
+                        "target=", e.target,
+                        "activeBefore=", activePointers.size
+                    );
+
                     activePointers.set(e.pointerId, e);
 
-                    if (selectedMode === -1) return;
+                    console.log(
+                        "[MAIN pointerdown after set]",
+                        "selectedMode=", selectedMode,
+                        "activeAfter=", activePointers.size
+                    );
+
+                    if (selectedMode === -1) {
+                        console.log("[MAIN pointerdown RETURN] selectedMode === -1 (scroll mode)");
+                        return;
+                    }
 
                     if (selectedMode === -2) {
+                        console.log("[MAIN pointerdown DETAIL MODE]");
                         if (activePointers.size === 1) {
                             const cell = e.target.closest('.c');
+                            console.log("[DETAIL cell]", cell);
                             if (cell) openModal(cell);
                         }
                         return;
                     }
 
+                    console.log(
+                        "[MAIN pointerdown PAINT MODE]",
+                        "selectedMode=", selectedMode
+                    );
+
                     if (activePointers.size === 1) {
                         gestureMode = "paint";
+
                         const cell = e.target.closest('.c');
-                        if (cell) window.paintCell(cell, selectedMode);
-                        
+
+                        console.log(
+                            "[MAIN paint target]",
+                            cell
+                        );
+
+                        if (cell) {
+                            window.paintCell(cell, selectedMode);
+                        }
+
                         if (g.hasPointerCapture(e.pointerId)) {
                             g.releasePointerCapture(e.pointerId);
                         }
+
                     } else if (activePointers.size === 2) {
+                        console.log("[MAIN pinch start]");
                         gestureMode = "pinch";
                         const pts = Array.from(activePointers.values());
                         initialDistance = getDistance(pts[0], pts[1]);
