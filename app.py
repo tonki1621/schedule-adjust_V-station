@@ -221,6 +221,7 @@ options_editor = components.declare_component("options_editor", path="options_ed
 # ★ バージョンをv7に変更し、再描画ブロック処理を追加
 # ★ バージョンをv7に変更し、再描画ブロック処理を追加
 if not os.path.exists("custom_editor_v8"):
+    # 💡 修正1: if not os.path.exists(...) を完全に削除し、毎回必ず最新のHTMLで上書き更新する
     os.makedirs("custom_editor_v8", exist_ok=True)
     with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
         f.write("""
@@ -302,6 +303,12 @@ if not os.path.exists("custom_editor_v8"):
         let selectedMode = 1;
         let editingCell = null;
 
+        let activePointers = new Map();
+        let gestureMode = "none";
+        let initialScale = 1;
+        let initialDistance = 0;
+        let lastCenter = null;
+
         const modalBg = document.getElementById('detail-modal');
         modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
         modalBg.addEventListener('touchstart', function(e) { if(e.target === this) closeModal(); }, {passive: true});
@@ -338,20 +345,7 @@ if not os.path.exists("custom_editor_v8"):
         };
 
         window.paintCell = function(cell, mode) {
-            console.log(
-                "[PAINT START]",
-                "mode=", mode,
-                "selectedMode=", selectedMode,
-                "r=", cell?.dataset.r,
-                "c=", cell?.dataset.c,
-                "before=", cell?.dataset.v
-            );
-
-            if(!cell) {
-                console.log("[PAINT ABORT] cell is null");
-                return;
-            }
-
+            if(!cell) return;
             const key = `${cell.dataset.r}_${cell.dataset.c}`;
             const campusSelect = document.getElementById('ui-default-campus');
             const currentDefCampus = campusSelect ? campusSelect.value : defaultCampus;
@@ -364,14 +358,7 @@ if not os.path.exists("custom_editor_v8"):
                 if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
                 else { delete window.cellDetails[key]; }
             }
-            
             window.upd(cell, mode);
-
-            console.log(
-                "[PAINT END]",
-                "after=", cell.dataset.v,
-                "background=", cell.style.backgroundColor
-            );
         };
 
         window.upd = function(el, v) { 
@@ -464,8 +451,11 @@ if not os.path.exists("custom_editor_v8"):
         window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
         document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
+        // 💡 修正2: setPen() は純粋なモード変更関数に刷新。イベント登録はしない。
         window.setPen = function(mode) {
             selectedMode = mode;
+            console.log("[SET MODE]", "selectedMode=", selectedMode);
+
             [-2, -1, 0, 1, 2].forEach(m => {
                 const b = document.getElementById('pen-' + m);
                 if (b) b.classList.remove('active');
@@ -473,12 +463,6 @@ if not os.path.exists("custom_editor_v8"):
 
             const activeBtn = document.getElementById('pen-' + mode);
             if (activeBtn) activeBtn.classList.add('active');
-
-            const g = document.getElementById('g');
-            if (g) {
-                // 💡 修正2: 今回はテスト目的のため、全モードで none に固定する
-                g.style.touchAction = 'none';
-            }
         };
 
         window.updatePaletteCampus = function() {
@@ -510,6 +494,157 @@ if not os.path.exists("custom_editor_v8"):
         document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
         document.addEventListener('touchend', () => { isDraggingPalette = false; });
 
+        // ------------------------------------------------------------
+        // 💡 修正3: Pointer Events 用のハンドラー定義（1回のみ）
+        // ------------------------------------------------------------
+        function getDistance(p1, p2) {
+            return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+        }
+        function getCenter(p1, p2) {
+            return { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 };
+        }
+
+        window._pointerDownHandler = function(e) {
+            console.log(
+                "[MAIN pointerdown]",
+                "selectedMode=", selectedMode,
+                "pointerType=", e.pointerType,
+                "pointerId=", e.pointerId,
+                "target=", e.target,
+                "activeBefore=", activePointers.size
+            );
+
+            activePointers.set(e.pointerId, e);
+
+            console.log("[MAIN pointerdown after set]", "selectedMode=", selectedMode, "activeAfter=", activePointers.size);
+
+            if (selectedMode === -1) {
+                console.log("[MAIN pointerdown RETURN] selectedMode === -1 (scroll mode)");
+                return;
+            }
+
+            if (selectedMode === -2) {
+                console.log("[MAIN pointerdown DETAIL MODE]");
+                if (activePointers.size === 1) {
+                    const cell = e.target.closest('.c');
+                    console.log("[DETAIL cell]", cell);
+                    if (cell) openModal(cell);
+                }
+                return;
+            }
+
+            console.log("[MAIN pointerdown PAINT MODE]", "selectedMode=", selectedMode);
+            const g = document.getElementById('g');
+
+            if (activePointers.size === 1) {
+                gestureMode = "paint";
+                const cell = e.target.closest('.c');
+                console.log("[MAIN paint target]", cell);
+
+                if (cell) {
+                    window.paintCell(cell, selectedMode);
+                }
+
+                if (g && g.hasPointerCapture(e.pointerId)) {
+                    g.releasePointerCapture(e.pointerId);
+                }
+            } else if (activePointers.size === 2) {
+                console.log("[MAIN pinch start]");
+                gestureMode = "pinch";
+                const pts = Array.from(activePointers.values());
+                initialDistance = getDistance(pts[0], pts[1]);
+                initialScale = window.globalScale;
+                lastCenter = getCenter(pts[0], pts[1]);
+            }
+        };
+
+        window._pointerMoveHandler = function(e) {
+            if (!activePointers.has(e.pointerId)) return;
+            activePointers.set(e.pointerId, e);
+            
+            const g = document.getElementById('g');
+            const scrollArea = g ? (g.closest('.scroll-wrapper') || g.parentElement) : null;
+
+            if (gestureMode === "paint" && activePointers.size === 1) {
+                const el = document.elementFromPoint(e.clientX, e.clientY);
+                const cell = el ? el.closest('.c') : null;
+                if (cell) {
+                    window.paintCell(cell, selectedMode);
+                }
+            } else if (gestureMode === "pinch" && activePointers.size === 2) {
+                const pts = Array.from(activePointers.values());
+                const currentDistance = getDistance(pts[0], pts[1]);
+                const currentCenter = getCenter(pts[0], pts[1]);
+
+                if (initialDistance > 0) {
+                    let newScale = initialScale * (currentDistance / initialDistance);
+                    newScale = Math.max(0.5, Math.min(newScale, 3.0));
+                    window.globalScale = newScale;
+                    
+                    if (g) {
+                        g.style.transform = `scale(${window.globalScale})`;
+                        g.style.transformOrigin = "0 0";
+                        const marginPct = Math.max(0, (window.globalScale - 1) * 100);
+                        g.style.marginBottom = `${marginPct}%`;
+                        g.style.marginRight = `${marginPct}%`;
+                    }
+                }
+
+                if (lastCenter && scrollArea) {
+                    const dx = currentCenter.x - lastCenter.x;
+                    const dy = currentCenter.y - lastCenter.y;
+                    scrollArea.scrollLeft -= dx;
+                    scrollArea.scrollTop -= dy;
+                }
+                lastCenter = currentCenter;
+            }
+        };
+
+        window._pointerEndHandler = function(e) {
+            activePointers.delete(e.pointerId);
+            if (activePointers.size === 0) {
+                gestureMode = "none";
+            } else if (activePointers.size === 1) {
+                gestureMode = "none";
+            }
+        };
+
+        // 💡 修正4: initPointerEvents() でDOM更新直後に1度だけイベントをアタッチする
+        function initPointerEvents() {
+            const g = document.getElementById("g");
+            if (!g) {
+                console.error("[POINTER INIT] #g not found");
+                return;
+            }
+
+            console.log("[POINTER INIT] registering handlers");
+            
+            // タッチ操作をJavaScriptに完全委譲
+            g.style.touchAction = "none";
+
+            // DOM再生成に備え、一旦古いイベントを削除
+            g.removeEventListener("pointerdown", window._pointerDownHandler);
+            g.removeEventListener("pointermove", window._pointerMoveHandler);
+            g.removeEventListener("pointerup", window._pointerEndHandler);
+            g.removeEventListener("pointercancel", window._pointerEndHandler);
+            g.removeEventListener("pointerdown", window._debugPointerDown);
+            
+            // 新しいDOM要素にイベントを登録
+            g.addEventListener("pointerdown", window._pointerDownHandler);
+            g.addEventListener("pointermove", window._pointerMoveHandler);
+            g.addEventListener("pointerup", window._pointerEndHandler);
+            g.addEventListener("pointercancel", window._pointerEndHandler);
+            
+            // デバッグ用リスナー
+            window._debugPointerDown = function(e) {
+                console.log("[DEBUG pointerdown]", "pointerType=", e.pointerType, "pointerId=", e.pointerId, "target=", e.target, "closestCell=", e.target.closest(".c"));
+            };
+            g.addEventListener("pointerdown", window._debugPointerDown);
+
+            console.log("[POINTER INIT] registration complete");
+            console.log("[REGISTER MAIN POINTERDOWN]", window._pointerDownHandler);
+        }
+
         window.addEventListener("message", function(event) {
             if (event.data.type === "streamlit:render") {
                 const args = event.data.args; 
@@ -521,7 +656,9 @@ if not os.path.exists("custom_editor_v8"):
                 window.lastEventId = args.eventId;
                 window.lastSaveTs = args.saveTs;
                 
+                // DOMツリーの生成 (g が作り直される)
                 document.getElementById("content").innerHTML = args.html_code;
+                
                 totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
                 window.cellDetails = args.cellDetails || {}; 
                 defaultCampus = args.defaultCampus || "";
@@ -545,209 +682,21 @@ if not os.path.exists("custom_editor_v8"):
                 } else { 
                     palette.style.display = 'flex'; 
                 }
+
+                // 💡 DOMが生成された直後に、必ず1回だけイベントをアタッチする
+                initPointerEvents();
                 
+                // ボタンの見た目更新
                 setTimeout(() => { window.setPen(selectedMode); }, 50);
                 
-                const g = document.getElementById('g'); if(!g) return;
-
-                // 💡 追加: 確実なtouch-actionの設定
-                g.style.touchAction = 'none';
-
-                const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
-
-                if (window.globalScale !== 1) {
+                const g = document.getElementById('g'); 
+                if(g && window.globalScale !== 1) {
                     g.style.transform = `scale(${window.globalScale})`;
                     g.style.transformOrigin = "0 0";
                     const marginPct = Math.max(0, (window.globalScale - 1) * 100);
                     g.style.marginBottom = `${marginPct}%`;
                     g.style.marginRight = `${marginPct}%`;
                 }
-
-                // ------------------------------------------------------------
-                // 📱 Pointer Events 登録
-                // ------------------------------------------------------------
-                if (window._pointerCleanup) {
-                    g.removeEventListener('pointerdown', window._pointerDownHandler);
-                    g.removeEventListener('pointermove', window._pointerMoveHandler);
-                    g.removeEventListener('pointerup', window._pointerEndHandler);
-                    g.removeEventListener('pointercancel', window._pointerEndHandler);
-                    
-                    g.removeEventListener('pointerdown', window._debugPointerDown);
-                    g.removeEventListener('pointermove', window._debugPointerMove);
-                    g.removeEventListener('pointerup', window._debugPointerUp);
-                    g.removeEventListener('touchstart', window._debugTouchStart);
-                    g.removeEventListener('touchmove', window._debugTouchMove);
-                }
-
-                // 💡 修正3: デバッグログの出力強化
-                console.log("=== GRID EVENT DEBUG INIT ===");
-                console.log("g =", g);
-                console.log("pointer events supported =", "PointerEvent" in window);
-                console.log("touchAction =", window.getComputedStyle(g).touchAction);
-                console.log("pointerEvents =", window.getComputedStyle(g).pointerEvents);
-                console.log("userSelect =", window.getComputedStyle(g).userSelect);
-                console.log("g rect =", g.getBoundingClientRect());
-                console.log("cell count =", document.querySelectorAll(".c").length);
-
-                window._debugPointerDown = function(e) {
-                    console.log("[DEBUG pointerdown]", "pointerId=", e.pointerId, "pointerType=", e.pointerType, "client=", e.clientX, e.clientY, "target=", e.target, "closestCell=", e.target.closest(".c"));
-                };
-                window._debugPointerMove = function(e) {
-                    console.log("[DEBUG pointermove]", "pointerId=", e.pointerId, "pointerType=", e.pointerType, "client=", e.clientX, e.clientY);
-                };
-                window._debugPointerUp = function(e) {
-                    console.log("[DEBUG pointerup]", "pointerId=", e.pointerId, "pointerType=", e.pointerType);
-                };
-                window._debugTouchStart = function(e) {
-                    console.log("[DEBUG touchstart]", "touches=", e.touches.length);
-                };
-                window._debugTouchMove = function(e) {
-                    console.log("[DEBUG touchmove]", "touches=", e.touches.length);
-                };
-
-                g.addEventListener("pointerdown", window._debugPointerDown);
-                g.addEventListener("pointermove", window._debugPointerMove);
-                g.addEventListener("pointerup", window._debugPointerUp);
-                g.addEventListener("touchstart", window._debugTouchStart, {passive:false});
-                g.addEventListener("touchmove", window._debugTouchMove, {passive:false});
-                console.log("=== GRID EVENT DEBUG READY ===");
-                // ------------------------------
-
-                let activePointers = new Map();
-                let gestureMode = "none";
-                
-                let initialScale = 1;
-                let initialDistance = 0;
-                let lastCenter = null;
-
-                function getDistance(p1, p2) {
-                    return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
-                }
-
-                function getCenter(p1, p2) {
-                    return { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 };
-                }
-
-                window._pointerDownHandler = function(e) {
-
-                    console.log(
-                        "[MAIN pointerdown]",
-                        "selectedMode=", selectedMode,
-                        "pointerType=", e.pointerType,
-                        "pointerId=", e.pointerId,
-                        "target=", e.target,
-                        "activeBefore=", activePointers.size
-                    );
-
-                    activePointers.set(e.pointerId, e);
-
-                    console.log(
-                        "[MAIN pointerdown after set]",
-                        "selectedMode=", selectedMode,
-                        "activeAfter=", activePointers.size
-                    );
-
-                    if (selectedMode === -1) {
-                        console.log("[MAIN pointerdown RETURN] selectedMode === -1 (scroll mode)");
-                        return;
-                    }
-
-                    if (selectedMode === -2) {
-                        console.log("[MAIN pointerdown DETAIL MODE]");
-                        if (activePointers.size === 1) {
-                            const cell = e.target.closest('.c');
-                            console.log("[DETAIL cell]", cell);
-                            if (cell) openModal(cell);
-                        }
-                        return;
-                    }
-
-                    console.log(
-                        "[MAIN pointerdown PAINT MODE]",
-                        "selectedMode=", selectedMode
-                    );
-
-                    if (activePointers.size === 1) {
-                        gestureMode = "paint";
-
-                        const cell = e.target.closest('.c');
-
-                        console.log(
-                            "[MAIN paint target]",
-                            cell
-                        );
-
-                        if (cell) {
-                            window.paintCell(cell, selectedMode);
-                        }
-
-                        if (g.hasPointerCapture(e.pointerId)) {
-                            g.releasePointerCapture(e.pointerId);
-                        }
-
-                    } else if (activePointers.size === 2) {
-                        console.log("[MAIN pinch start]");
-                        gestureMode = "pinch";
-                        const pts = Array.from(activePointers.values());
-                        initialDistance = getDistance(pts[0], pts[1]);
-                        initialScale = window.globalScale;
-                        lastCenter = getCenter(pts[0], pts[1]);
-                    }
-                };
-
-                window._pointerMoveHandler = function(e) {
-                    if (!activePointers.has(e.pointerId)) return;
-                    activePointers.set(e.pointerId, e);
-
-                    if (gestureMode === "paint" && activePointers.size === 1) {
-                        const el = document.elementFromPoint(e.clientX, e.clientY);
-                        const cell = el ? el.closest('.c') : null;
-                        if (cell) {
-                            window.paintCell(cell, selectedMode);
-                        }
-                    } else if (gestureMode === "pinch" && activePointers.size === 2) {
-                        const pts = Array.from(activePointers.values());
-                        const currentDistance = getDistance(pts[0], pts[1]);
-                        const currentCenter = getCenter(pts[0], pts[1]);
-
-                        if (initialDistance > 0) {
-                            let newScale = initialScale * (currentDistance / initialDistance);
-                            newScale = Math.max(0.5, Math.min(newScale, 3.0));
-                            window.globalScale = newScale;
-                            
-                            g.style.transform = `scale(${window.globalScale})`;
-                            g.style.transformOrigin = "0 0";
-                            
-                            const marginPct = Math.max(0, (window.globalScale - 1) * 100);
-                            g.style.marginBottom = `${marginPct}%`;
-                            g.style.marginRight = `${marginPct}%`;
-                        }
-
-                        if (lastCenter && scrollArea) {
-                            const dx = currentCenter.x - lastCenter.x;
-                            const dy = currentCenter.y - lastCenter.y;
-                            scrollArea.scrollLeft -= dx;
-                            scrollArea.scrollTop -= dy;
-                        }
-                        lastCenter = currentCenter;
-                    }
-                };
-
-                window._pointerEndHandler = function(e) {
-                    activePointers.delete(e.pointerId);
-                    if (activePointers.size === 0) {
-                        gestureMode = "none";
-                    } else if (activePointers.size === 1) {
-                        gestureMode = "none";
-                    }
-                };
-
-                g.addEventListener('pointerdown', window._pointerDownHandler);
-                g.addEventListener('pointermove', window._pointerMoveHandler);
-                g.addEventListener('pointerup', window._pointerEndHandler);
-                g.addEventListener('pointercancel', window._pointerEndHandler);
-
-                window._pointerCleanup = true;
                 
                 const btn = document.getElementById("submit-btn");
                 if(btn) { btn.onclick = () => { 
