@@ -2316,7 +2316,7 @@ def main():
                                 activeCell = cell;
                                 showTooltip(cell);
                             }}, {{passive: true}});
-                        }));
+                        }});  
                         
                         scrollArea.addEventListener('scroll', () => {{
                             if (activeCell) {{
