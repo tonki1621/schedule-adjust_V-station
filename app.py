@@ -219,8 +219,9 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
 options_editor = components.declare_component("options_editor", path="options_editor")
 
 # ★ バージョンをv8に固定し、毎回必ず最新のHTMLで上書き更新する
-os.makedirs("custom_editor_v8", exist_ok=True)
-with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
+# ★ 確実なキャッシュクリアのためバージョンをv9に変更
+os.makedirs("custom_editor_v9", exist_ok=True)
+with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -244,66 +245,19 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
     .c{position:relative;transition:filter 0.1s;}
     
     /* 📱 スマホ横画面対応: パレットを横一列にして下部中央に固定 */
-    /* 📱 スマホ横画面 */
-    @media (max-width: 900px) and (orientation: landscape) {
-
+    @media (max-width: 900px) and (orientation: landscape), (max-height: 500px) {
         #palette {
-            top: auto !important;
-            bottom: 10px !important;
-
-            left: 50% !important;
-            right: auto !important;
-
+            top: auto !important; bottom: 10px !important;
+            left: 50% !important; right: auto !important;
             transform: translateX(-50%) !important;
-
-            flex-direction: row !important;
-            align-items: center !important;
-            justify-content: center !important;
-
-            gap: 5px !important;
-            padding: 5px 6px !important;
-
-            width: max-content !important;
-            max-width: calc(100vw - 16px) !important;
-
-            box-sizing: border-box !important;
-
-            /* 横画面では固定 */
-            cursor: default !important;
+            flex-direction: row !important; align-items: center !important; justify-content: center !important;
+            gap: 5px !important; padding: 5px 6px !important;
+            width: max-content !important; max-width: calc(100vw - 16px) !important;
+            box-sizing: border-box !important; cursor: default !important;
         }
-
-        /* 「🖊️ ペン」の見出しを非表示 */
-        #palette > div:first-child {
-            display: none !important;
-        }
-
-        /* 区切り線 */
-        #palette > hr {
-            height: 28px !important;
-            width: 1px !important;
-
-            margin: 0 2px !important;
-
-            border: 0 !important;
-            border-left: 1px solid #ddd !important;
-        }
-
-        /* ボタン */
-        #palette .pen-btn {
-            flex: 0 0 48px !important;
-
-            width: 48px !important;
-            min-width: 48px !important;
-
-            height: 38px !important;
-
-            padding: 2px !important;
-            margin: 0 !important;
-
-            font-size: 11px !important;
-
-            box-sizing: border-box !important;
-        }
+        #palette > div:first-child { display: none !important; }
+        #palette > hr { height: 28px !important; width: 1px !important; margin: 0 2px !important; border: 0 !important; border-left: 1px solid #ddd !important; }
+        #palette .pen-btn { flex: 0 0 48px !important; width: 48px !important; min-width: 48px !important; height: 38px !important; padding: 2px !important; margin: 0 !important; font-size: 11px !important; box-sizing: border-box !important; }
     }
     </style></head><body>
     
@@ -350,24 +304,20 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
     function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
     function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
     
-    let currentWeek = 0;
-    let totalDays = 0;
-    let numRows = 0;
-    let unavailColRows = {};
-
+    let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
     window.globalScale = Number.isFinite(window.globalScale) ? window.globalScale : 1;
-
-    window.cellDetails = {};
-    let defaultCampus = "";
-    let modalStatus = 1;
-    let selectedMode = 1;
-    let editingCell = null;
+    window.cellDetails = {}; let defaultCampus = "";
+    let modalStatus = 1; let selectedMode = 1; let editingCell = null;
 
     let activePointers = new Map();
     let gestureMode = "none";
     let initialScale = 1;
     let initialDistance = 0;
     let lastCenter = null;
+    
+    // 💡 長押し判定用変数
+    let longPressTimer = null;
+    let startPointer = { x: 0, y: 0, cell: null };
 
     const modalBg = document.getElementById('detail-modal');
     modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
@@ -382,7 +332,6 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
         editingCell = cell; const r = cell.dataset.r; const c = cell.dataset.c; const key = `${r}_${c}`;
         const campusSelect = document.getElementById('ui-default-campus');
         const currentDef = campusSelect ? campusSelect.value : defaultCampus;
-        
         const detail = window.cellDetails[key] || {campus: currentDef, note: ""};
         setModalStatus(parseInt(cell.dataset.v) || 1);
         document.getElementById('modal-campus').value = detail.campus || "";
@@ -409,7 +358,6 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
         const key = `${cell.dataset.r}_${cell.dataset.c}`;
         const campusSelect = document.getElementById('ui-default-campus');
         const currentDefCampus = campusSelect ? campusSelect.value : defaultCampus;
-        
         if (mode == 1 || mode == 2) {
             let existingNote = window.cellDetails[key] ? window.cellDetails[key].note : "";
             window.cellDetails[key] = {campus: currentDefCampus, note: existingNote};
@@ -423,10 +371,7 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
 
     window.upd = function(el, v) { 
         el.dataset.v = v; const key = `${el.dataset.r}_${el.dataset.c}`; let detail = window.cellDetails[key];
-        
-        let campus = detail ? detail.campus : "";
-        let note = detail ? detail.note : "";
-        
+        let campus = detail ? detail.campus : ""; let note = detail ? detail.note : "";
         let bgColor = '#fff'; let txt = ''; let txtColor = '#fff'; let opacity = 1.0;
 
         if (v == 1 || v == 2) {
@@ -437,28 +382,18 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
             else if (campus === "あべの" || campus === "阿倍野") info = { color: "#EC407A", text: "あ" };
             else if (campus === "りんくう") info = { color: "#AB47BC", text: "り" };
             else if (campus === "その他/移動中") info = { color: "#9E9E9E", text: "他" };
-            
-            bgColor = info.color;
-            txt = info.text;
-            if (v == 2) opacity = 0.4; 
+            bgColor = info.color; txt = info.text; if (v == 2) opacity = 0.4; 
         } else if (v == 3) {
             bgColor = '#E0E0E0'; txt = '授'; txtColor = '#555';
         } else if (v == 0 && (note === "バイト/サークル等" || note === "バイト/私用")) {
             bgColor = '#f5f5f5'; txt = '休'; txtColor = '#aaa';
         }
         
-        el.style.backgroundColor = bgColor;
-        el.style.opacity = opacity;
-        el.style.backgroundImage = 'none';
-        el.style.color = txtColor;
-        el.style.display = 'flex';
-        el.style.alignItems = 'center';
-        el.style.justifyContent = 'center';
-
+        el.style.backgroundColor = bgColor; el.style.opacity = opacity; el.style.backgroundImage = 'none';
+        el.style.color = txtColor; el.style.display = 'flex'; el.style.alignItems = 'center'; el.style.justifyContent = 'center';
         const showMemo = detail && detail.note !== "";
         let innerHtml = '<span style="font-size:14px; font-weight:bold; pointer-events:none;">' + txt + '</span>';
         if (showMemo) { innerHtml += '<div class="memo-icon">💬</div>'; }
-        
         el.innerHTML = innerHtml;
     };
     
@@ -511,26 +446,25 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
     window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
     document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
+    // 💡 ペンモード設定関数 (イベント処理を持たないピュアなUI変更)
     window.setPen = function(mode) {
         selectedMode = mode;
-
         [-2, -1, 0, 1, 2].forEach(m => {
             const b = document.getElementById('pen-' + m);
             if (b) b.classList.remove('active');
         });
-
         const activeBtn = document.getElementById('pen-' + mode);
         if (activeBtn) activeBtn.classList.add('active');
 
         const g = document.getElementById('g');
         if (g) {
-            g.style.touchAction = (mode === -1) ? 'pan-x pan-y' : 'none';
+            // スクロールモードならブラウザ標準のスクロール等を許可、それ以外はJSでタッチを完全処理
+            g.style.touchAction = (mode === -1) ? 'pan-x pan-y pinch-zoom' : 'none';
         }
     };
 
     window.updatePaletteCampus = function() {
         const camp = document.getElementById('ui-default-campus').value;
-        
         let p1Info = {color:"#4CAF50", txt:"可"};
         if (camp === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
         else if (camp === "すぎもと" || camp === "杉本") p1Info = {color:"#42A5F5", txt:"す"};
@@ -545,68 +479,71 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
         document.getElementById('pen-2').style.background = p1Info.color;
         document.getElementById('pen-2').style.opacity = 0.6;
         document.getElementById('pen-2').style.color = "#fff";
-        
         window.setPen(1);
     };
 
-    const palette = document.getElementById('palette'); let isDraggingPalette = false; let offsetX, offsetY;
-    palette.addEventListener('mousedown', e => {
+    // 💡 パレットはみ出し防止 (クランプ) 処理
+    const palette = document.getElementById('palette'); 
+    let isDraggingPalette = false; let offsetX, offsetY;
 
-    // スマホ横画面では固定
-    if (window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) {
-        isDraggingPalette = false;
-        return;
+    function clampPalettePosition() {
+        if (!palette) return;
+        if (window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) {
+            palette.style.left = ''; palette.style.top = ''; palette.style.right = ''; palette.style.bottom = '';
+            return;
+        }
+        const rect = palette.getBoundingClientRect();
+        const margin = 8;
+        let left = parseFloat(palette.style.left);
+        let top = parseFloat(palette.style.top);
+        
+        if (isNaN(left)) left = rect.left;
+        if (isNaN(top)) top = rect.top;
+        
+        const maxLeft = window.innerWidth - rect.width - margin;
+        const maxTop = window.innerHeight - rect.height - margin;
+        
+        left = Math.max(margin, Math.min(left, maxLeft));
+        top = Math.max(margin, Math.min(top, maxTop));
+        
+        palette.style.left = left + 'px';
+        palette.style.top = top + 'px';
+        palette.style.right = 'auto';
+        palette.style.bottom = 'auto';
     }
 
-    if (e.target.tagName.toLowerCase() === 'button') return;
+    function startDrag(clientX, clientY) {
+        if (window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) return;
+        isDraggingPalette = true;
+        const rect = palette.getBoundingClientRect();
+        offsetX = clientX - rect.left;
+        offsetY = clientY - rect.top;
+    }
+    
+    function moveDrag(clientX, clientY) {
+        if (!isDraggingPalette) return;
+        palette.style.left = (clientX - offsetX) + 'px';
+        palette.style.top = (clientY - offsetY) + 'px';
+        clampPalettePosition();
+    }
 
-    isDraggingPalette = true;
-
-    offsetX =
-        e.clientX -
-        palette.getBoundingClientRect().left;
-
-    offsetY =
-        e.clientY -
-        palette.getBoundingClientRect().top;
-
-});
-    document.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
+    palette.addEventListener('mousedown', e => { if (e.target.tagName.toLowerCase() === 'button') return; startDrag(e.clientX, e.clientY); });
+    document.addEventListener('mousemove', e => { moveDrag(e.clientX, e.clientY); });
     document.addEventListener('mouseup', () => { isDraggingPalette = false; });
-    palette.addEventListener('touchstart', e => {
-
-    // スマホ横画面ではパレットを固定する
-    if (window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) {
-        isDraggingPalette = false;
-        return;
-    }
-
-    if (e.target.tagName.toLowerCase() === 'button') return;
-
-    isDraggingPalette = true;
-
-    const touch = e.touches[0];
-
-    offsetX =
-        touch.clientX -
-        palette.getBoundingClientRect().left;
-
-    offsetY =
-        touch.clientY -
-        palette.getBoundingClientRect().top;
-
-}, {passive: false});
-    document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
+    
+    palette.addEventListener('touchstart', e => { if (e.target.tagName.toLowerCase() === 'button') return; startDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
+    document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; moveDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, {passive: false});
     document.addEventListener('touchend', () => { isDraggingPalette = false; });
+
+    window.addEventListener('resize', clampPalettePosition);
+    window.addEventListener('orientationchange', () => { setTimeout(clampPalettePosition, 100); });
 
     window.addEventListener("message", function(event) {
         if (event.data.type === "streamlit:render") {
             const args = event.data.args; 
             
-            if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) {
-                return;
-            }
-            if(window.lastEventId !== args.eventId) { currentWeek = 0; }
+            if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return;
+            if(window.lastEventId !== args.eventId) currentWeek = 0;
             window.lastEventId = args.eventId;
             window.lastSaveTs = args.saveTs;
             
@@ -628,17 +565,13 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
             }
             
             window.renderWeek();
-            
-            if(args.isClosed) { 
-                palette.style.display = 'none'; 
-            } else { 
-                palette.style.display = 'flex'; 
-            }
+            if(args.isClosed) { palette.style.display = 'none'; } else { palette.style.display = 'flex'; }
+            setTimeout(() => { window.setPen(selectedMode); }, 50);
 
-            window.setPen(selectedMode);
-            
+            // ============================================================
+            // 💡 Pointer Events の統合管理（ズーム・長押し・パン・ペイント）
+            // ============================================================
             const g = document.getElementById('g'); if(!g) return;
-
             const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
             if (window.globalScale !== 1) {
@@ -656,28 +589,35 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
                 g.removeEventListener('pointercancel', window._pointerEndHandler);
             }
 
+            function getDistance(p1, p2) { return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY); }
+            function getCenter(p1, p2) { return { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 }; }
+
             window._pointerDownHandler = function(e) {
                 activePointers.set(e.pointerId, e);
 
-                if (selectedMode === -1) return;
-
+                if (selectedMode === -1) return; // スクロールモードならJSは無視
                 if (selectedMode === -2) {
-                    if (activePointers.size === 1) {
-                        const cell = e.target.closest('.c');
-                        if (cell) openModal(cell);
-                    }
+                    if (activePointers.size === 1) { const cell = e.target.closest('.c'); if (cell) openModal(cell); }
                     return;
                 }
 
                 if (activePointers.size === 1) {
-                    gestureMode = "paint";
-                    const cell = e.target.closest('.c');
-                    if (cell) window.paintCell(cell, selectedMode);
+                    gestureMode = "pending";
+                    startPointer = { x: e.clientX, y: e.clientY, cell: e.target.closest('.c') };
                     
-                    if (g.hasPointerCapture(e.pointerId)) {
-                        g.releasePointerCapture(e.pointerId);
-                    }
+                    // 💡 長押し(0.45秒)で詳細モーダルを開く
+                    if (longPressTimer) clearTimeout(longPressTimer);
+                    longPressTimer = setTimeout(() => {
+                        if (gestureMode === "pending") {
+                            gestureMode = "longpress";
+                            if (startPointer.cell) openModal(startPointer.cell);
+                        }
+                    }, 450); 
+
+                    if (g.hasPointerCapture(e.pointerId)) g.releasePointerCapture(e.pointerId);
+                    
                 } else if (activePointers.size === 2) {
+                    if (longPressTimer) clearTimeout(longPressTimer);
                     gestureMode = "pinch";
                     const pts = Array.from(activePointers.values());
                     initialDistance = getDistance(pts[0], pts[1]);
@@ -690,17 +630,30 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
                 if (!activePointers.has(e.pointerId)) return;
                 activePointers.set(e.pointerId, e);
 
-                if (gestureMode === "paint" && activePointers.size === 1) {
-                    const el = document.elementFromPoint(e.clientX, e.clientY);
-                    const cell = el ? el.closest('.c') : null;
-                    if (cell) {
-                        window.paintCell(cell, selectedMode);
+                if (activePointers.size === 1) {
+                    if (gestureMode === "pending") {
+                        const dist = Math.hypot(e.clientX - startPointer.x, e.clientY - startPointer.y);
+                        // 指が10px以上動いたら「ペイント(ドラッグ)」と判定
+                        if (dist > 10) {
+                            if (longPressTimer) clearTimeout(longPressTimer);
+                            gestureMode = "paint";
+                            if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
+                            const el = document.elementFromPoint(e.clientX, e.clientY);
+                            const cell = el ? el.closest('.c') : null;
+                            if (cell && cell !== startPointer.cell) window.paintCell(cell, selectedMode);
+                        }
+                    } else if (gestureMode === "paint") {
+                        const el = document.elementFromPoint(e.clientX, e.clientY);
+                        const cell = el ? el.closest('.c') : null;
+                        if (cell) window.paintCell(cell, selectedMode);
                     }
-                } else if (gestureMode === "pinch" && activePointers.size === 2) {
+                } else if (activePointers.size === 2 && gestureMode === "pinch") {
+                    if (e.cancelable) e.preventDefault(); // ブラウザ標準の拡大やスクロールを防ぐ
                     const pts = Array.from(activePointers.values());
                     const currentDistance = getDistance(pts[0], pts[1]);
                     const currentCenter = getCenter(pts[0], pts[1]);
 
+                    // ズーム処理
                     if (initialDistance > 0) {
                         let newScale = initialScale * (currentDistance / initialDistance);
                         newScale = Math.max(0.5, Math.min(newScale, 3.0));
@@ -708,12 +661,12 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
                         
                         g.style.transform = `scale(${window.globalScale})`;
                         g.style.transformOrigin = "0 0";
-                        
                         const marginPct = Math.max(0, (window.globalScale - 1) * 100);
                         g.style.marginBottom = `${marginPct}%`;
                         g.style.marginRight = `${marginPct}%`;
                     }
 
+                    // パン(移動)処理
                     if (lastCenter && scrollArea) {
                         const dx = currentCenter.x - lastCenter.x;
                         const dy = currentCenter.y - lastCenter.y;
@@ -725,11 +678,18 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
             };
 
             window._pointerEndHandler = function(e) {
+                // 長押しせずに指を離した場合は「短いタップ(単発塗り)」として処理
+                if (activePointers.size === 1 && gestureMode === "pending") {
+                    if (longPressTimer) clearTimeout(longPressTimer);
+                    if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
+                }
+                
                 activePointers.delete(e.pointerId);
                 if (activePointers.size === 0) {
                     gestureMode = "none";
+                    if (longPressTimer) clearTimeout(longPressTimer);
                 } else if (activePointers.size === 1) {
-                    gestureMode = "none";
+                    gestureMode = "none"; // 2本指ズームのあとに誤爆して塗られないようにリセット
                 }
             };
 
@@ -758,7 +718,7 @@ with open("custom_editor_v8/index.html", "w", encoding="utf-8") as f:
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v8")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v9")
 
 def call_gas(action, payload=None, method="POST"):
     try:
@@ -2475,7 +2435,7 @@ def main():
                             if details[i]["yes"]: st.code("\n".join(details[i]["yes"]), language="text")
                             else: st.write("なし")
                         with c_maybe:
-                            st.markdown("<span style='color:#FF9800; font-weight:bold;'>△ 未定</span>", unsafe_array := True)
+                            st.markdown("<span style='color:#FF9800; font-weight:bold;'>△ 未定</span>", unsafe_allow_html=True)
                             if details[i]["maybe"]: st.markdown("<br>".join([f"△ {n}" for n in details[i]["maybe"]]), unsafe_allow_html=True)
                             else: st.write("なし")
                         with c_no:

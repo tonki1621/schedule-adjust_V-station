@@ -2316,7 +2316,7 @@ def main():
                                 activeCell = cell;
                                 showTooltip(cell);
                             }}, {{passive: true}});
-                        }));
+                        }});  
                         
                         scrollArea.addEventListener('scroll', () => {{
                             if (activeCell) {{
@@ -2475,7 +2475,7 @@ def main():
                             if details[i]["yes"]: st.code("\n".join(details[i]["yes"]), language="text")
                             else: st.write("なし")
                         with c_maybe:
-                            st.markdown("<span style='color:#FF9800; font-weight:bold;'>△ 未定</span>", unsafe_array := True)
+                            st.markdown("<span style='color:#FF9800; font-weight:bold;'>△ 未定</span>", unsafe_allow_html=True)
                             if details[i]["maybe"]: st.markdown("<br>".join([f"△ {n}" for n in details[i]["maybe"]]), unsafe_allow_html=True)
                             else: st.write("なし")
                         with c_no:
