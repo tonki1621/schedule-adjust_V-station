@@ -220,8 +220,8 @@ options_editor = components.declare_component("options_editor", path="options_ed
 
 # ★ バージョンをv8に固定し、毎回必ず最新のHTMLで上書き更新する
 # ★ パレット下部固定ナビ化・イベント単一化・ズーム復旧版 (v11)
-os.makedirs("custom_editor_v11", exist_ok=True)
-with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
+os.makedirs("custom_editor_v12", exist_ok=True)
+with open("custom_editor_v12/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -274,7 +274,7 @@ with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
     
     /* 下部パレットに隠れないようにグリッド下部に余白を確保 */
     .scroll-wrapper {
-        margin-bottom: 75px !important;
+        margin-bottom: 80px !important;
     }
     </style></head><body>
     
@@ -333,7 +333,7 @@ with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
     let initialDistance = 0;
     let lastCenter = null;
     
-    // 長押し判定用変数
+    // 💡 長押し判定用変数
     let longPressTimer = null;
     let startPointer = { x: 0, y: 0, cell: null };
 
@@ -502,9 +502,35 @@ with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
         window.setPen(selectedMode);
     };
 
-    // 💡 パレットのドラッグ処理（PCマウスのみ・スマホは無効）
+    // 💡 パレットのドラッグ処理（PCマウスのみ・スマホは無効・はみ出し防止）
     const palette = document.getElementById('palette');
     let isDraggingPalette = false; let offsetX, offsetY;
+
+    function clampPalettePosition() {
+        if (!palette) return;
+        if (window.matchMedia('(max-width: 900px)').matches) {
+            palette.style.left = ''; palette.style.top = ''; palette.style.right = ''; palette.style.bottom = '';
+            return;
+        }
+        const rect = palette.getBoundingClientRect();
+        const margin = 8;
+        let left = parseFloat(palette.style.left);
+        let top = parseFloat(palette.style.top);
+        
+        if (isNaN(left)) left = rect.left;
+        if (isNaN(top)) top = rect.top;
+        
+        const maxLeft = window.innerWidth - rect.width - margin;
+        const maxTop = window.innerHeight - rect.height - margin;
+        
+        left = Math.max(margin, Math.min(left, maxLeft));
+        top = Math.max(margin, Math.min(top, maxTop));
+        
+        palette.style.left = left + 'px';
+        palette.style.top = top + 'px';
+        palette.style.right = 'auto';
+        palette.style.bottom = 'auto';
+    }
 
     palette.addEventListener('mousedown', e => {
         if (window.matchMedia('(max-width: 900px)').matches) return; // スマホ幅ならドラッグ無効
@@ -518,21 +544,23 @@ with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
         if (!isDraggingPalette) return;
         palette.style.left = (e.clientX - offsetX) + 'px';
         palette.style.top = (e.clientY - offsetY) + 'px';
-        palette.style.right = 'auto';
+        clampPalettePosition();
     });
 
     document.addEventListener('mouseup', () => { isDraggingPalette = false; });
-    
-    // (※スマホ向けの touchstart/touchmove/touchend は意図的に全削除)
+    window.addEventListener('resize', clampPalettePosition);
 
     // ============================================================
-    // 💡 Pointer Events の統合管理 (一回だけ登録する)
+    // 💡 Pointer Events の統合管理 (1回だけ登録する)
     // ============================================================
     function getDistance(p1, p2) { return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY); }
     function getCenter(p1, p2) { return { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 }; }
 
     window._pointerDownHandler = function(e) {
         activePointers.set(e.pointerId, e);
+
+        // マルチタッチ時に pointermove が正しく取れるようキャプチャ解放
+        try { if (e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId); } catch(err) {}
 
         if (selectedMode === -1) return; // 移動モード
         
@@ -569,13 +597,19 @@ with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
         if (!activePointers.has(e.pointerId)) return;
         activePointers.set(e.pointerId, e);
         
+        // ピンチズームやペイント時はブラウザ標準のスクロールを防ぐ
+        if (gestureMode === "pinch" || gestureMode === "paint") {
+            if (e.cancelable) e.preventDefault();
+        }
+        
         const g = document.getElementById('g');
         const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
         if (activePointers.size === 1) {
             if (gestureMode === "pending") {
                 const dist = Math.hypot(e.clientX - startPointer.x, e.clientY - startPointer.y);
-                if (dist > 8) { // 指が動いたら長押しキャンセル、ペイント開始
+                // 指が少し動いたら長押しをキャンセルしてペイントドラッグ開始
+                if (dist > 8) {
                     if (longPressTimer) clearTimeout(longPressTimer);
                     gestureMode = "paint";
                     if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
@@ -616,6 +650,7 @@ with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
     };
 
     window._pointerEndHandler = function(e) {
+        // 長押し・ドラッグせずに指を離した場合は「短タップ塗り」
         if (activePointers.size === 1 && gestureMode === "pending") {
             if (longPressTimer) clearTimeout(longPressTimer);
             if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
@@ -634,7 +669,7 @@ with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
         const g = document.getElementById("g");
         if (!g) return;
 
-        g.style.touchAction = "none"; // 常にJSで制御する
+        g.style.touchAction = (selectedMode === -1) ? 'pan-x pan-y pinch-zoom' : 'none';
 
         // 古いリスナーを削除
         g.removeEventListener("pointerdown", window._pointerDownHandler);
@@ -712,7 +747,7 @@ with open("custom_editor_v11/index.html", "w", encoding="utf-8") as f:
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v11")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v12")
 
 def call_gas(action, payload=None, method="POST"):
     try:
