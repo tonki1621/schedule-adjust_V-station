@@ -291,6 +291,8 @@ if not os.path.exists("custom_editor_v7"):
         let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
         window.cellDetails = {}; let defaultCampus = "";
         let modalStatus = 1; let selectedMode = 1; let editingCell = null;
+        
+        window.globalScale = 1; // 💡 これがないとNaNエラーになるため必須
 
         const modalBg = document.getElementById('detail-modal');
         modalBg.addEventListener('mousedown', function(e) { if(e.target === this) closeModal(); });
@@ -439,154 +441,138 @@ if not os.path.exists("custom_editor_v7"):
             [-2, -1, 0, 1, 2].forEach(m => { const b = document.getElementById('pen-' + m); if(b) b.classList.remove('active'); });
             const activeBtn = document.getElementById('pen-' + mode);
             if (activeBtn) activeBtn.classList.add('active');
-            const g = document.getElementById('g');
-            if (g) { if (mode === -1) { g.style.touchAction = 'pan-x pan-y'; } else { g.style.touchAction = 'none'; } }
-        };
-
-        window.updatePaletteCampus = function() {
-            const camp = document.getElementById('ui-default-campus').value;
             
-            let p1Info = {color:"#4CAF50", txt:"可"};
-            if (camp === "なかもず") p1Info = {color:"#FFA726", txt:"な"};
-            else if (camp === "すぎもと" || camp === "杉本") p1Info = {color:"#42A5F5", txt:"す"};
-            else if (camp === "もりのみや") p1Info = {color:"#66BB6A", txt:"も"};
-            else if (camp === "あべの" || camp === "阿倍野") p1Info = {color:"#EC407A", txt:"あ"};
-            else if (camp === "りんくう") p1Info = {color:"#AB47BC", txt:"り"};
-            else if (camp === "その他/移動中") p1Info = {color:"#9E9E9E", txt:"他"};
+            const g = document.getElementById('g'); if(!g) return;
+                const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
-            document.getElementById('pen-1').innerHTML = camp ? `${p1Info.txt}<br><span style='font-size:9px;'>(${camp})</span>` : "可";
-            document.getElementById('pen-1').style.background = p1Info.color;
-            document.getElementById('pen-2').innerHTML = camp ? `未定<br><span style='font-size:9px;'>(${camp})</span>` : "未定";
-            document.getElementById('pen-2').style.background = p1Info.color;
-            document.getElementById('pen-2').style.opacity = 0.6;
-            document.getElementById('pen-2').style.color = "#fff";
-            
-            window.setPen(1);
-        };
+                // 💡 再描画時にズーム状態を復元する
+                if (window.globalScale !== 1) {
+                    g.style.transform = `scale(${window.globalScale})`;
+                    g.style.transformOrigin = "0 0";
+                    const marginPct = Math.max(0, (window.globalScale - 1) * 100);
+                    g.style.marginBottom = `${marginPct}%`;
+                    g.style.marginRight = `${marginPct}%`;
+                }
 
-        const palette = document.getElementById('palette'); let isDraggingPalette = false; let offsetX, offsetY;
-        palette.addEventListener('mousedown', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; offsetX = e.clientX - palette.getBoundingClientRect().left; offsetY = e.clientY - palette.getBoundingClientRect().top; });
-        document.addEventListener('mousemove', e => { if (!isDraggingPalette) return; palette.style.left = (e.clientX - offsetX) + 'px'; palette.style.top = (e.clientY - offsetY) + 'px'; palette.style.right = 'auto'; });
-        document.addEventListener('mouseup', () => { isDraggingPalette = false; });
-        palette.addEventListener('touchstart', e => { if (e.target.tagName.toLowerCase() === 'button') return; isDraggingPalette = true; const touch = e.touches[0]; offsetX = touch.clientX - palette.getBoundingClientRect().left; offsetY = touch.clientY - palette.getBoundingClientRect().top; }, {passive: false});
-        document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; const touch = e.touches[0]; palette.style.left = (touch.clientX - offsetX) + 'px'; palette.style.top = (touch.clientY - offsetY) + 'px'; palette.style.right = 'auto'; e.preventDefault(); }, {passive: false});
-        document.addEventListener('touchend', () => { isDraggingPalette = false; });
+                // ------------------------------------------------------------
+                // 📱 Pointer Events による「1本指ドラッグ」と「自前2本指ズーム/パン」
+                // ------------------------------------------------------------
+                if (window._pointerCleanup) {
+                    g.removeEventListener('pointerdown', window._pointerDownHandler);
+                    g.removeEventListener('pointermove', window._pointerMoveHandler);
+                    g.removeEventListener('pointerup', window._pointerEndHandler);
+                    g.removeEventListener('pointercancel', window._pointerEndHandler);
+                }
 
-        window.addEventListener("message", function(event) {
-            if (event.data.type === "streamlit:render") {
-                const args = event.data.args; 
+                let activePointers = new Map();
+                let gestureMode = "none"; // 状態マシン: "none", "paint", "pinch"
                 
-                // ★追加：データが変わっていないなら再描画をブロック
-                if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) {
-                    return;
-                }
-                if(window.lastEventId !== args.eventId) { currentWeek = 0; }
-                window.lastEventId = args.eventId;
-                window.lastSaveTs = args.saveTs;
-                
-                document.getElementById("content").innerHTML = args.html_code;
-                totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
-                window.cellDetails = args.cellDetails || {}; 
-                defaultCampus = args.defaultCampus || "";
-                
-                if(document.getElementById('ui-default-campus')) {
-                    document.getElementById('ui-default-campus').value = defaultCampus;
-                    window.updatePaletteCampus();
-                }
-                
-                const detailsEl = document.querySelector('details');
-                if (detailsEl) {
-                    detailsEl.addEventListener('toggle', () => {
-                        setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.body.scrollHeight + 50}), 150);
-                    });
-                }
-                
-                window.renderWeek();
-                
-                // パレット表示の制御
-                if(args.isClosed) { 
-                    palette.style.display = 'none'; 
-                    return; 
-                } else { 
-                    palette.style.display = 'flex'; 
-                }
-                
-                setTimeout(() => { window.setPen(selectedMode); }, 50);
-                
-                const g = document.getElementById('g'); if(!g) return;
-                let down = false;
+                // ズーム・パン用の状態変数
+                let initialScale = 1;
+                let initialDistance = 0;
+                let lastCenter = null;
 
-                const handleStart = (e, x, y) => {
-                    if (selectedMode === -1) return; // scroll mode
-                    const cell = e.target.closest('.c'); if(!cell) return;
-                    
+                // 2点間の距離を計算
+                function getDistance(p1, p2) {
+                    return Math.hypot(p1.clientX - p2.clientX, p1.clientY - p2.clientY);
+                }
+
+                // 2点間の中心座標を計算
+                function getCenter(p1, p2) {
+                    return { x: (p1.clientX + p2.clientX) / 2, y: (p1.clientY + p2.clientY) / 2 };
+                }
+
+                window._pointerDownHandler = function(e) {
+                    activePointers.set(e.pointerId, e);
+
+                    if (selectedMode === -1) return; // スクロールモードはブラウザネイティブに任せる
+
                     if (selectedMode === -2) {
-                        openModal(cell);
-                        return; 
+                        if (activePointers.size === 1) {
+                            const cell = e.target.closest('.c');
+                            if (cell) openModal(cell);
+                        }
+                        return;
                     }
 
-                    down = true; 
-                    window.paintCell(cell, selectedMode);
-                };
-
-                const handleMove = (e, x, y) => {
-                    if (selectedMode === -1 || selectedMode === -2 || !down) return;
-                    if (e.cancelable) e.preventDefault(); 
-                    
-                    const cell = document.elementFromPoint(x, y)?.closest('.c');
-                    if(cell) window.paintCell(cell, selectedMode);
-                };
-
-                const handleEnd = () => {
-                    down = false;
-                };
-
-                // PCマウス用
-                g.onmousedown = e => { handleStart(e, e.clientX, e.clientY); };
-                g.onmousemove = e => { handleMove(e, e.clientX, e.clientY); }
-                window.onmouseup = handleEnd; window.onmouseleave = handleEnd; 
-
-                // ------------------------------------------------------------
-                // 📱 スマホタッチイベントの修正
-                // ------------------------------------------------------------
-                if (window._touchCleanup) {
-                    g.removeEventListener('touchstart', window._touchStartHandler);
-                    g.removeEventListener('touchmove', window._touchMoveHandler);
-                    g.removeEventListener('touchend', window._touchEndHandler);
-                    g.removeEventListener('touchcancel', window._touchCancelHandler);
-                }
-
-                window._touchStartHandler = function(e) {
-                    if (e.touches.length >= 2) return; // 2本指以上はブラウザのデフォルト動作（ピンチ）に任せる
-                    if (e.cancelable) e.preventDefault(); // 1本指の場合はスクロールを抑止して塗りを開始
-                    handleStart(e, e.touches[0].clientX, e.touches[0].clientY);
-                };
-
-                window._touchMoveHandler = function(e) {
-                    if (selectedMode === -1 || selectedMode === -2) return; // スクロールモード or 詳細モードの時は何もしない
-                    if (e.touches.length >= 2) return; // 2本指以上はピンチ操作としてブラウザに任せる
-                    if (down) {
-                        if (e.cancelable) e.preventDefault(); // 1本指ドラッグ中のみスクロールを抑止
-                        handleMove(e, e.touches[0].clientX, e.touches[0].clientY);
+                    if (activePointers.size === 1) {
+                        gestureMode = "paint";
+                        const cell = e.target.closest('.c');
+                        if (cell) window.paintCell(cell, selectedMode);
+                        
+                        if (g.hasPointerCapture(e.pointerId)) {
+                            g.releasePointerCapture(e.pointerId); // ドラッグ中の要素取得のためキャプチャを解放
+                        }
+                    } else if (activePointers.size === 2) {
+                        // 2本指になったらペイントを中止し、自前のピンチズームモードへ移行
+                        gestureMode = "pinch";
+                        const pts = Array.from(activePointers.values());
+                        initialDistance = getDistance(pts[0], pts[1]);
+                        initialScale = window.globalScale; // 💡 グローバル変数から取得
+                        lastCenter = getCenter(pts[0], pts[1]);
                     }
                 };
 
-                window._touchEndHandler = function(e) {
-                    down = false;
+                window._pointerMoveHandler = function(e) {
+                    if (!activePointers.has(e.pointerId)) return;
+                    activePointers.set(e.pointerId, e);
+
+                    if (gestureMode === "paint" && activePointers.size === 1) {
+                        // 1本指ペイントドラッグ
+                        const el = document.elementFromPoint(e.clientX, e.clientY);
+                        const cell = el ? el.closest('.c') : null;
+                        if (cell) {
+                            window.paintCell(cell, selectedMode);
+                        }
+                    } else if (gestureMode === "pinch" && activePointers.size === 2) {
+                        // 2本指ズーム ＆ パン（移動）
+                        const pts = Array.from(activePointers.values());
+                        const currentDistance = getDistance(pts[0], pts[1]);
+                        const currentCenter = getCenter(pts[0], pts[1]);
+
+                        // ズーム処理
+                        if (initialDistance > 0) {
+                            let newScale = initialScale * (currentDistance / initialDistance);
+                            newScale = Math.max(0.5, Math.min(newScale, 3.0)); // 倍率制限 (0.5x 〜 3.0x)
+                            window.globalScale = newScale; // 💡 グローバル変数を更新
+                            
+                            // グリッド自体を拡大縮小する
+                            g.style.transform = `scale(${window.globalScale})`;
+                            g.style.transformOrigin = "0 0";
+                            
+                            // 拡大時に右下が見切れないよう、擬似的に余白を広げる
+                            const marginPct = Math.max(0, (window.globalScale - 1) * 100);
+                            g.style.marginBottom = `${marginPct}%`;
+                            g.style.marginRight = `${marginPct}%`;
+                        }
+
+                        // パン（移動）処理
+                        if (lastCenter && scrollArea) {
+                            const dx = currentCenter.x - lastCenter.x;
+                            const dy = currentCenter.y - lastCenter.y;
+                            scrollArea.scrollLeft -= dx;
+                            scrollArea.scrollTop -= dy;
+                        }
+                        lastCenter = currentCenter;
+                    }
                 };
 
-                window._touchCancelHandler = function(e) {
-                    down = false;
+                window._pointerEndHandler = function(e) {
+                    activePointers.delete(e.pointerId);
+                    if (activePointers.size === 0) {
+                        gestureMode = "none";
+                    } else if (activePointers.size === 1) {
+                        // 2本指から1本指に戻った時は、誤爆を防ぐためペイントを再開しない
+                        gestureMode = "none";
+                    }
                 };
 
-                // イベントリスナーを追加（passive: false が必須）
-                g.addEventListener('touchstart', window._touchStartHandler, { passive: false });
-                g.addEventListener('touchmove', window._touchMoveHandler, { passive: false });
-                g.addEventListener('touchend', window._touchEndHandler);
-                g.addEventListener('touchcancel', window._touchCancelHandler);
+                g.addEventListener('pointerdown', window._pointerDownHandler);
+                g.addEventListener('pointermove', window._pointerMoveHandler);
+                g.addEventListener('pointerup', window._pointerEndHandler);
+                g.addEventListener('pointercancel', window._pointerEndHandler);
 
-                // クリーンアップ用フラグ
-                window._touchCleanup = true;
+                window._pointerCleanup = true;
                 const btn = document.getElementById("submit-btn");
                 if(btn) { btn.onclick = () => { 
                     const res = Array.from({length: numRows}, (_, r) => Array.from({length: totalDays}, (_, c) => {
@@ -2066,14 +2052,14 @@ def main():
                             
                         agg_font_size = "11px" if cell_h == "20px" else "15px"
                         
-                        # 💡変更: HTMLの属性(data-tooltip)に安全に埋め込むためエスケープ処理
+                        # HTMLの属性(data-tooltip)に安全に埋め込むためエスケープ処理
                         raw_tooltip_html = f"{t_str}<br><b>{val_txt}人</b><br><hr style='margin:4px 0; border:0; border-top:1px solid rgba(255,255,255,0.3);'>{tooltip_txt}"
                         escaped_tooltip = html.escape(raw_tooltip_html)
                         
                         cells_html += f'<div class="agg-cell" style="background:{bg}; color:{txt_color}; border-top:{b_top}; height:{cell_h}; font-size:{agg_font_size};" data-tooltip="{escaped_tooltip}">{val_txt}</div>'
                     agg_day_cols += f'<div class="agg-day-col"><div class="agg-header">{lbl}</div>{cells_html}</div>'
 
-                # 💡変更: StreamlitのDOMに依存しない、堅牢な独立コンポーネント(Vanilla JS)へ移行
+                # StreamlitのDOMに依存しない、堅牢な独立コンポーネント(Vanilla JS)
                 agg_full_html = f"""
                 <!DOCTYPE html>
                 <html>
@@ -2133,15 +2119,12 @@ def main():
                             const rect = cell.getBoundingClientRect();
                             const tooltipRect = tooltip.getBoundingClientRect();
                             
-                            // デフォルトはマスの上側に表示
                             let top = rect.top - tooltipRect.height - 8;
                             let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
                             
-                            // 上にスペースがなければ下側に表示
                             if (top < 0) {{
                                 top = rect.bottom + 8;
                             }}
-                            // 左右の画面外にはみ出さないよう調整
                             if (left < 10) left = 10;
                             if (left + tooltipRect.width > window.innerWidth - 10) {{
                                 left = window.innerWidth - tooltipRect.width - 10;
@@ -2162,21 +2145,18 @@ def main():
                                 tooltip.style.display = 'none';
                             }});
                             
-                            // スマホタップ用
                             cell.addEventListener('touchstart', (e) => {{
                                 activeCell = cell;
                                 showTooltip(cell);
                             }}, {{passive: true}});
                         }});
                         
-                        // スクロール時にツールチップが追従するよう更新
                         scrollArea.addEventListener('scroll', () => {{
                             if (activeCell) {{
                                 showTooltip(activeCell);
                             }}
                         }}, {{passive: true}});
                         
-                        // 枠外タップでツールチップを閉じる
                         document.addEventListener('touchstart', (e) => {{
                             if (!e.target.closest('.agg-cell') && !e.target.closest('#global-tooltip')) {{
                                 tooltip.style.display = 'none';
@@ -2188,7 +2168,6 @@ def main():
                 </html>
                 """
                 
-                # iframeとして700pxの高さを確保し、内部スクロールに委ねる
                 components.html(agg_full_html, height=700, scrolling=False)
                 
                 if comments_list and can_view_details:
