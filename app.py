@@ -338,7 +338,20 @@ if not os.path.exists("custom_editor_v8"):
         };
 
         window.paintCell = function(cell, mode) {
-            if(!cell) return;
+            console.log(
+                "[PAINT START]",
+                "mode=", mode,
+                "selectedMode=", selectedMode,
+                "r=", cell?.dataset.r,
+                "c=", cell?.dataset.c,
+                "before=", cell?.dataset.v
+            );
+
+            if(!cell) {
+                console.log("[PAINT ABORT] cell is null");
+                return;
+            }
+
             const key = `${cell.dataset.r}_${cell.dataset.c}`;
             const campusSelect = document.getElementById('ui-default-campus');
             const currentDefCampus = campusSelect ? campusSelect.value : defaultCampus;
@@ -351,7 +364,14 @@ if not os.path.exists("custom_editor_v8"):
                 if (detail && (detail.note === "バイト/サークル等" || detail.note === "バイト/私用")) { }
                 else { delete window.cellDetails[key]; }
             }
+            
             window.upd(cell, mode);
+
+            console.log(
+                "[PAINT END]",
+                "after=", cell.dataset.v,
+                "background=", cell.style.backgroundColor
+            );
         };
 
         window.upd = function(el, v) { 
