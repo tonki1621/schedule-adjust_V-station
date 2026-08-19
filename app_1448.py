@@ -219,15 +219,57 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
 options_editor = components.declare_component("options_editor", path="options_editor")
 
 # ★ バージョンをv8に固定し、毎回必ず最新のHTMLで上書き更新する
-# ★ 確実なキャッシュクリアのためバージョンをv9に変更
-os.makedirs("custom_editor_v9", exist_ok=True)
-with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
+# ★ パレット完全固定＆長押し＆ズーム最適化版 (v10)
+os.makedirs("custom_editor_v10", exist_ok=True)
+with open("custom_editor_v10/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
-    .pen-btn { padding: 0; border-radius: 50%; width: 45px; height: 45px; border: none; cursor: pointer; font-weight: bold; font-size: 14px; transition: transform 0.2s, box-shadow 0.2s; display: flex; align-items: center; justify-content: center; box-shadow: 0 2px 4px rgba(0,0,0,0.15); margin: 0 auto; }
-    .pen-btn:hover { opacity: 0.8; }
-    .pen-btn.active { border: 3px solid #333 !important; transform: scale(1.1); box-shadow: 0 4px 8px rgba(0,0,0,0.3); }
+    
+    /* 📱 最下部固定ボトムナビゲーションパレット */
+    #palette {
+        position: fixed;
+        bottom: 12px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 99999;
+        background: rgba(255, 255, 255, 0.96);
+        border: 1px solid #ddd;
+        border-radius: 50px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.18);
+        padding: 6px 12px;
+        display: none;
+        flex-direction: row;
+        align-items: center;
+        justify-content: center;
+        gap: 8px;
+        backdrop-filter: blur(10px);
+        max-width: calc(100vw - 20px);
+        box-sizing: border-box;
+    }
+    
+    .pen-btn {
+        padding: 0;
+        border-radius: 20px;
+        width: 52px;
+        min-width: 52px;
+        height: 38px;
+        border: 1px solid transparent;
+        cursor: pointer;
+        font-weight: bold;
+        font-size: 12px;
+        transition: all 0.15s ease;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    }
+    .pen-btn:hover { opacity: 0.85; }
+    .pen-btn.active {
+        border: 2px solid #222 !important;
+        transform: scale(1.08);
+        box-shadow: 0 3px 8px rgba(0,0,0,0.25);
+    }
     
     #detail-modal{display:none;position:fixed;top:0;left:0;width:100%;height:100%;background:rgba(0,0,0,0.5);z-index:999999;justify-content:center;align-items:center;backdrop-filter:blur(2px);}
     .modal-content{background:#fff;width:320px;padding:20px;border-radius:12px;box-shadow:0 8px 24px rgba(0,0,0,0.2);position:relative;}
@@ -244,31 +286,20 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
     .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;}
     .c{position:relative;transition:filter 0.1s;}
     
-    /* 📱 スマホ横画面対応: パレットを横一列にして下部中央に固定 */
-    @media (max-width: 900px) and (orientation: landscape), (max-height: 500px) {
-        #palette {
-            top: auto !important; bottom: 10px !important;
-            left: 50% !important; right: auto !important;
-            transform: translateX(-50%) !important;
-            flex-direction: row !important; align-items: center !important; justify-content: center !important;
-            gap: 5px !important; padding: 5px 6px !important;
-            width: max-content !important; max-width: calc(100vw - 16px) !important;
-            box-sizing: border-box !important; cursor: default !important;
-        }
-        #palette > div:first-child { display: none !important; }
-        #palette > hr { height: 28px !important; width: 1px !important; margin: 0 2px !important; border: 0 !important; border-left: 1px solid #ddd !important; }
-        #palette .pen-btn { flex: 0 0 48px !important; width: 48px !important; min-width: 48px !important; height: 38px !important; padding: 2px !important; margin: 0 !important; font-size: 11px !important; box-sizing: border-box !important; }
+    /* 下部パレットに隠れないようにグリッド下部に余白を確保 */
+    .scroll-wrapper {
+        margin-bottom: 75px !important;
     }
     </style></head><body>
     
-    <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
-        <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
+    <!-- 💡 下部固定ナビゲーションバー（ドラッグ不要で安全） -->
+    <div id="palette">
         <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
         <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#81C784; color:#fff;">未定</button>
-        <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
-        <hr style="margin:0; border-top:1px solid #ddd;">
-        <button class="pen-btn" onclick="window.setPen(-2)" id="pen--2" style="background:#2196F3; color:#fff; border:2px solid #1976D2; font-size:11px;">ℹ️<br>詳細</button>
-        <button class="pen-btn" onclick="window.setPen(-1)" id="pen--1" style="background:#9C27B0; color:#fff; border:2px solid #7B1FA2; font-size:10px; margin-top:0px;">📜<br>ｽｸﾛｰﾙ</button>
+        <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:11px;">🧽 消す</button>
+        <div style="width: 1px; height: 24px; background: #ddd; margin: 0 2px;"></div>
+        <button class="pen-btn" onclick="window.setPen(-2)" id="pen--2" style="background:#2196F3; color:#fff; font-size:11px;">ℹ️ 詳細</button>
+        <button class="pen-btn" onclick="window.setPen(-1)" id="pen--1" style="background:#9C27B0; color:#fff; font-size:10px;">📜 移動</button>
     </div>
 
     <div id="detail-modal">
@@ -304,18 +335,18 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
     function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); }
     function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); }
     
-    let currentWeek = 0; let totalDays = 0; let numRows = 0; let unavailColRows = {};
+    let currentWeek = 0; let totalDays = 0; numRows = 0; let unavailColRows = {};
     window.globalScale = Number.isFinite(window.globalScale) ? window.globalScale : 1;
     window.cellDetails = {}; let defaultCampus = "";
     let modalStatus = 1; let selectedMode = 1; let editingCell = null;
 
     let activePointers = new Map();
-    let gestureMode = "none";
+    let gestureMode = "none"; // "none", "pending", "paint", "pinch", "longpress"
     let initialScale = 1;
     let initialDistance = 0;
     let lastCenter = null;
     
-    // 💡 長押し判定用変数
+    // 💡 長押し判定用タイマー
     let longPressTimer = null;
     let startPointer = { x: 0, y: 0, cell: null };
 
@@ -446,7 +477,7 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
     window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
     document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
-    // 💡 ペンモード設定関数 (イベント処理を持たないピュアなUI変更)
+    // 💡 ペンモード変更（パレットは常に固定表示）
     window.setPen = function(mode) {
         selectedMode = mode;
         [-2, -1, 0, 1, 2].forEach(m => {
@@ -458,7 +489,6 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
 
         const g = document.getElementById('g');
         if (g) {
-            // スクロールモードならブラウザ標準のスクロール等を許可、それ以外はJSでタッチを完全処理
             g.style.touchAction = (mode === -1) ? 'pan-x pan-y pinch-zoom' : 'none';
         }
     };
@@ -481,62 +511,6 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
         document.getElementById('pen-2').style.color = "#fff";
         window.setPen(1);
     };
-
-    // 💡 パレットはみ出し防止 (クランプ) 処理
-    const palette = document.getElementById('palette'); 
-    let isDraggingPalette = false; let offsetX, offsetY;
-
-    function clampPalettePosition() {
-        if (!palette) return;
-        if (window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) {
-            palette.style.left = ''; palette.style.top = ''; palette.style.right = ''; palette.style.bottom = '';
-            return;
-        }
-        const rect = palette.getBoundingClientRect();
-        const margin = 8;
-        let left = parseFloat(palette.style.left);
-        let top = parseFloat(palette.style.top);
-        
-        if (isNaN(left)) left = rect.left;
-        if (isNaN(top)) top = rect.top;
-        
-        const maxLeft = window.innerWidth - rect.width - margin;
-        const maxTop = window.innerHeight - rect.height - margin;
-        
-        left = Math.max(margin, Math.min(left, maxLeft));
-        top = Math.max(margin, Math.min(top, maxTop));
-        
-        palette.style.left = left + 'px';
-        palette.style.top = top + 'px';
-        palette.style.right = 'auto';
-        palette.style.bottom = 'auto';
-    }
-
-    function startDrag(clientX, clientY) {
-        if (window.matchMedia('(max-width: 900px) and (orientation: landscape)').matches) return;
-        isDraggingPalette = true;
-        const rect = palette.getBoundingClientRect();
-        offsetX = clientX - rect.left;
-        offsetY = clientY - rect.top;
-    }
-    
-    function moveDrag(clientX, clientY) {
-        if (!isDraggingPalette) return;
-        palette.style.left = (clientX - offsetX) + 'px';
-        palette.style.top = (clientY - offsetY) + 'px';
-        clampPalettePosition();
-    }
-
-    palette.addEventListener('mousedown', e => { if (e.target.tagName.toLowerCase() === 'button') return; startDrag(e.clientX, e.clientY); });
-    document.addEventListener('mousemove', e => { moveDrag(e.clientX, e.clientY); });
-    document.addEventListener('mouseup', () => { isDraggingPalette = false; });
-    
-    palette.addEventListener('touchstart', e => { if (e.target.tagName.toLowerCase() === 'button') return; startDrag(e.touches[0].clientX, e.touches[0].clientY); }, {passive: false});
-    document.addEventListener('touchmove', e => { if (!isDraggingPalette) return; moveDrag(e.touches[0].clientX, e.touches[0].clientY); e.preventDefault(); }, {passive: false});
-    document.addEventListener('touchend', () => { isDraggingPalette = false; });
-
-    window.addEventListener('resize', clampPalettePosition);
-    window.addEventListener('orientationchange', () => { setTimeout(clampPalettePosition, 100); });
 
     window.addEventListener("message", function(event) {
         if (event.data.type === "streamlit:render") {
@@ -565,11 +539,12 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
             }
             
             window.renderWeek();
+            const palette = document.getElementById('palette');
             if(args.isClosed) { palette.style.display = 'none'; } else { palette.style.display = 'flex'; }
             setTimeout(() => { window.setPen(selectedMode); }, 50);
 
             // ============================================================
-            // 💡 Pointer Events の統合管理（ズーム・長押し・パン・ペイント）
+            // 💡 Pointer Events（1本指ドラッグ / 長押し詳細 / 2本指ズーム＆パン）
             // ============================================================
             const g = document.getElementById('g'); if(!g) return;
             const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
@@ -595,7 +570,10 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
             window._pointerDownHandler = function(e) {
                 activePointers.set(e.pointerId, e);
 
-                if (selectedMode === -1) return; // スクロールモードならJSは無視
+                // マルチタッチ時に pointermove が正しく取れるようキャプチャ解放
+                try { if (e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId); } catch(err) {}
+
+                if (selectedMode === -1) return; // 移動モード
                 if (selectedMode === -2) {
                     if (activePointers.size === 1) { const cell = e.target.closest('.c'); if (cell) openModal(cell); }
                     return;
@@ -605,23 +583,22 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
                     gestureMode = "pending";
                     startPointer = { x: e.clientX, y: e.clientY, cell: e.target.closest('.c') };
                     
-                    // 💡 長押し(0.45秒)で詳細モーダルを開く
+                    // 💡 長押し(450ms)で詳細設定モーダルを開く
                     if (longPressTimer) clearTimeout(longPressTimer);
                     longPressTimer = setTimeout(() => {
                         if (gestureMode === "pending") {
                             gestureMode = "longpress";
                             if (startPointer.cell) openModal(startPointer.cell);
                         }
-                    }, 450); 
-
-                    if (g.hasPointerCapture(e.pointerId)) g.releasePointerCapture(e.pointerId);
+                    }, 450);
                     
-                } else if (activePointers.size === 2) {
+                } else if (activePointers.size >= 2) {
+                    // 💡 2本指検知でズーム＆パン開始
                     if (longPressTimer) clearTimeout(longPressTimer);
                     gestureMode = "pinch";
                     const pts = Array.from(activePointers.values());
                     initialDistance = getDistance(pts[0], pts[1]);
-                    initialScale = window.globalScale;
+                    initialScale = window.globalScale || 1;
                     lastCenter = getCenter(pts[0], pts[1]);
                 }
             };
@@ -633,8 +610,8 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
                 if (activePointers.size === 1) {
                     if (gestureMode === "pending") {
                         const dist = Math.hypot(e.clientX - startPointer.x, e.clientY - startPointer.y);
-                        // 指が10px以上動いたら「ペイント(ドラッグ)」と判定
-                        if (dist > 10) {
+                        // 指が少し動いたら長押しをキャンセルしてペイントドラッグ開始
+                        if (dist > 8) {
                             if (longPressTimer) clearTimeout(longPressTimer);
                             gestureMode = "paint";
                             if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
@@ -647,13 +624,13 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
                         const cell = el ? el.closest('.c') : null;
                         if (cell) window.paintCell(cell, selectedMode);
                     }
-                } else if (activePointers.size === 2 && gestureMode === "pinch") {
-                    if (e.cancelable) e.preventDefault(); // ブラウザ標準の拡大やスクロールを防ぐ
+                } else if (activePointers.size >= 2 && gestureMode === "pinch") {
+                    if (e.cancelable) e.preventDefault();
                     const pts = Array.from(activePointers.values());
                     const currentDistance = getDistance(pts[0], pts[1]);
                     const currentCenter = getCenter(pts[0], pts[1]);
 
-                    // ズーム処理
+                    // 💡 2本指ズーム
                     if (initialDistance > 0) {
                         let newScale = initialScale * (currentDistance / initialDistance);
                         newScale = Math.max(0.5, Math.min(newScale, 3.0));
@@ -666,7 +643,7 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
                         g.style.marginRight = `${marginPct}%`;
                     }
 
-                    // パン(移動)処理
+                    // 💡 2本指パン
                     if (lastCenter && scrollArea) {
                         const dx = currentCenter.x - lastCenter.x;
                         const dy = currentCenter.y - lastCenter.y;
@@ -678,7 +655,7 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
             };
 
             window._pointerEndHandler = function(e) {
-                // 長押しせずに指を離した場合は「短いタップ(単発塗り)」として処理
+                // 長押し・ドラッグせずに指を離した場合は「短タップ塗り」
                 if (activePointers.size === 1 && gestureMode === "pending") {
                     if (longPressTimer) clearTimeout(longPressTimer);
                     if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
@@ -689,7 +666,7 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
                     gestureMode = "none";
                     if (longPressTimer) clearTimeout(longPressTimer);
                 } else if (activePointers.size === 1) {
-                    gestureMode = "none"; // 2本指ズームのあとに誤爆して塗られないようにリセット
+                    gestureMode = "none"; // 2本指操作後の誤爆防止
                 }
             };
 
@@ -718,7 +695,7 @@ with open("custom_editor_v9/index.html", "w", encoding="utf-8") as f:
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v9")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v10")
 
 def call_gas(action, payload=None, method="POST"):
     try:
