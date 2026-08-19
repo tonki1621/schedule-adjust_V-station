@@ -218,10 +218,9 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#81C784;color:#fff;border-color:#81C784;box-shadow:0 4px 8px rgba(76,175,80,0.2);transform:translateY(-3px); opacity: 0.8;}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント (任意)</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-# ★ バージョンをv8に固定し、毎回必ず最新のHTMLで上書き更新する
-# ★ PointerCapture不具合解消＆動的パレット追従版 (v14)
-os.makedirs("custom_editor_v14", exist_ok=True)
-with open("custom_editor_v14/index.html", "w", encoding="utf-8") as f:
+# ★ パレットグリッド追従＆Pointer状態管理最適化版 (v15)
+os.makedirs("custom_editor_v15", exist_ok=True)
+with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -244,33 +243,66 @@ with open("custom_editor_v14/index.html", "w", encoding="utf-8") as f:
     .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;}
     .c{position:relative;transition:filter 0.1s;}
     
-    /* 📱 スマホ用: topはJSで制御するためCSSでは固定しない */
+    .scroll-wrapper {
+        overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff;
+    }
+
+    /* 📱 スマホ用: パレットの追従制御とサイズ拡大 */
     @media (max-width: 900px) {
+        .scroll-wrapper {
+            padding-bottom: 70px !important; /* 💡 パレット分の余白を確保 */
+            margin-bottom: 0 !important;
+        }
+
         #palette {
             position: fixed !important;
             left: 50% !important;
             right: auto !important;
-            top: 0 !important;
-            bottom: auto !important;
+            top: 0 !important; /* 💡 初期位置(JSで毎回上書きする) */
+            bottom: auto !important; /* 💡 CSSでのbottom固定を廃止 */
             transform: translateX(-50%) !important;
             flex-direction: row !important;
             align-items: center !important;
             justify-content: center !important;
-            gap: 5px !important;
-            padding: 6px 8px !important;
+            gap: 8px !important; /* 💡 誤爆防止の余白拡大 */
+            padding: 8px 10px !important;
+            border-radius: 16px !important; /* 💡 操作しやすい角丸 */
             width: max-content !important;
             max-width: calc(100vw - 16px) !important;
             box-sizing: border-box !important;
             cursor: default !important;
-            border-radius: 50px !important;
         }
+
+        /* 「🖊️ ペン」を非表示 */
         #palette > div:first-child { display: none !important; }
+        
+        /* 区切り線 */
         #palette > hr { width: 1px !important; height: 28px !important; margin: 0 2px !important; border: 0 !important; border-left: 1px solid #ddd !important; }
-        #palette .pen-btn { flex: 0 0 48px !important; width: 48px !important; min-width: 48px !important; height: 38px !important; padding: 2px !important; margin: 0 !important; font-size: 11px !important; box-sizing: border-box !important; }
+        
+        /* ボタン拡大 */
+        #palette .pen-btn { 
+            flex: 0 0 58px !important; 
+            width: 58px !important; 
+            min-width: 58px !important; 
+            height: 48px !important; 
+            padding: 4px !important; 
+            margin: 0 !important; 
+            font-size: 13px !important; 
+            font-weight: bold !important;
+            border-radius: 12px !important;
+            touch-action: manipulation !important;
+            -webkit-tap-highlight-color: transparent;
+        }
     }
     
-    .scroll-wrapper {
-        overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff;
+    /* 📱 横画面用: 高さを少し圧縮 */
+    @media (max-width: 900px) and (orientation: landscape) {
+        #palette .pen-btn {
+            flex: 0 0 54px !important; 
+            width: 54px !important; 
+            min-width: 54px !important; 
+            height: 44px !important; 
+        }
     }
     </style></head><body>
     
@@ -498,13 +530,13 @@ with open("custom_editor_v14/index.html", "w", encoding="utf-8") as f:
         window.setPen(selectedMode);
     };
 
-    // 💡 調整マスの「見えている最下部」にパレットを追従させる処理
+    // 💡 グリッドの表示状態に合わせてパレットを画面下部に配置する処理
     window.updatePalettePosition = function() {
         const g = document.getElementById('g');
         const palette = document.getElementById('palette');
         if (!g || !palette) return;
 
-        // PC幅の場合は従来通り(JS追従させず、ドラッグに任せる)
+        // PC幅の場合は従来通り(JS追従させず、手動ドラッグに任せる)
         if (!window.matchMedia('(max-width: 900px)').matches) {
             if (window.isPaletteClosed) { palette.style.display = 'none'; } else { palette.style.display = 'flex'; }
             return;
@@ -513,7 +545,7 @@ with open("custom_editor_v14/index.html", "w", encoding="utf-8") as f:
         const rect = g.getBoundingClientRect();
         const vh = window.innerHeight;
 
-        // グリッドが完全に画面外なら非表示
+        // 💡 グリッドが完全に画面外なら非表示にする
         if (rect.bottom <= 0 || rect.top >= vh || window.isPaletteClosed) {
             palette.style.display = 'none';
             return;
@@ -521,16 +553,14 @@ with open("custom_editor_v14/index.html", "w", encoding="utf-8") as f:
 
         palette.style.display = 'flex';
 
-        // 💡 グリッドの「画面上で見えている最下端」を計算
-        const visibleBottom = Math.min(rect.bottom, vh - 8);
-        const paletteHeight = palette.offsetHeight || 50;
-        const bottomMargin = 10;
+        // 💡 スマホでは常に画面下部の操作しやすい位置へ固定
+        const bottomMargin = 18;
+        const paletteHeight = palette.getBoundingClientRect().height || 64;
 
-        // グリッドの上端を越えない範囲で配置
-        palette.style.top = Math.max(rect.top, visibleBottom - paletteHeight - bottomMargin) + 'px';
-        
+        palette.style.top = `${vh - paletteHeight - bottomMargin}px`;
         palette.style.bottom = 'auto';
         palette.style.left = '50%';
+        palette.style.right = 'auto';
         palette.style.transform = 'translateX(-50%)';
     };
 
@@ -769,7 +799,7 @@ with open("custom_editor_v14/index.html", "w", encoding="utf-8") as f:
                 g.style.marginRight = `${marginPct}%`;
             }
 
-            // スクロールラッパーのイベント紐付け
+            // 💡 スクロールラッパーのイベント紐付け（スクロール時にパレット位置を更新）
             const scrollArea = g ? (g.closest('.scroll-wrapper') || g.parentElement) : null;
             if (scrollArea && scrollArea !== window._boundScrollArea) {
                 if (window._boundScrollArea) window._boundScrollArea.removeEventListener('scroll', window.updatePalettePosition);
@@ -796,7 +826,7 @@ with open("custom_editor_v14/index.html", "w", encoding="utf-8") as f:
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v14")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v15")
 
 def call_gas(action, payload=None, method="POST"):
     try:
