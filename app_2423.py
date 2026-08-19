@@ -219,9 +219,9 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
 options_editor = components.declare_component("options_editor", path="options_editor")
 
 # ★ バージョンをv8に固定し、毎回必ず最新のHTMLで上書き更新する
-# ★ パレットグリッド追従＆Pointer状態管理最適化版 (v13)
-os.makedirs("custom_editor_v13", exist_ok=True)
-with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
+# ★ PointerCapture不具合解消＆動的パレット追従版 (v14)
+os.makedirs("custom_editor_v14", exist_ok=True)
+with open("custom_editor_v14/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -244,12 +244,14 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
     .memo-icon{position:absolute;top:1px;right:2px;font-size:10px;line-height:1;filter:drop-shadow(1px 1px 1px rgba(255,255,255,0.8));pointer-events:none;}
     .c{position:relative;transition:filter 0.1s;}
     
-    /* 📱 スマホ用: パレットを横一列に (top/bottomはJSで制御) */
+    /* 📱 スマホ用: topはJSで制御するためCSSでは固定しない */
     @media (max-width: 900px) {
         #palette {
             position: fixed !important;
             left: 50% !important;
             right: auto !important;
+            top: 0 !important;
+            bottom: auto !important;
             transform: translateX(-50%) !important;
             flex-direction: row !important;
             align-items: center !important;
@@ -262,11 +264,8 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
             cursor: default !important;
             border-radius: 50px !important;
         }
-        /* 「🖊️ ペン」を非表示 */
         #palette > div:first-child { display: none !important; }
-        /* 区切り線 */
         #palette > hr { width: 1px !important; height: 28px !important; margin: 0 2px !important; border: 0 !important; border-left: 1px solid #ddd !important; }
-        /* ボタン */
         #palette .pen-btn { flex: 0 0 48px !important; width: 48px !important; min-width: 48px !important; height: 38px !important; padding: 2px !important; margin: 0 !important; font-size: 11px !important; box-sizing: border-box !important; }
     }
     
@@ -495,10 +494,11 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
         document.getElementById('pen-2').style.opacity = 0.6;
         document.getElementById('pen-2').style.color = "#fff";
         
+        // 再描画でモードが「可」に戻らないよう現在のモードを維持
         window.setPen(selectedMode);
     };
 
-    // 💡 調整マスの見えている最下部にパレットを追従させる処理
+    // 💡 調整マスの「見えている最下部」にパレットを追従させる処理
     window.updatePalettePosition = function() {
         const g = document.getElementById('g');
         const palette = document.getElementById('palette');
@@ -521,12 +521,17 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
 
         palette.style.display = 'flex';
 
-        // グリッドの現在見えている下端
-        const bottom = Math.min(rect.bottom, vh - 8);
+        // 💡 グリッドの「画面上で見えている最下端」を計算
+        const visibleBottom = Math.min(rect.bottom, vh - 8);
         const paletteHeight = palette.offsetHeight || 50;
+        const bottomMargin = 10;
 
-        palette.style.top = `${bottom - paletteHeight}px`;
+        // グリッドの上端を越えない範囲で配置
+        palette.style.top = Math.max(rect.top, visibleBottom - paletteHeight - bottomMargin) + 'px';
+        
         palette.style.bottom = 'auto';
+        palette.style.left = '50%';
+        palette.style.transform = 'translateX(-50%)';
     };
 
     // 💡 PC用のパレットドラッグ処理（スマホは無視）
@@ -534,7 +539,7 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
     let isDraggingPalette = false; let offsetX, offsetY;
 
     palette.addEventListener('mousedown', e => {
-        if (window.matchMedia('(max-width: 900px)').matches) return;
+        if (window.matchMedia('(max-width: 900px)').matches) return; // スマホ幅ならドラッグ無効
         if (e.target.tagName.toLowerCase() === 'button') return;
         isDraggingPalette = true;
         offsetX = e.clientX - palette.getBoundingClientRect().left;
@@ -551,10 +556,23 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
 
     document.addEventListener('mouseup', () => { isDraggingPalette = false; });
     
-    // イベントリスナーの登録（リサイズ、回転、スクロールで位置同期）
+    // イベントリスナーの登録（リサイズ、回転で位置同期）
     window.addEventListener('resize', window.updatePalettePosition);
     window.addEventListener('orientationchange', () => { setTimeout(window.updatePalettePosition, 100); });
-    window.addEventListener('scroll', window.updatePalettePosition, {passive: true});
+
+    // 💡 ガベージコレクション・割り込み時のゴーストポインタ除去
+    function resetGestureState() {
+        activePointers.clear();
+        gestureMode = "none";
+        initialDistance = 0;
+        lastCenter = null;
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+    }
+    window.addEventListener('blur', resetGestureState);
+    window.addEventListener('pagehide', resetGestureState);
 
     // ============================================================
     // 💡 Pointer Events の統合管理 (一回だけ登録する)
@@ -563,14 +581,16 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
     function getCenter(p1, p2) { return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }; }
 
     window._pointerDownHandler = function(e) {
-        // オブジェクトとして明示的に座標とタイプを保存
+        // 💡 オブジェクトとして明示的に座標とタイプを保存
         activePointers.set(e.pointerId, {
             x: e.clientX,
             y: e.clientY,
             pointerType: e.pointerType
         });
 
-        try { if (e.target && e.target.releasePointerCapture) e.target.releasePointerCapture(e.pointerId); } catch(err) {}
+        // 💡 Pointerを#gで最後まで確実に管理し、指が外れてもイベントを落とさない
+        const g = document.getElementById('g');
+        try { if (g) g.setPointerCapture(e.pointerId); } catch(err) {}
 
         if (selectedMode === -1) return; // 移動モード
         
@@ -583,7 +603,6 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
             gestureMode = "pending";
             startPointer = { x: e.clientX, y: e.clientY, cell: e.target.closest('.c') };
             
-            // 💡 長押し(450ms)で詳細設定モーダルを開く
             if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
             longPressTimer = setTimeout(() => {
                 if (gestureMode === "pending") {
@@ -592,8 +611,7 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
                 }
             }, 450);
             
-        } else if (activePointers.size >= 2) {
-            // 💡 2本指検知でズーム＆パン開始
+        } else if (activePointers.size === 2) {
             if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
             gestureMode = "pinch";
             const pts = Array.from(activePointers.values());
@@ -636,7 +654,7 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
                 const cell = el ? el.closest('.c') : null;
                 if (cell) window.paintCell(cell, selectedMode);
             }
-        } else if (activePointers.size >= 2 && gestureMode === "pinch") {
+        } else if (activePointers.size === 2 && gestureMode === "pinch") {
             const pts = Array.from(activePointers.values());
             const currentDistance = getDistance(pts[0], pts[1]);
             const currentCenter = getCenter(pts[0], pts[1]);
@@ -653,7 +671,7 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
                 g.style.marginBottom = `${marginPct}%`;
                 g.style.marginRight = `${marginPct}%`;
                 
-                // ズームでグリッド座標が変わるのでパレット位置も同期
+                // 💡 ズームでグリッド座標が変わるのでパレット位置も同期
                 window.updatePalettePosition();
             }
 
@@ -673,6 +691,11 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
         }
         
         activePointers.delete(e.pointerId);
+        
+        // 💡 確実にキャプチャを解放
+        const g = document.getElementById('g');
+        try { if (g && g.hasPointerCapture(e.pointerId)) g.releasePointerCapture(e.pointerId); } catch(err) {}
+        
         if (activePointers.size === 0) {
             gestureMode = "none";
             if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
@@ -773,7 +796,7 @@ with open("custom_editor_v13/index.html", "w", encoding="utf-8") as f:
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v13")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v14")
 
 def call_gas(action, payload=None, method="POST"):
     try:
