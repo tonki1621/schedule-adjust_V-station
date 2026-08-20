@@ -218,9 +218,9 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#81C784;color:#fff;border-color:#81C784;box-shadow:0 4px 8px rgba(76,175,80,0.2);transform:translateY(-3px); opacity: 0.8;}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント (任意)</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-# ★ パレット下部完全固定＆Excel風見出しスクロール対応版 (v16)
-os.makedirs("custom_editor_v16", exist_ok=True)
-with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
+# ★ パレット完全固定＆見出しJSスクロール統合版 (v17)
+os.makedirs("custom_editor_v17", exist_ok=True)
+with open("custom_editor_v17/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -247,20 +247,39 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
         overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff;
     }
 
-    /* 📱 スマホ用: パレットの完全固定と見出し固定の強化 */
+    /* 💡 Excel風固定見出しの強化 */
+    .time-col {
+        position: sticky !important; left: 0 !important; z-index: 25 !important;
+        background: #f0f2f6 !important; box-shadow: 2px 0 5px rgba(0,0,0,0.1);
+        flex-shrink: 0; width: 65px; box-sizing: border-box;
+    }
+    .header-cell {
+        position: sticky !important; top: 0 !important; z-index: 30 !important;
+        background: #eee !important; text-align: center; font-size: 13px;
+        padding: 5px 0; font-weight: bold; border-bottom: 2px solid #555; border-right: 1px solid #ccc;
+        height: 50px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; line-height: 1.2;
+    }
+    .top-left-cell {
+        position: sticky !important; top: 0 !important; left: 0 !important; z-index: 40 !important;
+        background: #f0f2f6 !important; border-right: 1px solid #ccc; border-bottom: 2px solid #555;
+        height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.15); box-sizing: border-box;
+    }
+    .day-col {
+        flex: 1; min-width: 85px; display: none; flex-direction: column; box-sizing: border-box;
+    }
+
+    /* 📱 スマホ用: パレット完全固定 ＆ パディング確保 ＆ タッチアクション制御 */
     @media (max-width: 900px) {
         .scroll-wrapper {
-            padding-bottom: 90px !important; /* 💡 パレットに隠れないようセルを逃がす余白 */
+            padding-bottom: 105px !important; /* 💡 パレットに隠れないようセルを逃がす余白 */
             margin-bottom: 0 !important;
-            overflow: auto !important;
-            position: relative;
         }
 
         #palette {
             position: fixed !important;
             left: 50% !important;
             right: auto !important;
-            top: auto !important; /* 💡 JSではなくCSSで絶対固定する */
+            top: auto !important;
             bottom: max(8px, env(safe-area-inset-bottom)) !important;
             transform: translateX(-50%) !important;
             z-index: 99999 !important;
@@ -271,6 +290,8 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
             max-width: calc(100vw - 12px) !important;
             border-radius: 16px !important;
         }
+
+        #palette, #palette * { touch-action: manipulation !important; }
 
         #palette > div:first-child { display: none !important; }
         #palette > hr { width: 1px !important; height: 28px !important; margin: 0 2px !important; border: 0 !important; border-left: 1px solid #ddd !important; }
@@ -291,6 +312,7 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
     }
     </style></head><body>
     
+    <!-- 💡 touch-action: manipulation; でタップ操作の意図をブラウザに明示 -->
     <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px); touch-action: manipulation;">
         <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
         <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
@@ -341,7 +363,7 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
     window.isPaletteClosed = false;
 
     let activePointers = new Map();
-    let gestureMode = "none"; // "none", "pending", "paint", "pinch", "longpress", "scroll-header"
+    let gestureMode = "none";
     let initialScale = 1;
     let initialDistance = 0;
     let lastCenter = null;
@@ -427,10 +449,11 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
         el.innerHTML = innerHtml;
     };
     
+    // 💡 .day-col の display を JS で flex へ切り替え
     window.renderWeek = function() {
         const start = currentWeek * 7; const end = start + 7;
         document.querySelectorAll('.day-col').forEach(el => {
-            const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'block' : 'none';
+            const c = parseInt(el.dataset.c); el.style.display = (c >= start && c < end) ? 'flex' : 'none';
         });
         const btnPrev = document.getElementById('btn-prev'); const btnNext = document.getElementById('btn-next');
         if(btnPrev) btnPrev.disabled = (currentWeek === 0); if(btnNext) btnNext.disabled = (end >= totalDays);
@@ -477,6 +500,7 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
     window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
     document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
+    // 💡 ペンモード設定 (イベント登録はせず純粋な状態管理のみ。touchActionは一元管理)
     window.setPen = function(mode) {
         selectedMode = mode;
         [-2, -1, 0, 1, 2].forEach(m => {
@@ -488,7 +512,7 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
 
         const g = document.getElementById('g');
         if (g) {
-            g.style.touchAction = (mode === -1) ? 'pan-x pan-y pinch-zoom' : 'none';
+            g.style.touchAction = 'none'; // 常にJSで制御する
         }
     };
 
@@ -512,38 +536,38 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
         window.setPen(selectedMode);
     };
 
-    // 💡 グリッドの表示・非表示の判定と、スマホの場合はCSS絶対固定を維持する処理
+    // 💡 パレットの表示/非表示のみを管理 (位置はCSSで絶対固定)
     window.updatePalettePosition = function() {
         const g = document.getElementById('g');
         const palette = document.getElementById('palette');
         if (!g || !palette) return;
 
-        // PC幅の場合は従来通り(JS追従させず、手動ドラッグに任せる)
         if (!window.matchMedia('(max-width: 900px)').matches) {
             if (window.isPaletteClosed) { palette.style.display = 'none'; } else { palette.style.display = 'flex'; }
             return;
         }
 
         const rect = g.getBoundingClientRect();
+        const vh = window.innerHeight;
 
-        // 💡 グリッドが完全に画面外なら非表示にする
-        if (rect.bottom <= 0 || rect.top >= window.innerHeight || window.isPaletteClosed) {
+        // グリッドが完全に画面外なら非表示
+        if (rect.bottom <= 0 || rect.top >= vh || window.isPaletteClosed) {
             palette.style.display = 'none';
             return;
         }
 
-        // グリッドが少しでも見えていれば表示。位置はCSSの fixed + bottom により常に画面下部に固定される。
         palette.style.display = 'flex';
-        palette.style.left = '50%';
-        palette.style.right = 'auto';
-        palette.style.bottom = 'max(8px, env(safe-area-inset-bottom))';
-        palette.style.top = 'auto';
-        palette.style.transform = 'translateX(-50%)';
+        // (※ left, top, bottom 等の座標操作は全削除。すべてCSSの固定に任せる)
     };
 
-    // 💡 PC用のパレットドラッグ処理（スマホは無視）
+    // 💡 PC用のパレットドラッグ処理 / スマホ用イベント遮断
     const palette = document.getElementById('palette');
     let isDraggingPalette = false; let offsetX, offsetY;
+
+    // パレットへのタッチがグリッドへ伝わらないように遮断
+    palette.addEventListener('pointerdown', e => { e.stopPropagation(); });
+    palette.addEventListener('pointermove', e => { e.stopPropagation(); });
+    palette.addEventListener('pointerup', e => { e.stopPropagation(); });
 
     palette.addEventListener('mousedown', e => {
         if (window.matchMedia('(max-width: 900px)').matches) return; // スマホ幅ならドラッグ無効
@@ -563,11 +587,9 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
 
     document.addEventListener('mouseup', () => { isDraggingPalette = false; });
     
-    // イベントリスナーの登録（リサイズ、回転で位置同期）
     window.addEventListener('resize', window.updatePalettePosition);
     window.addEventListener('orientationchange', () => { setTimeout(window.updatePalettePosition, 100); });
 
-    // 💡 ガベージコレクション・割り込み時のゴーストポインタ除去
     function resetGestureState() {
         activePointers.clear();
         gestureMode = "none";
@@ -582,13 +604,13 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
     window.addEventListener('pagehide', resetGestureState);
 
     // ============================================================
-    // 💡 Pointer Events の統合管理 (一回だけ登録する)
+    // 💡 Pointer Events の統合管理
     // ============================================================
     function getDistance(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
     function getCenter(p1, p2) { return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }; }
 
     window._pointerDownHandler = function(e) {
-        // 💡 オブジェクトとして明示的に座標とタイプを保存
+        // オブジェクトとして明示的に座標とタイプを保存
         activePointers.set(e.pointerId, {
             x: e.clientX,
             y: e.clientY,
@@ -598,21 +620,32 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
         const g = document.getElementById('g');
         const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
-        // 💡 Pointerを#gで最後まで確実に管理し、指が外れてもイベントを落とさない
-        try { if (g) g.setPointerCapture(e.pointerId); } catch(err) {}
-
         // 💡 見出し要素かどうかの判定 (スクロール専用として扱う)
         const header = e.target.closest('.header-cell, .top-left-cell, .time-col');
+        
         if (header) {
-            gestureMode = "scroll-header";
-            window._headerScrollStart = {
-                x: e.clientX,
-                y: e.clientY,
-                scrollLeft: scrollArea.scrollLeft,
-                scrollTop: scrollArea.scrollTop
-            };
+            // 見出し上での操作は PointerCapture しない
+            if (activePointers.size === 1) {
+                gestureMode = "scroll-header";
+                window._headerScrollStart = {
+                    x: e.clientX,
+                    y: e.clientY,
+                    scrollLeft: scrollArea.scrollLeft,
+                    scrollTop: scrollArea.scrollTop
+                };
+            } else if (activePointers.size === 2) {
+                if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+                gestureMode = "pinch";
+                const pts = Array.from(activePointers.values());
+                initialDistance = getDistance(pts[0], pts[1]);
+                initialScale = window.globalScale || 1;
+                lastCenter = getCenter(pts[0], pts[1]);
+            }
             return;
         }
+
+        // 💡 セル操作のみ Pointer を最後まで管理
+        try { if (g) g.setPointerCapture(e.pointerId); } catch(err) {}
 
         if (selectedMode === -1) return; // 移動モード
         
@@ -741,7 +774,7 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
         const g = document.getElementById("g");
         if (!g) return;
 
-        g.style.touchAction = (selectedMode === -1) ? 'pan-x pan-y pinch-zoom' : 'none';
+        g.style.touchAction = 'none'; // 常にJSで制御する
 
         // 古いリスナーを削除
         g.removeEventListener("pointerdown", window._pointerDownHandler);
@@ -829,7 +862,7 @@ with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v16")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v17")
 
 def call_gas(action, payload=None, method="POST"):
     try:
@@ -1973,7 +2006,7 @@ def main():
                     b_top = get_border_top(t_str, event_type)
                     memo_html = '<div class="memo-icon">💬</div>' if cd_key in my_cell_details and my_cell_details[cd_key].get('note') else ""
                     cells_html += f'<div class="c" data-r="{r}" data-c="{c}" data-v="{val}" style="height:{cell_h}; background:{bg}; opacity:{opacity}; color:{txt_color}; display:flex; align-items:center; justify-content:center; cursor:pointer; border-top:{b_top}; border-right:1px solid #eee; box-sizing:border-box;"><span style="font-size:14px; font-weight:bold; pointer-events:none;">{txt}</span>{memo_html}</div>'
-                day_cols_html += f'<div class="day-col" data-c="{c}" style="flex:1; min-width:85px; box-sizing:border-box; display:none;"><div class="header-cell">{lbl}</div>{cells_html}</div>'
+                day_cols_html += f'<div class="day-col" data-c="{c}"><div class="header-cell">{lbl}</div>{cells_html}</div>'
 
             time_cells_html = ""
             for r, t_str in enumerate(time_labels):
@@ -2045,11 +2078,6 @@ def main():
                 .page-btn {{ padding: 8px 16px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }} 
                 .page-btn:hover:not(:disabled) {{ background: #e9ecef; }} 
                 .page-btn:disabled {{ opacity: 0.4; cursor: not-allowed; }}
-                
-                /* PC幅での固定要素 (スマホ側は全体CSSで上書き対応) */
-                .time-col {{ position: sticky; left: 0; z-index: 25; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
-                .header-cell {{ position: sticky; top: 0; z-index: 30; background: #eee; text-align: center; font-size: 13px; padding: 5px 0; font-weight: bold; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; line-height: 1.2; touch-action: pan-x pan-y !important; }}
-                .top-left-cell {{ position: sticky; top: 0; left: 0; z-index: 40; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.15); box-sizing: border-box; touch-action: pan-x pan-y !important; }}
             </style>
             {ui_default_selector_html}
             <div style='display:flex; justify-content:flex-end; align-items:flex-end; margin-bottom:10px;'>
