@@ -218,9 +218,9 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#81C784;color:#fff;border-color:#81C784;box-shadow:0 4px 8px rgba(76,175,80,0.2);transform:translateY(-3px); opacity: 0.8;}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント (任意)</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-# ★ パレットグリッド追従＆Pointer状態管理最適化版 (v15)
-os.makedirs("custom_editor_v15", exist_ok=True)
-with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
+# ★ パレット下部完全固定＆Excel風見出しスクロール対応版 (v16)
+os.makedirs("custom_editor_v16", exist_ok=True)
+with open("custom_editor_v16/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -247,66 +247,50 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
         overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff;
     }
 
-    /* 📱 スマホ用: パレットの追従制御とサイズ拡大 */
+    /* 📱 スマホ用: パレットの完全固定と見出し固定の強化 */
     @media (max-width: 900px) {
         .scroll-wrapper {
-            padding-bottom: 70px !important; /* 💡 パレット分の余白を確保 */
+            padding-bottom: 90px !important; /* 💡 パレットに隠れないようセルを逃がす余白 */
             margin-bottom: 0 !important;
+            overflow: auto !important;
+            position: relative;
         }
 
         #palette {
             position: fixed !important;
             left: 50% !important;
             right: auto !important;
-            top: 0 !important; /* 💡 初期位置(JSで毎回上書きする) */
-            bottom: auto !important; /* 💡 CSSでのbottom固定を廃止 */
+            top: auto !important; /* 💡 JSではなくCSSで絶対固定する */
+            bottom: max(8px, env(safe-area-inset-bottom)) !important;
             transform: translateX(-50%) !important;
+            z-index: 99999 !important;
+            display: flex !important;
             flex-direction: row !important;
-            align-items: center !important;
-            justify-content: center !important;
-            gap: 8px !important; /* 💡 誤爆防止の余白拡大 */
+            gap: 8px !important;
             padding: 8px 10px !important;
-            border-radius: 16px !important; /* 💡 操作しやすい角丸 */
-            width: max-content !important;
-            max-width: calc(100vw - 16px) !important;
-            box-sizing: border-box !important;
-            cursor: default !important;
+            max-width: calc(100vw - 12px) !important;
+            border-radius: 16px !important;
         }
 
-        /* 「🖊️ ペン」を非表示 */
         #palette > div:first-child { display: none !important; }
-        
-        /* 区切り線 */
         #palette > hr { width: 1px !important; height: 28px !important; margin: 0 2px !important; border: 0 !important; border-left: 1px solid #ddd !important; }
         
-        /* ボタン拡大 */
         #palette .pen-btn { 
-            flex: 0 0 58px !important; 
-            width: 58px !important; 
-            min-width: 58px !important; 
-            height: 48px !important; 
-            padding: 4px !important; 
-            margin: 0 !important; 
-            font-size: 13px !important; 
-            font-weight: bold !important;
-            border-radius: 12px !important;
-            touch-action: manipulation !important;
+            flex: 0 0 58px !important; width: 58px !important; min-width: 58px !important; 
+            height: 48px !important; padding: 4px !important; margin: 0 !important; 
+            font-size: 13px !important; font-weight: bold !important;
+            border-radius: 12px !important; touch-action: manipulation !important;
             -webkit-tap-highlight-color: transparent;
         }
     }
     
-    /* 📱 横画面用: 高さを少し圧縮 */
     @media (max-width: 900px) and (orientation: landscape) {
         #palette .pen-btn {
-            flex: 0 0 54px !important; 
-            width: 54px !important; 
-            min-width: 54px !important; 
-            height: 44px !important; 
+            flex: 0 0 54px !important; width: 54px !important; min-width: 54px !important; height: 44px !important; 
         }
     }
     </style></head><body>
     
-    <!-- 💡 touch-action: manipulation; でタップ操作の意図をブラウザに明示 -->
     <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px); touch-action: manipulation;">
         <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
         <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
@@ -357,7 +341,7 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
     window.isPaletteClosed = false;
 
     let activePointers = new Map();
-    let gestureMode = "none";
+    let gestureMode = "none"; // "none", "pending", "paint", "pinch", "longpress", "scroll-header"
     let initialScale = 1;
     let initialDistance = 0;
     let lastCenter = null;
@@ -493,7 +477,6 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
     window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
     document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
-    // 💡 ペンモード設定 (イベント登録はせず純粋な状態管理のみ)
     window.setPen = function(mode) {
         selectedMode = mode;
         [-2, -1, 0, 1, 2].forEach(m => {
@@ -526,11 +509,10 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
         document.getElementById('pen-2').style.opacity = 0.6;
         document.getElementById('pen-2').style.color = "#fff";
         
-        // 再描画でモードが「可」に戻らないよう現在のモードを維持
         window.setPen(selectedMode);
     };
 
-    // 💡 グリッドの表示状態に合わせてパレットを画面下部に配置する処理
+    // 💡 グリッドの表示・非表示の判定と、スマホの場合はCSS絶対固定を維持する処理
     window.updatePalettePosition = function() {
         const g = document.getElementById('g');
         const palette = document.getElementById('palette');
@@ -543,24 +525,19 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
         }
 
         const rect = g.getBoundingClientRect();
-        const vh = window.innerHeight;
 
         // 💡 グリッドが完全に画面外なら非表示にする
-        if (rect.bottom <= 0 || rect.top >= vh || window.isPaletteClosed) {
+        if (rect.bottom <= 0 || rect.top >= window.innerHeight || window.isPaletteClosed) {
             palette.style.display = 'none';
             return;
         }
 
+        // グリッドが少しでも見えていれば表示。位置はCSSの fixed + bottom により常に画面下部に固定される。
         palette.style.display = 'flex';
-
-        // 💡 スマホでは常に画面下部の操作しやすい位置へ固定
-        const bottomMargin = 18;
-        const paletteHeight = palette.getBoundingClientRect().height || 64;
-
-        palette.style.top = `${vh - paletteHeight - bottomMargin}px`;
-        palette.style.bottom = 'auto';
         palette.style.left = '50%';
         palette.style.right = 'auto';
+        palette.style.bottom = 'max(8px, env(safe-area-inset-bottom))';
+        palette.style.top = 'auto';
         palette.style.transform = 'translateX(-50%)';
     };
 
@@ -618,9 +595,24 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
             pointerType: e.pointerType
         });
 
-        // 💡 Pointerを#gで最後まで確実に管理し、指が外れてもイベントを落とさない
         const g = document.getElementById('g');
+        const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
+
+        // 💡 Pointerを#gで最後まで確実に管理し、指が外れてもイベントを落とさない
         try { if (g) g.setPointerCapture(e.pointerId); } catch(err) {}
+
+        // 💡 見出し要素かどうかの判定 (スクロール専用として扱う)
+        const header = e.target.closest('.header-cell, .top-left-cell, .time-col');
+        if (header) {
+            gestureMode = "scroll-header";
+            window._headerScrollStart = {
+                x: e.clientX,
+                y: e.clientY,
+                scrollLeft: scrollArea.scrollLeft,
+                scrollTop: scrollArea.scrollTop
+            };
+            return;
+        }
 
         if (selectedMode === -1) return; // 移動モード
         
@@ -660,13 +652,25 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
             y: e.clientY,
             pointerType: e.pointerType
         });
+
+        const g = document.getElementById('g');
+        const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
+
+        // 💡 見出しスクロール処理
+        if (gestureMode === "scroll-header") {
+            const start = window._headerScrollStart;
+            if (scrollArea && start) {
+                const dx = e.clientX - start.x;
+                const dy = e.clientY - start.y;
+                scrollArea.scrollLeft = start.scrollLeft - dx;
+                scrollArea.scrollTop = start.scrollTop - dy;
+            }
+            return;
+        }
         
         if (gestureMode === "pinch" || gestureMode === "paint") {
             if (e.cancelable) e.preventDefault();
         }
-        
-        const g = document.getElementById('g');
-        const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
         if (activePointers.size === 1) {
             if (gestureMode === "pending") {
@@ -684,7 +688,7 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
                 const cell = el ? el.closest('.c') : null;
                 if (cell) window.paintCell(cell, selectedMode);
             }
-        } else if (activePointers.size === 2 && gestureMode === "pinch") {
+        } else if (activePointers.size >= 2 && gestureMode === "pinch") {
             const pts = Array.from(activePointers.values());
             const currentDistance = getDistance(pts[0], pts[1]);
             const currentCenter = getCenter(pts[0], pts[1]);
@@ -701,7 +705,6 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
                 g.style.marginBottom = `${marginPct}%`;
                 g.style.marginRight = `${marginPct}%`;
                 
-                // 💡 ズームでグリッド座標が変わるのでパレット位置も同期
                 window.updatePalettePosition();
             }
 
@@ -799,7 +802,7 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
                 g.style.marginRight = `${marginPct}%`;
             }
 
-            // 💡 スクロールラッパーのイベント紐付け（スクロール時にパレット位置を更新）
+            // スクロールラッパーのイベント紐付け
             const scrollArea = g ? (g.closest('.scroll-wrapper') || g.parentElement) : null;
             if (scrollArea && scrollArea !== window._boundScrollArea) {
                 if (window._boundScrollArea) window._boundScrollArea.removeEventListener('scroll', window.updatePalettePosition);
@@ -826,7 +829,7 @@ with open("custom_editor_v15/index.html", "w", encoding="utf-8") as f:
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v15")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v16")
 
 def call_gas(action, payload=None, method="POST"):
     try:
@@ -2006,8 +2009,6 @@ def main():
             else:
                 pointer_css = "pointer-events: none; opacity: 0.8;"
                 submit_btn_html = f"""<div style="margin-top: 20px;"><label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント</label><div style="width: 100%; padding: 10px; margin-top: 5px; background: #eee; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; min-height:40px;">{st.session_state.my_comment}</div></div>"""
-
-            scroll_css = "max-height: 650px; height: auto;"
             
             ui_default_selector_html = f"""
             <div style="margin-bottom: 10px; background: #fff; padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
@@ -2044,10 +2045,11 @@ def main():
                 .page-btn {{ padding: 8px 16px; border: 1px solid #ccc; background: #fff; border-radius: 6px; cursor: pointer; font-weight: bold; font-size: 14px; transition: 0.2s; }} 
                 .page-btn:hover:not(:disabled) {{ background: #e9ecef; }} 
                 .page-btn:disabled {{ opacity: 0.4; cursor: not-allowed; }}
-                .scroll-wrapper {{ {scroll_css} overflow: auto; border: 1px solid #ccc; border-radius: 6px; position: relative; background: #fff; }}
-                .time-col {{ position: sticky; left: 0; z-index: 10; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
-                .header-cell {{ position: sticky; top: 0; z-index: 11; background: #eee; text-align: center; font-size: 13px; padding: 5px 0; font-weight: bold; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; line-height: 1.2; }}
-                .top-left-cell {{ position: sticky; top: 0; left: 0; z-index: 20; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.1); box-sizing: border-box; }}
+                
+                /* PC幅での固定要素 (スマホ側は全体CSSで上書き対応) */
+                .time-col {{ position: sticky; left: 0; z-index: 25; background: #f0f2f6; box-shadow: 2px 0 5px rgba(0,0,0,0.1); flex-shrink: 0; width: 65px; box-sizing: border-box; }}
+                .header-cell {{ position: sticky; top: 0; z-index: 30; background: #eee; text-align: center; font-size: 13px; padding: 5px 0; font-weight: bold; border-bottom: 2px solid #555; border-right: 1px solid #ccc; height: 50px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; line-height: 1.2; touch-action: pan-x pan-y !important; }}
+                .top-left-cell {{ position: sticky; top: 0; left: 0; z-index: 40; background: #f0f2f6; border-right: 1px solid #ccc; border-bottom: 2px solid #555; height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.15); box-sizing: border-box; touch-action: pan-x pan-y !important; }}
             </style>
             {ui_default_selector_html}
             <div style='display:flex; justify-content:flex-end; align-items:flex-end; margin-bottom:10px;'>
