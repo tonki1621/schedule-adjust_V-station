@@ -218,9 +218,9 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#81C784;color:#fff;border-color:#81C784;box-shadow:0 4px 8px rgba(76,175,80,0.2);transform:translateY(-3px); opacity: 0.8;}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント (任意)</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-# ★ パレット表示判定修正＆時間スクロールデバッグログ追加版 (v19)
-os.makedirs("custom_editor_v19", exist_ok=True)
-with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
+# ★ モバイル操作統合修正版 (v20)
+os.makedirs("custom_editor_v20", exist_ok=True)
+with open("custom_editor_v20/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -251,20 +251,18 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
     .time-col {
         position: sticky !important; left: 0 !important; z-index: 25 !important;
         background: #f0f2f6 !important; box-shadow: 2px 0 5px rgba(0,0,0,0.1);
-        flex-shrink: 0; width: 65px; box-sizing: border-box; touch-action: pan-y !important;
+        flex-shrink: 0; width: 65px; box-sizing: border-box;
     }
     .header-cell {
         position: sticky !important; top: 0 !important; z-index: 30 !important;
         background: #eee !important; text-align: center; font-size: 13px;
         padding: 5px 0; font-weight: bold; border-bottom: 2px solid #555; border-right: 1px solid #ccc;
         height: 50px; box-sizing: border-box; display: flex; align-items: center; justify-content: center; line-height: 1.2;
-        touch-action: pan-x pan-y !important;
     }
     .top-left-cell {
         position: sticky !important; top: 0 !important; left: 0 !important; z-index: 40 !important;
         background: #f0f2f6 !important; border-right: 1px solid #ccc; border-bottom: 2px solid #555;
         height: 50px; box-shadow: 2px 2px 5px rgba(0,0,0,0.15); box-sizing: border-box;
-        touch-action: pan-x pan-y !important;
     }
     .day-col {
         flex: 1; min-width: 85px; display: none; flex-direction: column; box-sizing: border-box;
@@ -272,86 +270,156 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
 
     .palette-close { display: none; }
 
-    /* 📱 スマホ用: 折りたたみパレットのUI設計 */
+    /* 📱 モバイル用：グリッド表示領域に追従するパレット */
+    .grid-container {
+        position: relative;
+        width: 100%;
+    }
+
+    #palette-overlay {
+        position: absolute;
+        inset: 0;
+        z-index: 10000;
+        pointer-events: none;
+    }
+
+    #palette-toggle {
+        position: absolute;
+        right: 10px;
+        bottom: 10px;
+        width: 52px;
+        height: 52px;
+        border-radius: 50%;
+        border: 1px solid #ccc;
+        background: rgba(255,255,255,0.96);
+        box-shadow: 0 4px 14px rgba(0,0,0,.25);
+        z-index: 10001;
+        font-size: 24px;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        cursor: pointer;
+        pointer-events: auto;
+        touch-action: manipulation;
+        -webkit-tap-highlight-color: transparent;
+    }
+
+    #palette-toggle.visible {
+        display: flex;
+    }
+
+    #palette {
+        position: absolute !important;
+        left: 50% !important;
+        right: auto !important;
+        top: auto !important;
+        bottom: 10px !important;
+        transform: translateX(-50%) !important;
+        z-index: 10002 !important;
+        display: flex !important;
+        flex-direction: row !important;
+        gap: 8px !important;
+        padding: 8px 10px !important;
+        max-width: calc(100% - 16px) !important;
+        border-radius: 16px !important;
+        pointer-events: auto;
+    }
+
+    #palette.collapsed {
+        display: none !important;
+    }
+
+    #palette-overlay #palette,
+    #palette-overlay #palette * {
+        touch-action: manipulation !important;
+    }
+
+    #palette > div:first-child {
+        display: none !important;
+    }
+
+    #palette > hr {
+        width: 1px !important;
+        height: 28px !important;
+        margin: 0 2px !important;
+        border: 0 !important;
+        border-left: 1px solid #ddd !important;
+    }
+
     @media (max-width: 900px) {
         .scroll-wrapper {
-            padding-bottom: 105px !important;
+            padding-bottom: 12px !important;
             margin-bottom: 0 !important;
         }
 
-        #palette-toggle {
-            position: fixed;
-            right: 12px;
-            bottom: max(12px, env(safe-area-inset-bottom));
-            width: 52px;
-            height: 52px;
-            border-radius: 50%;
+        #palette .pen-btn,
+        .palette-close {
+            flex: 0 0 58px !important;
+            width: 58px !important;
+            min-width: 58px !important;
+            height: 48px !important;
+            padding: 4px !important;
+            margin: 0 !important;
+            font-size: 13px !important;
+            font-weight: bold !important;
+            border-radius: 12px !important;
+            touch-action: manipulation !important;
+            -webkit-tap-highlight-color: transparent;
+        }
+
+        .palette-close {
+            display: flex !important;
+            background: #fff;
+            color: #333;
             border: 1px solid #ccc;
-            background: white;
-            box-shadow: 0 4px 14px rgba(0,0,0,.25);
-            z-index: 100000;
-            font-size: 24px;
-            display: none;
+            font-size: 22px !important;
             align-items: center;
             justify-content: center;
             cursor: pointer;
-            touch-action: manipulation;
-            -webkit-tap-highlight-color: transparent;
-        }
-        #palette-toggle.visible { display: flex; }
-
-        #palette {
-            position: fixed !important;
-            left: 50% !important;
-            right: auto !important;
-            top: auto !important;
-            bottom: max(12px, env(safe-area-inset-bottom)) !important;
-            transform: translateX(-50%) !important;
-            z-index: 99999 !important;
-            display: flex !important;
-            flex-direction: row !important;
-            gap: 8px !important;
-            padding: 8px 10px !important;
-            max-width: calc(100vw - 12px) !important;
-            border-radius: 16px !important;
-        }
-        #palette.collapsed { display: none !important; }
-
-        #palette, #palette * { touch-action: manipulation !important; }
-
-        #palette > div:first-child { display: none !important; }
-        #palette > hr { width: 1px !important; height: 28px !important; margin: 0 2px !important; border: 0 !important; border-left: 1px solid #ddd !important; }
-        
-        #palette .pen-btn, .palette-close { 
-            flex: 0 0 58px !important; width: 58px !important; min-width: 58px !important; 
-            height: 48px !important; padding: 4px !important; margin: 0 !important; 
-            font-size: 13px !important; font-weight: bold !important;
-            border-radius: 12px !important; touch-action: manipulation !important;
-            -webkit-tap-highlight-color: transparent;
-        }
-        .palette-close {
-            display: flex !important; background: #fff; color: #333; border: 1px solid #ccc; font-size: 22px !important;
-            align-items: center; justify-content: center; cursor: pointer;
         }
     }
-    
+
     @media (max-width: 900px) and (orientation: landscape) {
-        #palette .pen-btn, .palette-close {
-            flex: 0 0 54px !important; width: 54px !important; min-width: 54px !important; height: 44px !important; 
+        #palette .pen-btn,
+        .palette-close {
+            flex: 0 0 54px !important;
+            width: 54px !important;
+            min-width: 54px !important;
+            height: 44px !important;
+        }
+    }
+
+    @media (min-width: 901px) {
+        #palette {
+            position: fixed !important;
+            top: 20px !important;
+            right: 30px !important;
+            left: auto !important;
+            bottom: auto !important;
+            transform: none !important;
+            flex-direction: column !important;
+            max-width: none !important;
+        }
+
+        #palette-toggle {
+            display: none !important;
         }
     }
     </style></head><body>
     
-    <button id="palette-toggle" type="button" onclick="window.togglePalette()">🖊️</button>
+    <!-- 💡 パレット：render後に #palette-slot へ移動 -->
+    <div id="palette-overlay" style="display:none;">
+        <button id="palette-toggle" type="button" onclick="window.togglePalette()">🖊️</button>
 
-    <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px); touch-action: manipulation;">
-        <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
-        <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
-        <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#81C784; color:#fff;">未定</button>
-        <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
-        <hr style="margin:0; border-top:1px solid #ddd;">
-        <button class="pen-btn" onclick="window.setPen(-2)" id="pen--2" style="background:#2196F3; color:#fff; border:2px solid #1976D2; font-size:11px;">ℹ️<br>詳細</button>
-        <button class="palette-close" onclick="window.togglePalette()">×</button>
+        <div id="palette" style="z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px);">
+            <div style="font-size:12px; font-weight:bold; color:#666; text-align:center; pointer-events:none; user-select:none; margin-bottom:-4px;">🖊️ ペン</div>
+            <button class="pen-btn active" onclick="window.setPen(1)" id="pen-1" style="background:#4CAF50; color:#fff;">可</button>
+            <button class="pen-btn" onclick="window.setPen(2)" id="pen-2" style="background:#81C784; color:#fff;">未定</button>
+            <button class="pen-btn" onclick="window.setPen(0)" id="pen-0" style="background:#fff; color:#333; border:1px solid #ccc; font-size:12px;">🧽<br>消す</button>
+            <hr style="margin:0; border-top:1px solid #ddd;">
+            <button class="pen-btn" onclick="window.setPen(-2)" id="pen--2" style="background:#2196F3; color:#fff; border:2px solid #1976D2; font-size:11px;">ℹ️<br>詳細</button>
+            <button class="palette-close" onclick="window.togglePalette()">×</button>
+        </div>
     </div>
 
     <div id="detail-modal">
@@ -393,10 +461,10 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
     let modalStatus = 1; let selectedMode = 1; let editingCell = null;
     
     window.isEventClosed = false;
-    window.isPaletteClosed = true;
+    window.isPaletteClosed = true; // 💡 パレットは初期状態で「閉じる」
 
     let activePointers = new Map();
-    let gestureMode = "none";
+    let gestureMode = "none"; // "none", "pending", "paint", "pinch", "longpress", "scroll-header", "scroll-time"
     let initialScale = 1;
     let initialDistance = 0;
     let lastCenter = null;
@@ -482,6 +550,7 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
         el.innerHTML = innerHtml;
     };
     
+    // 💡 .day-col の display を JS で制御
     window.renderWeek = function() {
         const start = currentWeek * 7; const end = start + 7;
         document.querySelectorAll('.day-col').forEach(el => {
@@ -537,6 +606,7 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
     window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
     document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
+    // 💡 ペンモード設定 (イベント登録はせず純粋な状態管理のみ)
     window.setPen = function(mode) {
         selectedMode = mode;
         [-2, -1, 0, 1, 2].forEach(m => {
@@ -548,7 +618,7 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
 
         const g = document.getElementById('g');
         if (g) {
-            g.style.touchAction = 'none';
+            g.style.touchAction = 'none'; // 常にJSで制御する
         }
     };
 
@@ -572,6 +642,7 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
         window.setPen(selectedMode);
     };
 
+    // 💡 パレットの開閉制御
     window.togglePalette = function() {
         window.isPaletteClosed = !window.isPaletteClosed;
         const palette = document.getElementById('palette');
@@ -588,12 +659,14 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
         window.updatePalettePosition();
     };
 
-    // 💡 表示/非表示の判定を .scroll-wrapper (表示窓) 基準に変更
+    // 💡 表示/非表示のみを管理 (位置はCSSに一任)
+    // 💡 パレット表示制御
     window.updatePalettePosition = function() {
-        const g = document.getElementById('g');
+        const gridContainer = document.getElementById('grid-container');
         const palette = document.getElementById('palette');
         const toggle = document.getElementById('palette-toggle');
-        if (!g || !palette || !toggle) return;
+
+        if (!gridContainer || !palette || !toggle) return;
 
         if (window.isEventClosed) {
             palette.style.display = 'none';
@@ -607,22 +680,12 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
             return;
         }
 
-        // ★ #g ではなく「実際の表示窓」を見る
-        const scrollArea = g.closest('.scroll-wrapper');
-        if (!scrollArea) {
-            console.warn('[PALETTE] scroll-wrapper が見つかりません');
-            palette.style.display = 'none';
-            toggle.style.display = 'none';
-            return;
-        }
+        const rect = gridContainer.getBoundingClientRect();
 
-        const rect = scrollArea.getBoundingClientRect();
-        
-        // scroll-wrapper 自体が画面外なら非表示
-        const visible = 
-            rect.bottom > 0 && 
-            rect.top < window.innerHeight && 
-            rect.right > 0 && 
+        const visible =
+            rect.bottom > 0 &&
+            rect.top < window.innerHeight &&
+            rect.right > 0 &&
             rect.left < window.innerWidth;
 
         if (!visible) {
@@ -631,7 +694,6 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
             return;
         }
 
-        // ★ 表示領域内なら、状態に応じて表示
         if (window.isPaletteClosed) {
             palette.style.display = 'none';
             toggle.style.display = 'flex';
@@ -641,6 +703,7 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
         }
     };
 
+    // 💡 パレットのドラッグ処理（PCのみ・スマホは遮断）
     const paletteEl = document.getElementById('palette');
     const toggleEl = document.getElementById('palette-toggle');
     let isDraggingPalette = false; let offsetX, offsetY;
@@ -653,7 +716,7 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
     });
 
     paletteEl.addEventListener('mousedown', e => {
-        if (window.matchMedia('(max-width: 900px)').matches) return;
+        if (window.matchMedia('(max-width: 900px)').matches) return; // スマホ幅なら無効
         if (e.target.tagName.toLowerCase() === 'button') return;
         isDraggingPalette = true;
         offsetX = e.clientX - paletteEl.getBoundingClientRect().left;
@@ -683,219 +746,318 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
     window.addEventListener('pagehide', resetGestureState);
 
     // ============================================================
-    // 💡 Pointer Events の完全分離統合管理
+    // 📱 Pointer Events 統合版
     // ============================================================
-    function getDistance(p1, p2) { return Math.hypot(p1.x - p2.x, p1.y - p2.y); }
-    function getCenter(p1, p2) { return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }; }
+
+    function getDistance(p1, p2) {
+        return Math.hypot(p1.x - p2.x, p1.y - p2.y);
+    }
+
+    function getCenter(p1, p2) {
+        return {
+            x: (p1.x + p2.x) / 2,
+            y: (p1.y + p2.y) / 2
+        };
+    }
+
+    function getScrollArea() {
+        const g = document.getElementById('g');
+        if (!g) return null;
+        return g.closest('.scroll-wrapper') || g.parentElement;
+    }
 
     window._pointerDownHandler = function(e) {
+        const g = document.getElementById('g');
+        const scrollArea = getScrollArea();
+        if (!g || !scrollArea) return;
+
         activePointers.set(e.pointerId, {
             x: e.clientX,
             y: e.clientY,
             pointerType: e.pointerType
         });
 
-        const g = document.getElementById('g');
-        const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
-
-        const timeHeader = e.target.closest('.time-col, .time-cell');
-        const topHeader = e.target.closest('.header-cell, .top-left-cell');
-
-        if (timeHeader || topHeader) {
-            
-            // 💡 デバッグ用ログ追加
-            if (timeHeader) {
-                console.log(
-                    '🟢 TIME HEADER DETECTED',
-                    e.target,
-                    e.target.closest('.time-cell'),
-                    e.target.closest('.time-col')
-                );
+        // 2本目の指が入ったら必ず pinch
+        if (activePointers.size >= 2) {
+            if (longPressTimer) {
+                clearTimeout(longPressTimer);
+                longPressTimer = null;
             }
 
-            console.log(
-                '[TIME DEBUG DOWN]',
-                {
-                    target: e.target,
-                    timeHeader: !!timeHeader,
-                    topHeader: !!topHeader,
-                    pointerId: e.pointerId,
-                    pointerType: e.pointerType,
-                    activePointers: activePointers.size,
-                    gestureBefore: gestureMode,
-                    scrollTop: scrollArea ? scrollArea.scrollTop : 'NO',
-                    scrollHeight: scrollArea ? scrollArea.scrollHeight : 'NO',
-                    clientHeight: scrollArea ? scrollArea.clientHeight : 'NO',
-                    canScroll: scrollArea ? scrollArea.scrollHeight > scrollArea.clientHeight : false
-                }
-            );
-
-            if (activePointers.size === 1) {
-                gestureMode = timeHeader ? "scroll-time" : "scroll-header";
-                window._headerScrollStart = {
-                    x: e.clientX,
-                    y: e.clientY,
-                    scrollLeft: scrollArea.scrollLeft,
-                    scrollTop: scrollArea.scrollTop
-                };
-            } else if (activePointers.size === 2) {
-                if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-                gestureMode = "pinch";
-                const pts = Array.from(activePointers.values());
-                initialDistance = getDistance(pts[0], pts[1]);
-                initialScale = window.globalScale || 1;
-                lastCenter = getCenter(pts[0], pts[1]);
-            }
-            return;
-        }
-
-        try { if (g) g.setPointerCapture(e.pointerId); } catch(err) {}
-
-        if (selectedMode === -1) return; 
-        if (selectedMode === -2) { 
-            if (activePointers.size === 1) { const cell = e.target.closest('.c'); if (cell) openModal(cell); }
-            return;
-        }
-
-        if (activePointers.size === 1) {
-            gestureMode = "pending";
-            startPointer = { x: e.clientX, y: e.clientY, cell: e.target.closest('.c') };
-            
-            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-            longPressTimer = setTimeout(() => {
-                if (gestureMode === "pending") {
-                    gestureMode = "longpress";
-                    if (startPointer.cell) openModal(startPointer.cell);
-                }
-            }, 450);
-            
-        } else if (activePointers.size === 2) {
-            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
             gestureMode = "pinch";
+
             const pts = Array.from(activePointers.values());
             initialDistance = getDistance(pts[0], pts[1]);
             initialScale = window.globalScale || 1;
             lastCenter = getCenter(pts[0], pts[1]);
+
+            return;
+        }
+
+        const cell = e.target.closest('.c');
+        const timeHeader =
+            e.target.closest('.time-cell, .time-col');
+        const topHeader =
+            e.target.closest('.header-cell, .top-left-cell');
+
+        // 詳細モード
+        if (selectedMode === -2) {
+            if (cell) openModal(cell);
+            return;
+        }
+
+        // 時間欄
+        if (timeHeader && !cell) {
+            gestureMode = "scroll-time";
+            window._headerScrollStart = {
+                x: e.clientX,
+                y: e.clientY,
+                scrollLeft: scrollArea.scrollLeft,
+                scrollTop: scrollArea.scrollTop
+            };
+            return;
+        }
+
+        // 日付見出し
+        if (topHeader && !cell) {
+            gestureMode = "scroll-header";
+            window._headerScrollStart = {
+                x: e.clientX,
+                y: e.clientY,
+                scrollLeft: scrollArea.scrollLeft,
+                scrollTop: scrollArea.scrollTop
+            };
+            return;
+        }
+
+        // スクロールモード
+        if (selectedMode === -1) {
+            gestureMode = "scroll-header";
+            window._headerScrollStart = {
+                x: e.clientX,
+                y: e.clientY,
+                scrollLeft: scrollArea.scrollLeft,
+                scrollTop: scrollArea.scrollTop
+            };
+            return;
+        }
+
+        // セル入力
+        gestureMode = "pending";
+        startPointer = {
+            x: e.clientX,
+            y: e.clientY,
+            cell: cell
+        };
+
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+
+        if (cell) {
+            longPressTimer = setTimeout(() => {
+                if (gestureMode === "pending" && startPointer.cell) {
+                    gestureMode = "longpress";
+                    openModal(startPointer.cell);
+                }
+            }, 450);
         }
     };
 
     window._pointerMoveHandler = function(e) {
         if (!activePointers.has(e.pointerId)) return;
-        
+
         activePointers.set(e.pointerId, {
             x: e.clientX,
             y: e.clientY,
             pointerType: e.pointerType
         });
-        
+
         const g = document.getElementById('g');
-        const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
+        const scrollArea = getScrollArea();
+        if (!g || !scrollArea) return;
 
-        // 💡 見出しスクロール処理 (デバッグログ付き)
-        if (gestureMode === "scroll-header" || gestureMode === "scroll-time") {
-            const start = window._headerScrollStart;
-            
-            console.log(
-                '[TIME DEBUG MOVE]',
-                {
-                    gestureMode,
-                    pointerId: e.pointerId,
-                    x: e.clientX,
-                    y: e.clientY,
-                    startY: start ? start.y : 'NO_START',
-                    scrollTopBefore: scrollArea ? scrollArea.scrollTop : 'NO_SCROLL',
-                    scrollHeight: scrollArea ? scrollArea.scrollHeight : 'NO_SCROLL',
-                    clientHeight: scrollArea ? scrollArea.clientHeight : 'NO_SCROLL'
-                }
-            );
-
-            if (scrollArea && start) {
-                if (gestureMode === "scroll-header") {
-                    const dx = e.clientX - start.x;
-                    const dy = e.clientY - start.y;
-                    scrollArea.scrollLeft = start.scrollLeft - dx;
-                    scrollArea.scrollTop = start.scrollTop - dy;
-                } else {
-                    const dy = e.clientY - start.y;
-                    const before = scrollArea.scrollTop;
-                    scrollArea.scrollTop = start.scrollTop - dy;
-                    
-                    console.log(
-                        '[TIME DEBUG SCROLL]',
-                        {
-                            dy,
-                            before,
-                            after: scrollArea.scrollTop
-                        }
-                    );
-                }
-            }
-            return;
-        }
-
-        if (gestureMode === "pinch" || gestureMode === "paint") {
+        // 2本指：ズーム + パン
+        if (gestureMode === "pinch" && activePointers.size >= 2) {
             if (e.cancelable) e.preventDefault();
-        }
 
-        if (activePointers.size === 1) {
-            if (gestureMode === "pending") {
-                const dist = Math.hypot(e.clientX - startPointer.x, e.clientY - startPointer.y);
-                if (dist > 8) { 
-                    if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-                    gestureMode = "paint";
-                    if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
-                    const el = document.elementFromPoint(e.clientX, e.clientY);
-                    const cell = el ? el.closest('.c') : null;
-                    if (cell && cell !== startPointer.cell) window.paintCell(cell, selectedMode);
-                }
-            } else if (gestureMode === "paint") {
-                const el = document.elementFromPoint(e.clientX, e.clientY);
-                const cell = el ? el.closest('.c') : null;
-                if (cell) window.paintCell(cell, selectedMode);
-            }
-        } else if (activePointers.size >= 2 && gestureMode === "pinch") {
             const pts = Array.from(activePointers.values());
             const currentDistance = getDistance(pts[0], pts[1]);
             const currentCenter = getCenter(pts[0], pts[1]);
 
             if (initialDistance > 0) {
-                let newScale = initialScale * (currentDistance / initialDistance);
+                let newScale =
+                    initialScale *
+                    (currentDistance / initialDistance);
+
                 newScale = Math.max(0.5, Math.min(newScale, 3.0));
                 window.globalScale = newScale;
-                
-                g.style.transform = `scale(${window.globalScale})`;
+
+                g.style.transform = `scale(${newScale})`;
                 g.style.transformOrigin = "0 0";
-                const marginPct = Math.max(0, (window.globalScale - 1) * 100);
+
+                const marginPct =
+                    Math.max(0, (newScale - 1) * 100);
+
                 g.style.marginBottom = `${marginPct}%`;
                 g.style.marginRight = `${marginPct}%`;
-                
-                window.updatePalettePosition();
             }
 
-            if (lastCenter && scrollArea) {
-                scrollArea.scrollLeft -= (currentCenter.x - lastCenter.x);
-                scrollArea.scrollTop -= (currentCenter.y - lastCenter.y);
+            if (lastCenter) {
+                scrollArea.scrollLeft -=
+                    currentCenter.x - lastCenter.x;
+                scrollArea.scrollTop -=
+                    currentCenter.y - lastCenter.y;
             }
+
             lastCenter = currentCenter;
+            window.updatePalettePosition();
+            return;
+        }
+
+        // 時間欄：縦スクロール
+        if (gestureMode === "scroll-time" && window._headerScrollStart) {
+            if (e.cancelable) e.preventDefault();
+
+            const start = window._headerScrollStart;
+            const dy = e.clientY - start.y;
+
+            const maxTop = Math.max(
+                0,
+                scrollArea.scrollHeight - scrollArea.clientHeight
+            );
+
+            scrollArea.scrollTop = Math.max(
+                0,
+                Math.min(maxTop, start.scrollTop - dy)
+            );
+            return;
+        }
+
+        // 日付見出し：縦横スクロール
+        if (gestureMode === "scroll-header" && window._headerScrollStart) {
+            if (e.cancelable) e.preventDefault();
+
+            const start = window._headerScrollStart;
+            const dx = e.clientX - start.x;
+            const dy = e.clientY - start.y;
+
+            const maxLeft = Math.max(
+                0,
+                scrollArea.scrollWidth - scrollArea.clientWidth
+            );
+            const maxTop = Math.max(
+                0,
+                scrollArea.scrollHeight - scrollArea.clientHeight
+            );
+
+            scrollArea.scrollLeft = Math.max(
+                0,
+                Math.min(maxLeft, start.scrollLeft - dx)
+            );
+
+            scrollArea.scrollTop = Math.max(
+                0,
+                Math.min(maxTop, start.scrollTop - dy)
+            );
+            return;
+        }
+
+        // 1本指：連続セル入力
+        if (
+            activePointers.size === 1 &&
+            (gestureMode === "pending" || gestureMode === "paint")
+        ) {
+            if (e.cancelable) e.preventDefault();
+
+            const dist = Math.hypot(
+                e.clientX - startPointer.x,
+                e.clientY - startPointer.y
+            );
+
+            if (gestureMode === "pending" && dist > 8) {
+                if (longPressTimer) {
+                    clearTimeout(longPressTimer);
+                    longPressTimer = null;
+                }
+
+                gestureMode = "paint";
+
+                if (startPointer.cell && selectedMode >= 0) {
+                    window.paintCell(
+                        startPointer.cell,
+                        selectedMode
+                    );
+                }
+            }
+
+            if (gestureMode === "paint") {
+                const el = document.elementFromPoint(
+                    e.clientX,
+                    e.clientY
+                );
+
+                const cell = el ? el.closest('.c') : null;
+
+                if (cell && selectedMode >= 0) {
+                    window.paintCell(
+                        cell,
+                        selectedMode
+                    );
+                }
+            }
         }
     };
 
     window._pointerEndHandler = function(e) {
-        if (activePointers.size === 1 && gestureMode === "pending") {
-            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-            if (startPointer.cell) window.paintCell(startPointer.cell, selectedMode);
-        }
-        
+        const wasPending = gestureMode === "pending";
+        const wasCell = !!startPointer.cell;
+
         activePointers.delete(e.pointerId);
-        
-        const g = document.getElementById('g');
-        try { if (g && g.hasPointerCapture(e.pointerId)) g.releasePointerCapture(e.pointerId); } catch(err) {}
-        
+
+        if (longPressTimer) {
+            clearTimeout(longPressTimer);
+            longPressTimer = null;
+        }
+
+        // 全ての指を離した
         if (activePointers.size === 0) {
+            if (
+                wasPending &&
+                wasCell &&
+                selectedMode >= 0
+            ) {
+                window.paintCell(
+                    startPointer.cell,
+                    selectedMode
+                );
+            }
+
             gestureMode = "none";
-            if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
-        } else if (activePointers.size === 1) {
-            gestureMode = "none"; 
+            initialDistance = 0;
+            lastCenter = null;
+            window._headerScrollStart = null;
+            return;
+        }
+
+        // 2本指 -> 1本指
+        // ここで none にしない
+        if (activePointers.size === 1) {
+            const p =
+                Array.from(activePointers.values())[0];
+
+            gestureMode = "pending";
+
+            startPointer = {
+                x: p.x,
+                y: p.y,
+                cell: null
+            };
+
+            initialDistance = 0;
+            lastCenter = null;
+            window._headerScrollStart = null;
         }
     };
 
@@ -903,17 +1065,42 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
         const g = document.getElementById("g");
         if (!g) return;
 
+        // native touch と競合させず、JSで統一
         g.style.touchAction = 'none';
 
-        g.removeEventListener("pointerdown", window._pointerDownHandler);
-        g.removeEventListener("pointermove", window._pointerMoveHandler);
-        g.removeEventListener("pointerup", window._pointerEndHandler);
-        g.removeEventListener("pointercancel", window._pointerEndHandler);
+        g.removeEventListener(
+            "pointerdown",
+            window._pointerDownHandler
+        );
+        g.removeEventListener(
+            "pointermove",
+            window._pointerMoveHandler
+        );
+        g.removeEventListener(
+            "pointerup",
+            window._pointerEndHandler
+        );
+        g.removeEventListener(
+            "pointercancel",
+            window._pointerEndHandler
+        );
 
-        g.addEventListener("pointerdown", window._pointerDownHandler);
-        g.addEventListener("pointermove", window._pointerMoveHandler);
-        g.addEventListener("pointerup", window._pointerEndHandler);
-        g.addEventListener("pointercancel", window._pointerEndHandler);
+        g.addEventListener(
+            "pointerdown",
+            window._pointerDownHandler
+        );
+        g.addEventListener(
+            "pointermove",
+            window._pointerMoveHandler
+        );
+        g.addEventListener(
+            "pointerup",
+            window._pointerEndHandler
+        );
+        g.addEventListener(
+            "pointercancel",
+            window._pointerEndHandler
+        );
     }
 
     window.addEventListener("message", function(event) {
@@ -925,7 +1112,25 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
             window.lastEventId = args.eventId;
             window.lastSaveTs = args.saveTs;
             
+            // palette は #content の再描画で消えないよう退避してから再配置
+            const paletteOverlay = document.getElementById("palette-overlay");
+            const paletteElBeforeRender = document.getElementById("palette");
+            const toggleElBeforeRender = document.getElementById("palette-toggle");
+
             document.getElementById("content").innerHTML = args.html_code;
+
+            const paletteSlot = document.getElementById("palette-slot");
+            if (
+                paletteSlot &&
+                paletteOverlay &&
+                paletteElBeforeRender &&
+                toggleElBeforeRender
+            ) {
+                paletteSlot.appendChild(paletteOverlay);
+                paletteOverlay.style.display = "block";
+                paletteOverlay.appendChild(toggleElBeforeRender);
+                paletteOverlay.appendChild(paletteElBeforeRender);
+            }
             totalDays = args.cols; numRows = args.rows; unavailColRows = args.unavailColRows || {};
             window.cellDetails = args.cellDetails || {}; 
             defaultCampus = args.defaultCampus || "";
@@ -946,7 +1151,7 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
             }
             
             window.renderWeek();
-            if (typeof args.isClosed === 'boolean') { window.isEventClosed = args.isClosed; }
+            window.isEventClosed = (typeof args.isClosed === 'boolean') ? args.isClosed : false;
             
             setTimeout(() => { window.setPen(selectedMode); window.updatePalettePosition(); }, 50);
 
@@ -982,13 +1187,14 @@ with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
                 btn.innerText = "⏳ 保存処理中..."; btn.style.backgroundColor = "#ff7b7b"; btn.style.pointerEvents = "none"; 
                 const paletteEl = document.getElementById('palette'); if(paletteEl) paletteEl.style.display = 'none'; 
                 const toggleEl = document.getElementById('palette-toggle'); if(toggleEl) toggleEl.style.display = 'none';
+                const paletteOverlay = document.getElementById('palette-overlay'); if(paletteOverlay) paletteOverlay.style.display = 'none';
             }; }
             document.querySelectorAll('.c').forEach(cell => { window.upd(cell, cell.dataset.v); });
         }
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v19")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v20")
 
 def call_gas(action, payload=None, method="POST"):
     try:
@@ -2169,6 +2375,8 @@ def main():
             else:
                 pointer_css = "pointer-events: none; opacity: 0.8;"
                 submit_btn_html = f"""<div style="margin-top: 20px;"><label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント</label><div style="width: 100%; padding: 10px; margin-top: 5px; background: #eee; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; min-height:40px;">{st.session_state.my_comment}</div></div>"""
+
+            scroll_css = "max-height: 650px; height: auto;"
             
             ui_default_selector_html = f"""
             <div style="margin-bottom: 10px; background: #fff; padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
@@ -2214,11 +2422,14 @@ def main():
                     <button id="btn-next" class="page-btn" onclick="window.changeWeek(1)">次の週 ▶</button>
                 </div>
             </div>
-            <div class="scroll-wrapper">
-                <div id="g" style="display:flex; width:100%; user-select:none; {pointer_css}">
-                    {time_col_html}
-                    {day_cols_html}
+            <div class="grid-container" id="grid-container">
+                <div class="scroll-wrapper">
+                    <div id="g" style="display:flex; width:100%; user-select:none; {pointer_css}">
+                        {time_col_html}
+                        {day_cols_html}
+                    </div>
                 </div>
+                <div id="palette-slot"></div>
             </div>
             {submit_btn_html}
             """
