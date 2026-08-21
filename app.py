@@ -218,9 +218,9 @@ with open("options_editor/index.html", "w", encoding="utf-8") as f:
     f.write("""<!DOCTYPE html><html><head><meta charset="utf-8"><style>body{margin:0;font-family:sans-serif;}.opt-card{background:#fff;border:1px solid #e0e0e0;border-radius:12px;padding:15px;margin-bottom:15px;box-shadow:0 2px 5px rgba(0,0,0,0.05);}.opt-title{font-size:18px;font-weight:bold;color:#2e7d32;margin-bottom:15px;text-align:center;}.btn-group{display:flex;gap:12px;}.opt-btn{flex:1;padding:20px 0;border-radius:12px;border:2px solid #ddd;background:#fff;font-size:18px;font-weight:bold;cursor:pointer;transition:all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);color:#555;text-align:center;}.opt-btn[data-v="1"].active{background:#4CAF50;color:#fff;border-color:#4CAF50;box-shadow:0 6px 12px rgba(76,175,80,0.4);transform:translateY(-3px);}.opt-btn[data-v="2"].active{background:#81C784;color:#fff;border-color:#81C784;box-shadow:0 4px 8px rgba(76,175,80,0.2);transform:translateY(-3px); opacity: 0.8;}.opt-btn[data-v="0"].active{background:#f5f5f5;color:#777;border-color:#ccc;transform:translateY(-3px);}#submit-btn{width:100%;padding:18px;background-color:#FF4B4B;color:white;border:none;border-radius:12px;font-size:20px;cursor:pointer;font-weight:bold;box-shadow:0 6px 12px rgba(0,0,0,0.15);margin-top:10px;transition:0.2s;}#submit-btn:hover{background-color:#e63946;transform:translateY(-2px);}textarea{width:100%;padding:15px;border:1px solid #ccc;border-radius:12px;font-family:inherit;font-size:16px;margin-bottom:10px;resize:vertical;box-sizing:border-box;}</style></head><body><div id="content"></div><script>function sendMessageToStreamlitClient(type, data) { window.parent.postMessage(Object.assign({isStreamlitMessage: true, type: type}, data), "*"); } function init() { sendMessageToStreamlitClient("streamlit:componentReady", {apiVersion: 1}); } function setComponentValue(value) { sendMessageToStreamlitClient("streamlit:setComponentValue", {value: value, dataType: "json"}); } let optsData = []; let myComment = ""; window.addEventListener("message", function(event) { if (event.data.type === "streamlit:render") { const args = event.data.args; if(window.lastEventId === args.eventId && window.lastSaveTs === args.saveTs) return; window.lastEventId = args.eventId; window.lastSaveTs = args.saveTs; const opts = args.options; const myAnsBin = args.myAnsBin; myComment = args.myComment || ""; const isClosed = args.isClosed; let html = ""; optsData = []; opts.forEach((opt, i) => { let v = i < myAnsBin.length ? parseInt(myAnsBin[i]) : 0; optsData.push(v); let pointerEv = isClosed ? "pointer-events:none; opacity:0.7;" : ""; html += `<div class="opt-card" style="${pointerEv}"><div class="opt-title">📅 ${opt}</div><div class="btn-group" id="group-${i}"><button class="opt-btn ${v===0 ? 'active':''}" data-v="0" onclick="setOpt(${i}, 0)">× 不可</button><button class="opt-btn ${v===2 ? 'active':''}" data-v="2" onclick="setOpt(${i}, 2)">△ 未定</button><button class="opt-btn ${v===1 ? 'active':''}" data-v="1" onclick="setOpt(${i}, 1)">◯ 可</button></div></div>`; }); if(!isClosed) { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント (任意)</div><textarea id="comment-box" rows="2" placeholder="遅刻・早退などの連絡事項">${myComment}</textarea><button id="submit-btn" onclick="submitData()">✅ 回答を保存して提出</button></div>`; } else { html += `<div class="opt-card"><div style="font-size:16px; font-weight:bold; margin-bottom:10px; color:#333;">📝 自分の備考・コメント</div><div style="padding:15px; background:#eee; border-radius:12px; min-height:50px; font-size:16px;">${myComment}</div></div>`; } document.getElementById("content").innerHTML = html; setTimeout(() => sendMessageToStreamlitClient("streamlit:setFrameHeight", {height: document.getElementById('content').scrollHeight + 50}), 150); } }); window.setOpt = function(idx, val) { optsData[idx] = val; const btns = document.getElementById('group-' + idx).querySelectorAll('.opt-btn'); btns.forEach(b => b.classList.remove('active')); document.getElementById('group-' + idx).querySelector(`[data-v="${val}"]`).classList.add('active'); }; window.submitData = function() { const btn = document.getElementById("submit-btn"); btn.innerText = "⏳ 保存処理中..."; btn.style.pointerEvents = "none"; const comment = document.getElementById("comment-box").value; setComponentValue({ trigger_save: true, binary: optsData.join(''), comment: comment, ts: Date.now() }); }; init();</script></body></html>""")
 options_editor = components.declare_component("options_editor", path="options_editor")
 
-# ★ パレット折りたたみ＆見出し・セル完全分離版 (v18)
-os.makedirs("custom_editor_v18", exist_ok=True)
-with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
+# ★ パレット表示判定修正＆時間スクロールデバッグログ追加版 (v19)
+os.makedirs("custom_editor_v19", exist_ok=True)
+with open("custom_editor_v19/index.html", "w", encoding="utf-8") as f:
     f.write("""
     <!DOCTYPE html><html><head><meta charset="utf-8"><style>
     body{margin:0;font-family:sans-serif;} *{box-sizing:border-box;}
@@ -275,7 +275,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
     /* 📱 スマホ用: 折りたたみパレットのUI設計 */
     @media (max-width: 900px) {
         .scroll-wrapper {
-            padding-bottom: 105px !important; /* パレットに隠れないようセルを逃がす余白 */
+            padding-bottom: 105px !important;
             margin-bottom: 0 !important;
         }
 
@@ -291,7 +291,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
             box-shadow: 0 4px 14px rgba(0,0,0,.25);
             z-index: 100000;
             font-size: 24px;
-            display: none; /* デフォルトは非表示、JSで切り替え */
+            display: none;
             align-items: center;
             justify-content: center;
             cursor: pointer;
@@ -304,7 +304,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
             position: fixed !important;
             left: 50% !important;
             right: auto !important;
-            top: auto !important; /* 位置はCSSのbottomに完全依存させる */
+            top: auto !important;
             bottom: max(12px, env(safe-area-inset-bottom)) !important;
             transform: translateX(-50%) !important;
             z-index: 99999 !important;
@@ -342,7 +342,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
     }
     </style></head><body>
     
-    <!-- 💡 折りたたみ用のトグルボタン -->
     <button id="palette-toggle" type="button" onclick="window.togglePalette()">🖊️</button>
 
     <div id="palette" style="position:fixed; top:20px; right:30px; z-index:99999; background:rgba(255,255,255,0.95); border:1px solid #ddd; border-radius:12px; box-shadow:0 8px 24px rgba(0,0,0,0.2); padding:12px 8px; cursor:move; display:none; flex-direction:column; gap:12px; backdrop-filter: blur(8px); touch-action: manipulation;">
@@ -394,10 +393,10 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
     let modalStatus = 1; let selectedMode = 1; let editingCell = null;
     
     window.isEventClosed = false;
-    window.isPaletteClosed = true; // 💡 パレットは初期状態で「閉じる」
+    window.isPaletteClosed = true;
 
     let activePointers = new Map();
-    let gestureMode = "none"; // "none", "pending", "paint", "pinch", "longpress", "scroll-header", "scroll-time"
+    let gestureMode = "none";
     let initialScale = 1;
     let initialDistance = 0;
     let lastCenter = null;
@@ -483,7 +482,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
         el.innerHTML = innerHtml;
     };
     
-    // 💡 .day-col の display を JS で制御
     window.renderWeek = function() {
         const start = currentWeek * 7; const end = start + 7;
         document.querySelectorAll('.day-col').forEach(el => {
@@ -539,7 +537,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
     window.toggleList = function(id) { const el = document.getElementById(id); el.style.display = el.style.display === 'none' ? 'block' : 'none'; };
     document.addEventListener('click', function(e) { if(!e.target.closest('.ms-container')) { document.querySelectorAll('.ms-options').forEach(el => el.style.display = 'none'); } });
 
-    // 💡 ペンモード設定 (イベント登録はせず純粋な状態管理のみ)
     window.setPen = function(mode) {
         selectedMode = mode;
         [-2, -1, 0, 1, 2].forEach(m => {
@@ -551,7 +548,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
 
         const g = document.getElementById('g');
         if (g) {
-            g.style.touchAction = 'none'; // 常にJSで制御する
+            g.style.touchAction = 'none';
         }
     };
 
@@ -575,7 +572,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
         window.setPen(selectedMode);
     };
 
-    // 💡 パレットの開閉制御
     window.togglePalette = function() {
         window.isPaletteClosed = !window.isPaletteClosed;
         const palette = document.getElementById('palette');
@@ -592,7 +588,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
         window.updatePalettePosition();
     };
 
-    // 💡 表示/非表示のみを管理 (位置はCSSに一任)
+    // 💡 表示/非表示の判定を .scroll-wrapper (表示窓) 基準に変更
     window.updatePalettePosition = function() {
         const g = document.getElementById('g');
         const palette = document.getElementById('palette');
@@ -605,24 +601,37 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
             return;
         }
 
-        // PC幅の場合は従来通り(ドラッグ可能・トグル非表示)
         if (!window.matchMedia('(max-width: 900px)').matches) {
             palette.style.display = 'flex';
             toggle.style.display = 'none';
             return;
         }
 
-        const rect = g.getBoundingClientRect();
-        const vh = window.innerHeight;
-
-        // グリッドが完全に画面外ならどちらも非表示
-        if (rect.bottom <= 0 || rect.top >= vh) {
+        // ★ #g ではなく「実際の表示窓」を見る
+        const scrollArea = g.closest('.scroll-wrapper');
+        if (!scrollArea) {
+            console.warn('[PALETTE] scroll-wrapper が見つかりません');
             palette.style.display = 'none';
             toggle.style.display = 'none';
             return;
         }
 
-        // 画面内の場合はトグル状態に従って表示を切り替え
+        const rect = scrollArea.getBoundingClientRect();
+        
+        // scroll-wrapper 自体が画面外なら非表示
+        const visible = 
+            rect.bottom > 0 && 
+            rect.top < window.innerHeight && 
+            rect.right > 0 && 
+            rect.left < window.innerWidth;
+
+        if (!visible) {
+            palette.style.display = 'none';
+            toggle.style.display = 'none';
+            return;
+        }
+
+        // ★ 表示領域内なら、状態に応じて表示
         if (window.isPaletteClosed) {
             palette.style.display = 'none';
             toggle.style.display = 'flex';
@@ -632,7 +641,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
         }
     };
 
-    // 💡 パレットのドラッグ処理（PCのみ・スマホは遮断）
     const paletteEl = document.getElementById('palette');
     const toggleEl = document.getElementById('palette-toggle');
     let isDraggingPalette = false; let offsetX, offsetY;
@@ -645,7 +653,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
     });
 
     paletteEl.addEventListener('mousedown', e => {
-        if (window.matchMedia('(max-width: 900px)').matches) return; // スマホ幅なら無効
+        if (window.matchMedia('(max-width: 900px)').matches) return;
         if (e.target.tagName.toLowerCase() === 'button') return;
         isDraggingPalette = true;
         offsetX = e.clientX - paletteEl.getBoundingClientRect().left;
@@ -681,7 +689,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
     function getCenter(p1, p2) { return { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 }; }
 
     window._pointerDownHandler = function(e) {
-        // 💡 1. 座標を明示的にオブジェクトで記録
         activePointers.set(e.pointerId, {
             x: e.clientX,
             y: e.clientY,
@@ -691,12 +698,38 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
         const g = document.getElementById('g');
         const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
-        // 💡 2. 見出し要素かどうかの判定 (スクロール専用として扱う)
         const timeHeader = e.target.closest('.time-col, .time-cell');
         const topHeader = e.target.closest('.header-cell, .top-left-cell');
 
         if (timeHeader || topHeader) {
-            // 見出し上での操作は PointerCapture しない
+            
+            // 💡 デバッグ用ログ追加
+            if (timeHeader) {
+                console.log(
+                    '🟢 TIME HEADER DETECTED',
+                    e.target,
+                    e.target.closest('.time-cell'),
+                    e.target.closest('.time-col')
+                );
+            }
+
+            console.log(
+                '[TIME DEBUG DOWN]',
+                {
+                    target: e.target,
+                    timeHeader: !!timeHeader,
+                    topHeader: !!topHeader,
+                    pointerId: e.pointerId,
+                    pointerType: e.pointerType,
+                    activePointers: activePointers.size,
+                    gestureBefore: gestureMode,
+                    scrollTop: scrollArea ? scrollArea.scrollTop : 'NO',
+                    scrollHeight: scrollArea ? scrollArea.scrollHeight : 'NO',
+                    clientHeight: scrollArea ? scrollArea.clientHeight : 'NO',
+                    canScroll: scrollArea ? scrollArea.scrollHeight > scrollArea.clientHeight : false
+                }
+            );
+
             if (activePointers.size === 1) {
                 gestureMode = timeHeader ? "scroll-time" : "scroll-header";
                 window._headerScrollStart = {
@@ -716,7 +749,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
             return;
         }
 
-        // 💡 3. セル操作のみ Pointer を確実にキャプチャ
         try { if (g) g.setPointerCapture(e.pointerId); } catch(err) {}
 
         if (selectedMode === -1) return; 
@@ -759,9 +791,24 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
         const g = document.getElementById('g');
         const scrollArea = g.closest('.scroll-wrapper') || g.parentElement;
 
-        // 💡 見出しスクロール処理
+        // 💡 見出しスクロール処理 (デバッグログ付き)
         if (gestureMode === "scroll-header" || gestureMode === "scroll-time") {
             const start = window._headerScrollStart;
+            
+            console.log(
+                '[TIME DEBUG MOVE]',
+                {
+                    gestureMode,
+                    pointerId: e.pointerId,
+                    x: e.clientX,
+                    y: e.clientY,
+                    startY: start ? start.y : 'NO_START',
+                    scrollTopBefore: scrollArea ? scrollArea.scrollTop : 'NO_SCROLL',
+                    scrollHeight: scrollArea ? scrollArea.scrollHeight : 'NO_SCROLL',
+                    clientHeight: scrollArea ? scrollArea.clientHeight : 'NO_SCROLL'
+                }
+            );
+
             if (scrollArea && start) {
                 if (gestureMode === "scroll-header") {
                     const dx = e.clientX - start.x;
@@ -770,7 +817,17 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
                     scrollArea.scrollTop = start.scrollTop - dy;
                 } else {
                     const dy = e.clientY - start.y;
+                    const before = scrollArea.scrollTop;
                     scrollArea.scrollTop = start.scrollTop - dy;
+                    
+                    console.log(
+                        '[TIME DEBUG SCROLL]',
+                        {
+                            dy,
+                            before,
+                            after: scrollArea.scrollTop
+                        }
+                    );
                 }
             }
             return;
@@ -801,7 +858,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
             const currentDistance = getDistance(pts[0], pts[1]);
             const currentCenter = getCenter(pts[0], pts[1]);
 
-            // 💡 2本指ズーム
             if (initialDistance > 0) {
                 let newScale = initialScale * (currentDistance / initialDistance);
                 newScale = Math.max(0.5, Math.min(newScale, 3.0));
@@ -816,7 +872,6 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
                 window.updatePalettePosition();
             }
 
-            // 💡 2本指パン
             if (lastCenter && scrollArea) {
                 scrollArea.scrollLeft -= (currentCenter.x - lastCenter.x);
                 scrollArea.scrollTop -= (currentCenter.y - lastCenter.y);
@@ -840,7 +895,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
             gestureMode = "none";
             if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
         } else if (activePointers.size === 1) {
-            gestureMode = "none"; // ズーム後の誤爆防止
+            gestureMode = "none"; 
         }
     };
 
@@ -891,7 +946,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
             }
             
             window.renderWeek();
-            window.isEventClosed = (typeof args.isClosed === 'boolean') ? args.isClosed : false;
+            if (typeof args.isClosed === 'boolean') { window.isEventClosed = args.isClosed; }
             
             setTimeout(() => { window.setPen(selectedMode); window.updatePalettePosition(); }, 50);
 
@@ -933,7 +988,7 @@ with open("custom_editor_v18/index.html", "w", encoding="utf-8") as f:
     }); init(); </script></body></html>
     """)
 
-grid_editor = components.declare_component("grid_editor", path="custom_editor_v18")
+grid_editor = components.declare_component("grid_editor", path="custom_editor_v19")
 
 def call_gas(action, payload=None, method="POST"):
     try:
@@ -2114,8 +2169,6 @@ def main():
             else:
                 pointer_css = "pointer-events: none; opacity: 0.8;"
                 submit_btn_html = f"""<div style="margin-top: 20px;"><label style="font-size: 14px; font-weight: 600; color: #333;">📝 全体へのコメント</label><div style="width: 100%; padding: 10px; margin-top: 5px; background: #eee; border: 1px solid #ccc; border-radius: 6px; font-family: sans-serif; min-height:40px;">{st.session_state.my_comment}</div></div>"""
-
-            scroll_css = "max-height: 650px; height: auto;"
             
             ui_default_selector_html = f"""
             <div style="margin-bottom: 10px; background: #fff; padding: 8px 12px; border-radius: 8px; border: 1px solid #ddd; display: flex; align-items: center; flex-wrap: wrap; gap: 10px;">
